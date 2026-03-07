@@ -1,0 +1,60 @@
+[tool.poetry]
+name = "riskfolio-graphrag-agent"
+version = "0.1.0"
+description = "Explainable GraphRAG and agentic AI demo over the Riskfolio-Lib codebase and documentation"
+authors = ["Ethan Tenison"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "riskfolio_graphrag_agent", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+typer = { version = "^0.15", extras = ["all"] }
+pydantic-settings = "^2.7"
+python-dotenv = "^1.0"
+neo4j = "^5.26"
+rich = "^13.9"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3"
+pytest-cov = "^6.0"
+ruff = "^0.9"
+
+[tool.poetry.scripts]
+riskfolio-agent = "riskfolio_graphrag_agent.cli:app"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "UP",  # pyupgrade
+]
+ignore = ["E501"]  # handled by formatter
+
+[tool.ruff.lint.isort]
+known-first-party = ["riskfolio_graphrag_agent"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short -q"
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
