@@ -151,15 +151,15 @@ poetry run ruff format src tests
 ## Roadmap
 
 - [x] Project scaffold (Poetry, src layout, CLI, Docker Compose, CI)
-- [ ] Ingestion: AST-based Python chunker with docstring/signature extraction
-- [ ] Ingestion: RST/Markdown section splitter
+- [x] Ingestion: AST-based Python chunker with docstring/signature extraction
+- [x] Ingestion: RST/Markdown section splitter
 - [ ] Graph: LLM-driven entity & relationship extraction (spaCy + GPT-4o)
-- [ ] Graph: Ontology design for Riskfolio concepts (Portfolio, Asset, Metric, Method)
+- [x] Graph: Ontology design for Riskfolio concepts (Portfolio, Asset, Metric, Method)
 - [ ] Retrieval: ChromaDB vector store integration
-- [ ] Retrieval: Neo4j graph traversal queries (Cypher)
+- [x] Retrieval: Neo4j graph traversal queries (Cypher)
 - [ ] Retrieval: Hybrid re-ranking
 - [ ] Agent: LangGraph workflow with tool use and self-correction
-- [ ] App: FastAPI endpoints + OpenAPI docs
+- [x] App: FastAPI endpoints + OpenAPI docs
 - [ ] App: Gradio chat interface with graph visualisation
 - [ ] Eval: RAGAS-style metrics
 - [ ] Eval: CI evaluation regression gate
