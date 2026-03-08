@@ -113,8 +113,8 @@ poetry run riskfolio-agent build-graph
 ### 6 – Ask a question (planned)
 
 ```bash
-poetry run riskfolio-agent serve
-# POST http://localhost:8000/query  {"question": "What is the HRP portfolio?"}
+poetry run riskfolio-agent serve --host 127.0.0.1 --port 8000
+# curl -X POST http://127.0.0.1:8000/query -H "Content-Type: application/json" -d '{"question":"Hierarchical Risk Parity (HRP) in Riskfolio?","top_k":3}'
 ```
 
 ### 7 – Run evaluation
