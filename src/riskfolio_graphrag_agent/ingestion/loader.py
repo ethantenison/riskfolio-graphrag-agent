@@ -206,7 +206,7 @@ def _chunk_python(
                 chunk_size,
                 overlap,
             )
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             start = int(node.lineno)
             end = int(node.end_lineno or node.lineno)
             used_ranges.append((start, end))
@@ -255,7 +255,9 @@ def _chunk_tests(
 
     test_nodes: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name.startswith(
+            "test_"
+        ):
             test_nodes.append(node)
 
     for node in sorted(test_nodes, key=lambda item: item.lineno):
@@ -289,7 +291,9 @@ def _chunk_example_notebook(
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
-        return _chunk_fallback(text, file_path, base_metadata, "example_section", chunk_size, overlap)
+        return _chunk_fallback(
+            text, file_path, base_metadata, "example_section", chunk_size, overlap
+        )
 
     cells = payload.get("cells", [])
     chunks: list[Document] = []

@@ -238,7 +238,9 @@ class GraphBuilder:
             _upsert_nodes(session, unique_nodes)
             _upsert_edges(session, unique_edges)
 
-        logger.info("Graph write complete: %d nodes, %d edges.", len(unique_nodes), len(unique_edges))
+        logger.info(
+            "Graph write complete: %d nodes, %d edges.", len(unique_nodes), len(unique_edges)
+        )
 
     def get_stats(self) -> dict[str, int | dict[str, int]]:
         """Return graph counts by label and relationship type."""
@@ -267,7 +269,9 @@ class GraphBuilder:
 
         return {
             "nodes": int(node_count["count"]) if node_count is not None else 0,
-            "relationships": int(relationship_count["count"]) if relationship_count is not None else 0,
+            "relationships": int(relationship_count["count"])
+            if relationship_count is not None
+            else 0,
             "node_counts_by_label": node_counts_by_label,
             "relationship_counts_by_type": relationship_counts_by_type,
         }
@@ -404,7 +408,11 @@ def _extract_entities(doc: Document) -> tuple[list[GraphNode], list[GraphEdge]]:
     for label, concept_name in _extract_domain_mentions(doc.content):
         nodes.append(GraphNode(label=label, name=concept_name))
         concept_node_name = _normalize_concept_name(concept_name)
-        nodes.append(GraphNode(label="Concept", name=concept_node_name, properties={"canonical": concept_name}))
+        nodes.append(
+            GraphNode(
+                label="Concept", name=concept_node_name, properties={"canonical": concept_name}
+            )
+        )
 
         mentioned_domain_nodes.append((label, concept_name))
 
@@ -567,7 +575,9 @@ def _dedupe_nodes(nodes: list[GraphNode]) -> list[GraphNode]:
     for node in nodes:
         key = (node.label, node.name)
         if key not in deduped:
-            deduped[key] = GraphNode(label=node.label, name=node.name, properties=dict(node.properties))
+            deduped[key] = GraphNode(
+                label=node.label, name=node.name, properties=dict(node.properties)
+            )
             continue
         deduped[key].properties.update(node.properties)
     return list(deduped.values())
@@ -608,9 +618,7 @@ def _upsert_nodes(session, nodes: list[GraphNode]) -> None:
     for label, labeled_nodes in by_label.items():
         safe_label = _safe_name(label)
         cypher = (
-            f"UNWIND $rows AS row "
-            f"MERGE (n:{safe_label} {{name: row.name}}) "
-            "SET n += row.properties"
+            f"UNWIND $rows AS row MERGE (n:{safe_label} {{name: row.name}}) SET n += row.properties"
         )
         rows = [{"name": n.name, "properties": n.properties} for n in labeled_nodes]
         session.run(cypher, rows=rows)
