@@ -16,8 +16,10 @@ import uvicorn
 from rich.console import Console
 
 from riskfolio_graphrag_agent.config.settings import Settings
+from riskfolio_graphrag_agent.eval.evaluator import Evaluator, build_default_eval_samples
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
 from riskfolio_graphrag_agent.ingestion.loader import Document, load_directory, summarize_documents
+from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
 
 app = typer.Typer(
     name="riskfolio-agent",
@@ -221,8 +223,32 @@ def eval(
     Args:
         output_file: Path where the JSON results will be written.
     """
-    # TODO: wire up riskfolio_graphrag_agent.eval.evaluator
-    console.print("[bold cyan]eval[/] – placeholder. output_file=", output_file)
+    settings = Settings()
+    samples = build_default_eval_samples()
+    retriever = HybridRetriever(
+        neo4j_uri=settings.neo4j_uri,
+        neo4j_user=settings.neo4j_user,
+        neo4j_password=settings.neo4j_password,
+        top_k=5,
+    )
+
+    try:
+        evaluator = Evaluator(samples=samples, retriever=retriever)
+        report = evaluator.run()
+        evaluator.save(output_file)
+    finally:
+        retriever.close()
+
+    console.print(
+        "[bold cyan]eval[/]",
+        (
+            f"samples={report.num_samples} recall={report.context_recall:.3f} "
+            f"precision={report.context_precision:.3f} "
+            f"faithfulness={report.answer_faithfulness:.3f} "
+            f"relevance={report.answer_relevance:.3f}"
+        ),
+    )
+    console.print(f"saved report to {output_file}")
 
 
 @app.command()

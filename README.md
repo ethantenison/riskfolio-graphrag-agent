@@ -101,13 +101,21 @@ docker compose up -d
 ### 4 – Ingest source material
 
 ```bash
-poetry run riskfolio-agent ingest --source-dir ./data/riskfolio-lib
+# Uses RISKFOLIO_SOURCE_DIR from .env (recommended)
+poetry run riskfolio-agent ingest
+
+# Or pass an explicit path override
+poetry run riskfolio-agent ingest --source-dir /Users/et/Desktop/Data_Projects/Riskfolio-Lib
 ```
 
 ### 5 – Build knowledge graph
 
 ```bash
+# First build
 poetry run riskfolio-agent build-graph
+
+# After changes
+poetry run riskfolio-agent build-graph --drop-existing
 ```
 
 ### 6 – Ask a question (planned)

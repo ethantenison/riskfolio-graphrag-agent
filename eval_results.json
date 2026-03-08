@@ -1,0 +1,49 @@
+{
+  "num_samples": 5,
+  "context_recall": 0.55,
+  "context_precision": 0.92,
+  "answer_faithfulness": 0.4051,
+  "answer_relevance": 1.0,
+  "per_sample": [
+    {
+      "question": "What is Hierarchical Risk Parity (HRP)?",
+      "context_recall": 1.0,
+      "context_precision": 1.0,
+      "answer_faithfulness": 0.3913,
+      "answer_relevance": 1.0,
+      "retrieved_contexts": 5
+    },
+    {
+      "question": "How does Riskfolio compute CVaR-based optimization?",
+      "context_recall": 0.25,
+      "context_precision": 0.8,
+      "answer_faithfulness": 0.3704,
+      "answer_relevance": 1.0,
+      "retrieved_contexts": 5
+    },
+    {
+      "question": "Which estimators are used for covariance in Riskfolio?",
+      "context_recall": 0.5,
+      "context_precision": 1.0,
+      "answer_faithfulness": 0.4,
+      "answer_relevance": 1.0,
+      "retrieved_contexts": 5
+    },
+    {
+      "question": "What constraints can be applied in Riskfolio optimization?",
+      "context_recall": 0.5,
+      "context_precision": 1.0,
+      "answer_faithfulness": 0.3636,
+      "answer_relevance": 1.0,
+      "retrieved_contexts": 5
+    },
+    {
+      "question": "How do examples demonstrate portfolio reports and plots?",
+      "context_recall": 0.5,
+      "context_precision": 0.8,
+      "answer_faithfulness": 0.5,
+      "answer_relevance": 1.0,
+      "retrieved_contexts": 5
+    }
+  ]
+}
