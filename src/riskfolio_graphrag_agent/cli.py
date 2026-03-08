@@ -12,6 +12,7 @@ app         Start the interactive Gradio/FastAPI application.
 from pathlib import Path
 
 import typer
+import uvicorn
 from rich.console import Console
 
 from riskfolio_graphrag_agent.config.settings import Settings
@@ -184,8 +185,10 @@ def serve(
         host: Host address to bind.
         port: TCP port to listen on.
     """
-    # TODO: wire up riskfolio_graphrag_agent.app.server
-    console.print(f"[bold cyan]serve[/] – placeholder. http://{host}:{port}")
+    from riskfolio_graphrag_agent.app.server import create_app
+
+    console.print(f"[bold cyan]serve[/] starting API at http://{host}:{port}")
+    uvicorn.run(create_app(), host=host, port=port)
 
 
 if __name__ == "__main__":
