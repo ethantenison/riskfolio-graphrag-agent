@@ -17,7 +17,7 @@ from rich.console import Console
 
 from riskfolio_graphrag_agent.config.settings import Settings
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
-from riskfolio_graphrag_agent.ingestion.loader import Document, load_directory
+from riskfolio_graphrag_agent.ingestion.loader import Document, load_directory, summarize_documents
 
 app = typer.Typer(
     name="riskfolio-agent",
@@ -59,6 +59,43 @@ def _resolve_source_directories(source_dir: str | None, settings: Settings) -> l
     return unique_dirs
 
 
+def _resolve_focus_directories(source_dir: str | None, settings: Settings) -> list[Path]:
+    """Resolve Riskfolio-Lib focus directories for graph ingestion.
+
+    Focus paths:
+    - riskfolio/src
+    - docs/source
+    - examples
+    - tests
+    """
+    root = Path(source_dir or settings.riskfolio_source_dir).expanduser().resolve()
+    candidates = [
+        root / "riskfolio" / "src",
+        root / "docs" / "source",
+        root / "examples",
+        root / "tests",
+    ]
+
+    focus = [path for path in candidates if path.exists()]
+    if focus:
+        return focus
+
+    parent = root.parent
+    fallback_candidates = [
+        parent / "riskfolio" / "src",
+        parent / "docs" / "source",
+        parent / "examples",
+        parent / "tests",
+    ]
+    fallback_focus = [path for path in fallback_candidates if path.exists()]
+    if fallback_focus:
+        return fallback_focus
+
+    if not root.exists():
+        raise FileNotFoundError(f"Source directory not found: {root}")
+    return [root]
+
+
 def _load_from_directories(source_dirs: list[Path]) -> list[Document]:
     documents: list[Document] = []
     for directory in source_dirs:
@@ -82,14 +119,20 @@ def ingest(
         source_dir: Optional path override for the source directory.
     """
     settings = Settings()
-    source_dirs = _resolve_source_directories(source_dir, settings)
+    source_dirs = _resolve_focus_directories(source_dir, settings)
     documents = _load_from_directories(source_dirs)
+    summary = summarize_documents(documents)
+
     console.print(
-        "[bold cyan]ingest[/] loaded",
-        len(documents),
-        "chunks from",
+        "[bold cyan]ingest[/]",
+        f"files={summary['files']} chunks={summary['chunks']}",
+        "from",
         ", ".join(str(path) for path in source_dirs),
     )
+    by_source_type = summary.get("by_source_type", {})
+    if isinstance(by_source_type, dict):
+        for source_type, count in sorted(by_source_type.items()):
+            console.print(f"  - {source_type}: {count}")
 
 
 @app.command(name="build-graph")
@@ -110,8 +153,9 @@ def build_graph(
         drop_existing: When True, wipes the current graph before rebuilding.
     """
     settings = Settings()
-    source_dirs = _resolve_source_directories(source_dir, settings)
+    source_dirs = _resolve_focus_directories(source_dir, settings)
     documents = _load_from_directories(source_dirs)
+    summary = summarize_documents(documents)
 
     builder = GraphBuilder(
         neo4j_uri=settings.neo4j_uri,
@@ -125,8 +169,15 @@ def build_graph(
 
     console.print(
         "[bold green]build-graph complete[/]",
-        f"loaded {len(documents)} chunks from {', '.join(str(path) for path in source_dirs)}",
+        (
+            f"files={summary['files']} chunks={summary['chunks']} "
+            f"from {', '.join(str(path) for path in source_dirs)}"
+        ),
     )
+    by_source_type = summary.get("by_source_type", {})
+    if isinstance(by_source_type, dict):
+        for source_type, count in sorted(by_source_type.items()):
+            console.print(f"  - {source_type}: {count}")
 
 
 @app.command(name="graph-stats")

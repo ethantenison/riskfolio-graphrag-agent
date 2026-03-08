@@ -1,21 +1,12 @@
-"""Knowledge graph builder – writes entities and relationships to Neo4j.
-
-Responsibilities
-----------------
-1. Accept a list of :class:`~riskfolio_graphrag_agent.ingestion.loader.Document`
-   objects.
-2. Extract entities (functions, classes, parameters, concepts) from each chunk.
-3. Upsert nodes and edges into Neo4j using the Bolt driver.
-
-This module currently provides **stub** implementations.  Replace the
-``# TODO`` sections with real NLP/LLM-based extraction logic.
-"""
+"""Riskfolio-aware knowledge graph builder for Neo4j."""
 
 from __future__ import annotations
 
+import keyword
 import logging
 import re
 from dataclasses import dataclass, field
+from itertools import combinations
 
 from neo4j import Driver, GraphDatabase
 from neo4j.exceptions import Neo4jError
@@ -24,49 +15,152 @@ from riskfolio_graphrag_agent.ingestion.loader import Document
 
 logger = logging.getLogger(__name__)
 
+NODE_LABELS: tuple[str, ...] = (
+    "Chunk",
+    "DocPage",
+    "ExampleNotebook",
+    "TestCase",
+    "PythonModule",
+    "PythonClass",
+    "PythonFunction",
+    "Parameter",
+    "PortfolioMethod",
+    "RiskMeasure",
+    "ConstraintType",
+    "Estimator",
+    "ReportType",
+    "PlotType",
+    "Solver",
+    "Concept",
+)
+
+RELATIONSHIP_TYPES: tuple[str, ...] = (
+    "HAS_CHUNK",
+    "MENTIONS",
+    "DESCRIBES",
+    "DEMONSTRATES",
+    "VALIDATES",
+    "IMPLEMENTS",
+    "DECLARES",
+    "HAS_PARAMETER",
+    "USES",
+    "SUPPORTS_RISK_MEASURE",
+    "SUPPORTS_CONSTRAINT",
+    "USES_ESTIMATOR",
+    "PRODUCES_REPORT",
+    "RELATED_TO",
+)
+
+DOMAIN_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
+    "PortfolioMethod": {
+        "Hierarchical Risk Parity": ("hierarchical risk parity", "hrp"),
+        "Hierarchical Equal Risk Contribution": ("hierarchical equal risk contribution", "herc"),
+        "Nested Clustered Optimization": ("nested clustered optimization", "nco"),
+        "Risk Parity": ("risk parity", "risk budgeting"),
+        "Black Litterman": ("black litterman",),
+        "Mean-Variance Optimization": ("mean variance", "mean-variance"),
+        "Minimum Variance": ("minimum variance",),
+        "Maximum Sharpe": ("maximum sharpe",),
+        "Kelly Criterion": ("kelly criterion",),
+    },
+    "RiskMeasure": {
+        "CVaR": ("cvar", "conditional value at risk"),
+        "VaR": ("value at risk", "var"),
+        "Semi Deviation": ("semi deviation", "semi standard deviation", "semi-std"),
+        "Semi Variance": ("semi variance", "semivariance"),
+        "MAD": ("mean absolute deviation", "mad"),
+        "Ulcer Index": ("ulcer index",),
+        "EVaR": ("entropic value at risk", "evar"),
+        "EDaR": ("entropic drawdown at risk", "edar"),
+        "RLVaR": ("relativistic value at risk", "rlvar"),
+        "RLDaR": ("relativistic drawdown at risk", "rldar"),
+        "Tail Gini": ("tail gini",),
+    },
+    "ConstraintType": {
+        "Budget Constraint": ("budget constraint",),
+        "Turnover Constraint": ("turnover constraint",),
+        "Tracking Error Constraint": ("tracking error constraint",),
+        "Leverage Constraint": ("leverage constraint",),
+        "Long-Only Constraint": ("long only", "long-only"),
+        "Short-Selling Constraint": ("short selling", "short-selling"),
+        "Cardinality Constraint": ("cardinality constraint",),
+        "Risk Contribution Constraint": ("risk contribution constraint",),
+        "Factor Exposure Constraint": ("factor exposure", "factor constraint"),
+    },
+    "Estimator": {
+        "Historical Estimator": ("historical estimates", "historical estimator"),
+        "EWMA": ("ewma",),
+        "Ledoit-Wolf": ("ledoit wolf", "ledoit-wolf"),
+        "OAS": ("oas",),
+        "Shrinkage": ("shrinkage estimator", "shrinkage"),
+        "Stepwise Regression": ("stepwise regression",),
+        "Principal Components": ("principal components", "pcr"),
+    },
+    "ReportType": {
+        "Performance Report": ("performance report",),
+        "Risk Report": ("risk report",),
+        "Portfolio Report": ("portfolio report",),
+        "Allocation Report": ("allocation report",),
+    },
+    "PlotType": {
+        "Efficient Frontier Plot": ("efficient frontier",),
+        "Dendrogram Plot": ("dendrogram",),
+        "Network Plot": ("network plot", "asset network"),
+        "Risk Contribution Plot": ("risk contribution plot",),
+        "Pie Chart": ("pie chart",),
+        "Bar Chart": ("bar chart",),
+        "Histogram": ("histogram",),
+    },
+    "Solver": {
+        "CVXPY": ("cvxpy",),
+        "MOSEK": ("mosek",),
+        "ECOS": ("ecos",),
+        "OSQP": ("osqp",),
+        "SCS": ("scs",),
+        "Clarabel": ("clarabel",),
+    },
+}
+
+
+def _alias_pattern(alias: str) -> re.Pattern[str]:
+    escaped = re.escape(alias.strip().lower())
+    escaped = escaped.replace(r"\ ", r"[\s\-_]+")
+    return re.compile(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", flags=re.IGNORECASE)
+
+
+DOMAIN_PATTERNS: dict[str, list[tuple[str, re.Pattern[str]]]] = {
+    label: [
+        (canonical, _alias_pattern(alias))
+        for canonical, aliases in concepts.items()
+        for alias in aliases
+    ]
+    for label, concepts in DOMAIN_ALIASES.items()
+}
+
 
 @dataclass
 class GraphNode:
-    """A single node to be upserted into the knowledge graph.
-
-    Attributes:
-        label: Neo4j node label (e.g. "Function", "Class", "Concept").
-        name: Unique identifier for this node within its label.
-        properties: Additional key/value properties stored on the node.
-    """
+    """A graph node for Neo4j upsert."""
 
     label: str
     name: str
-    properties: dict[str, str] = field(default_factory=dict)
+    properties: dict[str, str | int] = field(default_factory=dict)
 
 
 @dataclass
 class GraphEdge:
-    """A directed relationship between two nodes.
-
-    Attributes:
-        source_name: Name of the source node.
-        target_name: Name of the target node.
-        relation_type: Neo4j relationship type string (e.g. "CALLS", "DOCUMENTS").
-        properties: Additional key/value properties on the relationship.
-    """
+    """A directed graph edge for Neo4j upsert."""
 
     source_name: str
     target_name: str
     relation_type: str
-    source_label: str = "Entity"
-    target_label: str = "Entity"
-    properties: dict[str, str] = field(default_factory=dict)
+    source_label: str = "Concept"
+    target_label: str = "Concept"
+    properties: dict[str, str | int] = field(default_factory=dict)
 
 
 class GraphBuilder:
-    """Coordinates entity extraction and Neo4j upserts.
-
-    Args:
-        neo4j_uri: Bolt URI for the Neo4j instance.
-        neo4j_user: Neo4j username.
-        neo4j_password: Neo4j password.
-    """
+    """Coordinates Riskfolio-aware extraction and Neo4j writes."""
 
     def __init__(self, neo4j_uri: str, neo4j_user: str, neo4j_password: str) -> None:
         self._uri = neo4j_uri
@@ -76,26 +170,41 @@ class GraphBuilder:
 
     def _ensure_driver(self) -> Driver:
         if self._driver is None:
-            self._driver = GraphDatabase.driver(
-                self._uri,
-                auth=(self._user, self._password),
-            )
+            self._driver = GraphDatabase.driver(self._uri, auth=(self._user, self._password))
             self._driver.verify_connectivity()
         return self._driver
 
     def close(self) -> None:
-        """Close the underlying Neo4j driver connection."""
         if self._driver is not None:
             self._driver.close()
 
-    def build(self, documents: list[Document], drop_existing: bool = False) -> None:
-        """Extract entities from *documents* and write them to Neo4j.
+    def ensure_schema(self, apply_constraints: bool = True) -> None:
+        """Create optional indexes/constraints for idempotent graph writes."""
+        if not apply_constraints:
+            return
 
-        Args:
-            documents: Chunked source documents produced by the ingestion loader.
-            drop_existing: When ``True``, delete all nodes and edges before
-                re-building the graph.
-        """
+        driver = self._ensure_driver()
+        with driver.session() as session:
+            for label in NODE_LABELS:
+                safe_label = _safe_name(label)
+                cypher = (
+                    f"CREATE CONSTRAINT {safe_label.lower()}_name_unique IF NOT EXISTS "
+                    f"FOR (n:{safe_label}) REQUIRE n.name IS UNIQUE"
+                )
+                session.run(cypher)
+
+            session.run(
+                "CREATE INDEX chunk_source_path IF NOT EXISTS "
+                "FOR (c:Chunk) ON (c.source_path, c.chunk_index)"
+            )
+
+    def build(
+        self,
+        documents: list[Document],
+        drop_existing: bool = False,
+        apply_schema: bool = True,
+    ) -> None:
+        """Extract entities from chunks and upsert a Riskfolio graph."""
         nodes: list[GraphNode] = []
         edges: list[GraphEdge] = []
 
@@ -104,7 +213,16 @@ class GraphBuilder:
             nodes.extend(doc_nodes)
             edges.extend(doc_edges)
 
-        logger.info("Extracted %d nodes and %d edges.", len(nodes), len(edges))
+        unique_nodes = _dedupe_nodes(nodes)
+        unique_edges = _dedupe_edges(edges)
+
+        logger.info(
+            "Prepared %d nodes (%d unique) and %d edges (%d unique).",
+            len(nodes),
+            len(unique_nodes),
+            len(edges),
+            len(unique_edges),
+        )
 
         try:
             driver = self._ensure_driver()
@@ -116,30 +234,22 @@ class GraphBuilder:
             if drop_existing:
                 logger.warning("drop_existing=True – wiping graph.")
                 session.run("MATCH (n) DETACH DELETE n")
-            _upsert_nodes(session, nodes)
-            _upsert_edges(session, edges)
+            self.ensure_schema(apply_constraints=apply_schema)
+            _upsert_nodes(session, unique_nodes)
+            _upsert_edges(session, unique_edges)
+
+        logger.info("Graph write complete: %d nodes, %d edges.", len(unique_nodes), len(unique_edges))
 
     def get_stats(self) -> dict[str, int | dict[str, int]]:
-        """Return simple graph statistics from Neo4j.
-
-        Returns:
-            A dictionary containing total node/relationship counts, node
-            counts grouped by label, and relationship counts grouped by type.
-
-        Raises:
-            Neo4jError: If the query fails.
-            OSError: If a transport/connectivity issue occurs.
-        """
+        """Return graph counts by label and relationship type."""
         driver = self._ensure_driver()
         with driver.session() as session:
             node_count = session.run("MATCH (n) RETURN count(n) AS count").single()
-            relationship_count = session.run(
-                "MATCH ()-[r]->() RETURN count(r) AS count"
-            ).single()
+            relationship_count = session.run("MATCH ()-[r]->() RETURN count(r) AS count").single()
             label_rows = list(
                 session.run(
-                "MATCH (n) UNWIND labels(n) AS label "
-                "RETURN label, count(*) AS count ORDER BY count DESC"
+                    "MATCH (n) UNWIND labels(n) AS label "
+                    "RETURN label, count(*) AS count ORDER BY count DESC"
                 )
             )
             relationship_rows = list(
@@ -150,13 +260,10 @@ class GraphBuilder:
                 )
             )
 
-        node_counts_by_label: dict[str, int] = {}
-        for row in label_rows:
-            node_counts_by_label[str(row["label"])] = int(row["count"])
-
-        relationship_counts_by_type: dict[str, int] = {}
-        for row in relationship_rows:
-            relationship_counts_by_type[str(row["relationship_type"])] = int(row["count"])
+        node_counts_by_label = {str(row["label"]): int(row["count"]) for row in label_rows}
+        relationship_counts_by_type = {
+            str(row["relationship_type"]): int(row["count"]) for row in relationship_rows
+        }
 
         return {
             "nodes": int(node_count["count"]) if node_count is not None else 0,
@@ -166,138 +273,357 @@ class GraphBuilder:
         }
 
 
-# ── Private helpers ────────────────────────────────────────────────────────────
-
-
 def _extract_entities(doc: Document) -> tuple[list[GraphNode], list[GraphEdge]]:
-    """Extract named entities and relationships from a single document chunk.
+    """Extract Riskfolio-aware graph entities from one chunk."""
+    metadata = doc.metadata
+    source_type = str(metadata.get("source_type", "python"))
+    source_label = _source_label(source_type)
+    relative_path = str(metadata.get("relative_path", doc.source_path))
+    module_name = str(metadata.get("module_name", ""))
+    chunk_kind = str(metadata.get("chunk_kind", "fallback"))
+    chunk_id = f"{relative_path}::chunk:{doc.chunk_index}"
 
-    Args:
-        doc: A text chunk from the ingestion pipeline.
+    source_name = module_name if source_label == "PythonModule" and module_name else relative_path
+    line_start = int(metadata.get("line_start", 1))
+    line_end = int(metadata.get("line_end", line_start))
 
-    Returns:
-        A tuple of (nodes, edges) extracted from the chunk.
-    """
-    nodes: list[GraphNode] = []
-    edges: list[GraphEdge] = []
-
-    source_stem = re.sub(r"[^A-Za-z0-9_]+", "_", doc.source_path.split("/")[-1])
-    document_name = f"{source_stem}:{doc.chunk_index}"
-    nodes.append(
+    nodes: list[GraphNode] = [
         GraphNode(
-            label="Document",
-            name=document_name,
+            label=source_label,
+            name=source_name,
+            properties={
+                "source_type": source_type,
+                "relative_path": relative_path,
+                "module_name": module_name,
+            },
+        ),
+        GraphNode(
+            label="Chunk",
+            name=chunk_id,
             properties={
                 "source_path": doc.source_path,
-                "chunk_index": str(doc.chunk_index),
-                "extension": doc.metadata.get("extension", ""),
+                "relative_path": relative_path,
+                "chunk_index": doc.chunk_index,
+                "chunk_kind": chunk_kind,
+                "line_start": line_start,
+                "line_end": line_end,
+                "content": doc.content,
+                "source_type": source_type,
+                "filename": str(metadata.get("filename", "")),
             },
+        ),
+    ]
+
+    edges: list[GraphEdge] = [
+        GraphEdge(
+            source_name=source_name,
+            target_name=chunk_id,
+            relation_type="HAS_CHUNK",
+            source_label=source_label,
+            target_label="Chunk",
         )
-    )
+    ]
 
-    seen_functions: set[str] = set()
-    seen_classes: set[str] = set()
-    seen_concepts: set[str] = set()
-
-    for match in re.finditer(r"^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", doc.content, flags=re.M):
-        func_name = match.group(1)
-        if func_name in seen_functions:
-            continue
-        seen_functions.add(func_name)
-        nodes.append(GraphNode(label="Function", name=func_name))
-        edges.append(
-            GraphEdge(
-                source_name=document_name,
-                target_name=func_name,
-                source_label="Document",
-                target_label="Function",
-                relation_type="MENTIONS",
+    class_names, function_names, function_params = _extract_python_symbols(doc.content)
+    if source_type in {"python", "test"}:
+        for class_name in class_names:
+            nodes.append(GraphNode(label="PythonClass", name=class_name))
+            edges.append(
+                GraphEdge(
+                    source_name=source_name,
+                    target_name=class_name,
+                    relation_type="DECLARES",
+                    source_label=source_label,
+                    target_label="PythonClass",
+                )
             )
-        )
-
-    for match in re.finditer(r"^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\b", doc.content, flags=re.M):
-        class_name = match.group(1)
-        if class_name in seen_classes:
-            continue
-        seen_classes.add(class_name)
-        nodes.append(GraphNode(label="Class", name=class_name))
-        edges.append(
-            GraphEdge(
-                source_name=document_name,
-                target_name=class_name,
-                source_label="Document",
-                target_label="Class",
-                relation_type="MENTIONS",
+            edges.append(
+                GraphEdge(
+                    source_name=chunk_id,
+                    target_name=class_name,
+                    relation_type="MENTIONS",
+                    source_label="Chunk",
+                    target_label="PythonClass",
+                )
             )
-        )
 
-    for line in doc.content.splitlines():
-        heading = line.strip()
-        if not heading:
-            continue
-        if heading.startswith("#"):
-            concept_name = heading.lstrip("#").strip()
-        elif set(heading) <= {"=", "-", "~", "^"}:
-            continue
-        else:
-            continue
+        for func_name in function_names:
+            nodes.append(GraphNode(label="PythonFunction", name=func_name))
+            edges.append(
+                GraphEdge(
+                    source_name=source_name,
+                    target_name=func_name,
+                    relation_type="DECLARES",
+                    source_label=source_label,
+                    target_label="PythonFunction",
+                )
+            )
+            edges.append(
+                GraphEdge(
+                    source_name=chunk_id,
+                    target_name=func_name,
+                    relation_type="MENTIONS",
+                    source_label="Chunk",
+                    target_label="PythonFunction",
+                )
+            )
 
-        if not concept_name or concept_name in seen_concepts:
-            continue
-        seen_concepts.add(concept_name)
-        nodes.append(GraphNode(label="Concept", name=concept_name))
+            for param in function_params.get(func_name, []):
+                parameter_node_name = f"{func_name}:{param}"
+                nodes.append(
+                    GraphNode(
+                        label="Parameter",
+                        name=parameter_node_name,
+                        properties={"function_name": func_name, "parameter_name": param},
+                    )
+                )
+                edges.append(
+                    GraphEdge(
+                        source_name=func_name,
+                        target_name=parameter_node_name,
+                        relation_type="HAS_PARAMETER",
+                        source_label="PythonFunction",
+                        target_label="Parameter",
+                    )
+                )
+
+    if source_type == "test":
+        for api_name in _extract_test_api_targets(doc.content):
+            nodes.append(GraphNode(label="PythonFunction", name=api_name))
+            edges.append(
+                GraphEdge(
+                    source_name=source_name,
+                    target_name=api_name,
+                    relation_type="VALIDATES",
+                    source_label="TestCase",
+                    target_label="PythonFunction",
+                )
+            )
+
+    mentioned_domain_nodes: list[tuple[str, str]] = []
+    for label, concept_name in _extract_domain_mentions(doc.content):
+        nodes.append(GraphNode(label=label, name=concept_name))
+        concept_node_name = _normalize_concept_name(concept_name)
+        nodes.append(GraphNode(label="Concept", name=concept_node_name, properties={"canonical": concept_name}))
+
+        mentioned_domain_nodes.append((label, concept_name))
+
         edges.append(
             GraphEdge(
-                source_name=document_name,
+                source_name=chunk_id,
                 target_name=concept_name,
-                source_label="Document",
-                target_label="Concept",
                 relation_type="MENTIONS",
+                source_label="Chunk",
+                target_label=label,
+            )
+        )
+        edges.append(
+            GraphEdge(
+                source_name=chunk_id,
+                target_name=concept_node_name,
+                relation_type="MENTIONS",
+                source_label="Chunk",
+                target_label="Concept",
+            )
+        )
+
+        source_relation = _concept_source_relation(source_type, label)
+        edges.append(
+            GraphEdge(
+                source_name=source_name,
+                target_name=concept_name,
+                relation_type=source_relation,
+                source_label=source_label,
+                target_label=label,
+            )
+        )
+
+    for (left_label, left_name), (right_label, right_name) in combinations(
+        sorted(set(mentioned_domain_nodes)), 2
+    ):
+        edges.append(
+            GraphEdge(
+                source_name=left_name,
+                target_name=right_name,
+                relation_type="RELATED_TO",
+                source_label=left_label,
+                target_label=right_label,
             )
         )
 
     return nodes, edges
 
 
-def _upsert_nodes(session, nodes: list[GraphNode]) -> None:
-    """Upsert a batch of nodes into Neo4j.
+def _extract_python_symbols(content: str) -> tuple[list[str], list[str], dict[str, list[str]]]:
+    class_matches = re.findall(r"^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\b", content, flags=re.M)
+    func_matches = re.findall(
+        r"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
+        content,
+        flags=re.M,
+    )
 
-    Args:
-        nodes: Nodes to create-or-update.
-    """
+    function_params: dict[str, list[str]] = {}
+    for func_name, params_blob in re.findall(
+        r"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\((.*?)\)\s*:",
+        content,
+        flags=re.M,
+    ):
+        params: list[str] = []
+        for raw in params_blob.split(","):
+            token = raw.strip()
+            if not token:
+                continue
+            token = token.split("=")[0].strip().lstrip("*")
+            if token in {"self", "cls", "/"}:
+                continue
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", token):
+                params.append(token)
+        if params:
+            function_params[func_name] = params
+
+    return sorted(set(class_matches)), sorted(set(func_matches)), function_params
+
+
+def _extract_test_api_targets(content: str) -> list[str]:
+    candidates = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", content)
+    blocked = {
+        "assert",
+        "print",
+        "len",
+        "range",
+        "list",
+        "dict",
+        "set",
+        "tuple",
+        "int",
+        "float",
+        "str",
+        "bool",
+        "enumerate",
+        "zip",
+    }
+
+    valid: list[str] = []
+    for name in candidates:
+        if name.startswith("test_"):
+            continue
+        if name in blocked or keyword.iskeyword(name):
+            continue
+        valid.append(name)
+    return sorted(set(valid))
+
+
+def _extract_domain_mentions(content: str) -> list[tuple[str, str]]:
+    mentions: list[tuple[str, str]] = []
+    for label, patterns in DOMAIN_PATTERNS.items():
+        for canonical, pattern in patterns:
+            if pattern.search(content):
+                mentions.append((label, canonical))
+    return sorted(set(mentions))
+
+
+def _source_label(source_type: str) -> str:
+    if source_type == "docs":
+        return "DocPage"
+    if source_type == "example":
+        return "ExampleNotebook"
+    if source_type == "test":
+        return "TestCase"
+    return "PythonModule"
+
+
+def _concept_source_relation(source_type: str, label: str) -> str:
+    if label == "RiskMeasure":
+        return "SUPPORTS_RISK_MEASURE"
+    if label == "ConstraintType":
+        return "SUPPORTS_CONSTRAINT"
+    if label == "Estimator":
+        return "USES_ESTIMATOR"
+    if label == "ReportType":
+        return "PRODUCES_REPORT"
+    if label == "Solver":
+        return "USES"
+
+    if source_type == "docs":
+        return "DESCRIBES"
+    if source_type == "example":
+        return "DEMONSTRATES"
+    if source_type == "test":
+        return "VALIDATES"
+    return "IMPLEMENTS"
+
+
+def _normalize_concept_name(name: str) -> str:
+    normalized = re.sub(r"\s+", " ", name.strip().lower())
+    return normalized
+
+
+def _safe_name(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]", "", value) or "Entity"
+
+
+def _dedupe_nodes(nodes: list[GraphNode]) -> list[GraphNode]:
+    deduped: dict[tuple[str, str], GraphNode] = {}
+    for node in nodes:
+        key = (node.label, node.name)
+        if key not in deduped:
+            deduped[key] = GraphNode(label=node.label, name=node.name, properties=dict(node.properties))
+            continue
+        deduped[key].properties.update(node.properties)
+    return list(deduped.values())
+
+
+def _dedupe_edges(edges: list[GraphEdge]) -> list[GraphEdge]:
+    deduped: dict[tuple[str, str, str, str, str], GraphEdge] = {}
+    for edge in edges:
+        key = (
+            edge.source_label,
+            edge.source_name,
+            edge.relation_type,
+            edge.target_label,
+            edge.target_name,
+        )
+        if key not in deduped:
+            deduped[key] = GraphEdge(
+                source_name=edge.source_name,
+                target_name=edge.target_name,
+                relation_type=edge.relation_type,
+                source_label=edge.source_label,
+                target_label=edge.target_label,
+                properties=dict(edge.properties),
+            )
+            continue
+        deduped[key].properties.update(edge.properties)
+    return list(deduped.values())
+
+
+def _upsert_nodes(session, nodes: list[GraphNode]) -> None:
     if not nodes:
         return
 
-    nodes_by_label: dict[str, list[GraphNode]] = {}
+    by_label: dict[str, list[GraphNode]] = {}
     for node in nodes:
-        nodes_by_label.setdefault(node.label, []).append(node)
+        by_label.setdefault(node.label, []).append(node)
 
-    for label, labeled_nodes in nodes_by_label.items():
-        safe_label = re.sub(r"[^A-Za-z0-9_]", "", label) or "Entity"
+    for label, labeled_nodes in by_label.items():
+        safe_label = _safe_name(label)
         cypher = (
             f"UNWIND $rows AS row "
             f"MERGE (n:{safe_label} {{name: row.name}}) "
             "SET n += row.properties"
         )
-        session.run(
-            cypher,
-            rows=[{"name": n.name, "properties": n.properties} for n in labeled_nodes],
-        )
+        rows = [{"name": n.name, "properties": n.properties} for n in labeled_nodes]
+        session.run(cypher, rows=rows)
 
 
 def _upsert_edges(session, edges: list[GraphEdge]) -> None:
-    """Upsert a batch of edges into Neo4j.
-
-    Args:
-        edges: Edges to create-or-update.
-    """
     if not edges:
         return
 
     for edge in edges:
-        safe_source_label = re.sub(r"[^A-Za-z0-9_]", "", edge.source_label) or "Entity"
-        safe_target_label = re.sub(r"[^A-Za-z0-9_]", "", edge.target_label) or "Entity"
-        safe_relation = re.sub(r"[^A-Za-z0-9_]", "", edge.relation_type) or "RELATED_TO"
+        safe_source_label = _safe_name(edge.source_label)
+        safe_target_label = _safe_name(edge.target_label)
+        safe_relation = _safe_name(edge.relation_type)
         cypher = (
             f"MATCH (s:{safe_source_label} {{name: $source_name}}) "
             f"MATCH (t:{safe_target_label} {{name: $target_name}}) "

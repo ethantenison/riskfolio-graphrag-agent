@@ -82,12 +82,12 @@ def create_app() -> FastAPI:
         )
 
         cypher = (
-            "MATCH (d:Document)-[:MENTIONS]->(e) "
+            "MATCH (s)-[:HAS_CHUNK]->(c:Chunk)-[:MENTIONS]->(e) "
             "WHERE any(token IN $tokens WHERE toLower(e.name) CONTAINS token) "
-            "WITH d, collect(DISTINCT e.name)[0..10] AS matched_entities, count(*) AS score "
+            "WITH s, c, collect(DISTINCT e.name)[0..10] AS matched_entities, count(*) AS score "
             "ORDER BY score DESC LIMIT $top_k "
-            "RETURN d.name AS document, d.source_path AS source_path, "
-            "d.chunk_index AS chunk_index, matched_entities, score"
+            "RETURN s.name AS document, c.source_path AS source_path, "
+            "c.chunk_index AS chunk_index, matched_entities, score"
         )
 
         try:
