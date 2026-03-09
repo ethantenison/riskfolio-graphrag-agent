@@ -5,8 +5,14 @@ from __future__ import annotations
 import json
 import logging
 import re
+import ssl
 from urllib import request
 from urllib.error import HTTPError, URLError
+
+try:
+    import certifi
+except Exception:  # pragma: no cover - optional dependency fallback
+    certifi = None
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -17,6 +23,12 @@ from riskfolio_graphrag_agent.graph.builder import GraphBuilder
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever, RetrievalResult
 
 logger = logging.getLogger(__name__)
+
+
+def _build_ssl_context() -> ssl.SSLContext | None:
+    if certifi is None:
+        return None
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 class QueryRequest(BaseModel):
@@ -107,7 +119,11 @@ def _make_openai_llm_generate(settings: Settings):
         )
 
         try:
-            with request.urlopen(http_request, timeout=settings.openai_timeout_seconds) as response:
+            with request.urlopen(
+                http_request,
+                timeout=settings.openai_timeout_seconds,
+                context=_build_ssl_context(),
+            ) as response:
                 raw = response.read().decode("utf-8")
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="ignore")

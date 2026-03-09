@@ -15,6 +15,7 @@ def test_settings_defaults():
     assert settings.vector_store_backend == "chroma"
     assert settings.openai_base_url == "https://api.openai.com/v1"
     assert settings.openai_enable_generation is True
+    assert settings.openai_enable_graph_extraction is True
 
 
 def test_settings_override(monkeypatch):
@@ -23,8 +24,10 @@ def test_settings_override(monkeypatch):
     monkeypatch.setenv("LOG_LEVEL", " debug ")
     monkeypatch.setenv("VECTOR_STORE_BACKEND", " CHROMA ")
     monkeypatch.setenv("OPENAI_ENABLE_GENERATION", "false")
+    monkeypatch.setenv("OPENAI_ENABLE_GRAPH_EXTRACTION", "false")
     settings = Settings()
     assert settings.neo4j_uri == "bolt://testhost:9999"
     assert settings.log_level == "DEBUG"
     assert settings.vector_store_backend == "chroma"
     assert settings.openai_enable_generation is False
+    assert settings.openai_enable_graph_extraction is False

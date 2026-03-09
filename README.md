@@ -87,7 +87,7 @@ poetry install
 ### 2 – Configure environment
 
 ```bash
-cp .env.example .env
+#cp .env.example .env
 # Edit .env and fill in OPENAI_API_KEY and RISKFOLIO_SOURCE_DIR
 ```
 
@@ -167,7 +167,7 @@ poetry run ruff format src tests
 - [x] Project scaffold (Poetry, src layout, CLI, Docker Compose, CI)
 - [x] Ingestion: AST-based Python chunker with docstring/signature extraction
 - [x] Ingestion: RST/Markdown section splitter
-- [ ] Graph: LLM-driven entity & relationship extraction (spaCy + GPT-4o)
+- [x] Graph: LLM-assisted entity & relationship extraction (OpenAI-compatible JSON + heuristic fallback)
 - [x] Graph: Ontology design for Riskfolio concepts (Portfolio, Asset, Metric, Method)
 - [x] Retrieval: ChromaDB vector store integration
 - [x] Retrieval: Neo4j graph traversal queries (Cypher)

@@ -5,8 +5,10 @@ from __future__ import annotations
 import keyword
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from itertools import combinations
+from typing import Any, Protocol
 
 from neo4j import Driver, GraphDatabase
 from neo4j.exceptions import Neo4jError
@@ -159,13 +161,33 @@ class GraphEdge:
     properties: dict[str, str | int] = field(default_factory=dict)
 
 
+class LLMExtractProtocol(Protocol):
+    def __call__(
+        self,
+        *,
+        content: str,
+        source_type: str,
+        model_name: str,
+    ) -> dict[str, Any]:
+        ...
+
+
 class GraphBuilder:
     """Coordinates Riskfolio-aware extraction and Neo4j writes."""
 
-    def __init__(self, neo4j_uri: str, neo4j_user: str, neo4j_password: str) -> None:
+    def __init__(
+        self,
+        neo4j_uri: str,
+        neo4j_user: str,
+        neo4j_password: str,
+        llm_extract: LLMExtractProtocol | None = None,
+        llm_model_name: str = "gpt-4o-mini",
+    ) -> None:
         self._uri = neo4j_uri
         self._user = neo4j_user
         self._password = neo4j_password
+        self._llm_extract = llm_extract
+        self._llm_model_name = llm_model_name
         self._driver: Driver | None = None
 
     def _ensure_driver(self) -> Driver:
@@ -207,11 +229,38 @@ class GraphBuilder:
         """Extract entities from chunks and upsert a Riskfolio graph."""
         nodes: list[GraphNode] = []
         edges: list[GraphEdge] = []
+        started_at = time.perf_counter()
+        total_documents = len(documents)
 
-        for doc in documents:
-            doc_nodes, doc_edges = _extract_entities(doc)
+        logger.info(
+            "Graph build started. chunks=%d drop_existing=%s llm_extraction=%s",
+            total_documents,
+            drop_existing,
+            self._llm_extract is not None,
+        )
+
+        if total_documents == 0:
+            logger.info("No documents were provided to graph build.")
+
+        for index, doc in enumerate(documents, start=1):
+            doc_nodes, doc_edges = _extract_entities(
+                doc,
+                llm_extract=self._llm_extract,
+                llm_model_name=self._llm_model_name,
+            )
             nodes.extend(doc_nodes)
             edges.extend(doc_edges)
+
+            if index == 1 or index % 25 == 0 or index == total_documents:
+                elapsed_seconds = time.perf_counter() - started_at
+                progress_percent = (index / total_documents * 100.0) if total_documents else 100.0
+                logger.info(
+                    "Graph build progress: %d/%d chunks (%.1f%%) elapsed=%.1fs",
+                    index,
+                    total_documents,
+                    progress_percent,
+                    elapsed_seconds,
+                )
 
         unique_nodes = _dedupe_nodes(nodes)
         unique_edges = _dedupe_edges(edges)
@@ -277,7 +326,11 @@ class GraphBuilder:
         }
 
 
-def _extract_entities(doc: Document) -> tuple[list[GraphNode], list[GraphEdge]]:
+def _extract_entities(
+    doc: Document,
+    llm_extract: LLMExtractProtocol | None = None,
+    llm_model_name: str = "gpt-4o-mini",
+) -> tuple[list[GraphNode], list[GraphEdge]]:
     """Extract Riskfolio-aware graph entities from one chunk."""
     metadata = doc.metadata
     source_type = str(metadata.get("source_type", "python"))
@@ -458,6 +511,127 @@ def _extract_entities(doc: Document) -> tuple[list[GraphNode], list[GraphEdge]]:
                 target_label=right_label,
             )
         )
+
+    llm_nodes, llm_edges = _extract_entities_with_llm(
+        doc=doc,
+        source_name=source_name,
+        source_label=source_label,
+        chunk_id=chunk_id,
+        llm_extract=llm_extract,
+        llm_model_name=llm_model_name,
+    )
+    nodes.extend(llm_nodes)
+    edges.extend(llm_edges)
+
+    return nodes, edges
+
+
+def _extract_entities_with_llm(
+    doc: Document,
+    source_name: str,
+    source_label: str,
+    chunk_id: str,
+    llm_extract: LLMExtractProtocol | None,
+    llm_model_name: str,
+) -> tuple[list[GraphNode], list[GraphEdge]]:
+    if llm_extract is None:
+        return [], []
+
+    source_type = str(doc.metadata.get("source_type", "python"))
+    try:
+        payload = llm_extract(
+            content=doc.content,
+            source_type=source_type,
+            model_name=llm_model_name,
+        )
+    except Exception as exc:
+        logger.warning("LLM extraction failed for chunk %s: %s", chunk_id, exc)
+        return [], []
+
+    if not isinstance(payload, dict):
+        return [], []
+
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+    for item in payload.get("nodes", []):
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label", "")).strip()
+        name = str(item.get("name", "")).strip()
+        if not label or not name or label not in NODE_LABELS:
+            continue
+
+        properties: dict[str, str | int] = {}
+        raw_properties = item.get("properties", {})
+        if isinstance(raw_properties, dict):
+            for key, value in raw_properties.items():
+                if not isinstance(key, str):
+                    continue
+                if isinstance(value, (str, int)):
+                    properties[key] = value
+
+        nodes.append(GraphNode(label=label, name=name, properties=properties))
+        if label != "Chunk":
+            edges.append(
+                GraphEdge(
+                    source_name=chunk_id,
+                    target_name=name,
+                    relation_type="MENTIONS",
+                    source_label="Chunk",
+                    target_label=label,
+                    properties={"origin": "llm"},
+                )
+            )
+
+    for item in payload.get("edges", []):
+        if not isinstance(item, dict):
+            continue
+        relation_type = str(item.get("relation_type", "")).strip()
+        source_node_name = str(item.get("source_name", "")).strip()
+        target_node_name = str(item.get("target_name", "")).strip()
+        source_node_label = str(item.get("source_label", "")).strip() or "Concept"
+        target_node_label = str(item.get("target_label", "")).strip() or "Concept"
+
+        if (
+            not relation_type
+            or relation_type not in RELATIONSHIP_TYPES
+            or not source_node_name
+            or not target_node_name
+            or source_node_label not in NODE_LABELS
+            or target_node_label not in NODE_LABELS
+        ):
+            continue
+
+        edges.append(
+            GraphEdge(
+                source_name=source_node_name,
+                target_name=target_node_name,
+                relation_type=relation_type,
+                source_label=source_node_label,
+                target_label=target_node_label,
+                properties={"origin": "llm"},
+            )
+        )
+
+    if nodes:
+        anchored_nodes = [
+            node
+            for node in nodes
+            if node.label in {"PythonModule", "DocPage", "ExampleNotebook", "TestCase"}
+        ]
+        for node in anchored_nodes:
+            if node.name == source_name and node.label == source_label:
+                continue
+            edges.append(
+                GraphEdge(
+                    source_name=source_name,
+                    target_name=node.name,
+                    relation_type="RELATED_TO",
+                    source_label=source_label,
+                    target_label=node.label,
+                    properties={"origin": "llm"},
+                )
+            )
 
     return nodes, edges
 

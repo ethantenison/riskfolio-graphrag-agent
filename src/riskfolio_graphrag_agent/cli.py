@@ -9,7 +9,17 @@ eval        Run retrieval-quality evaluation suite.
 app         Start the interactive Gradio/FastAPI application.
 """
 
+import json
+import logging
 from pathlib import Path
+import ssl
+from urllib import request
+from urllib.error import HTTPError, URLError
+
+try:
+    import certifi
+except Exception:  # pragma: no cover - optional dependency fallback
+    certifi = None
 
 import typer
 import uvicorn
@@ -28,6 +38,95 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+
+
+def _build_ssl_context() -> ssl.SSLContext | None:
+    if certifi is None:
+        return None
+    return ssl.create_default_context(cafile=certifi.where())
+
+
+def _configure_logging(log_level: str) -> None:
+    level = getattr(logging, log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        force=True,
+    )
+
+
+def _make_openai_graph_extractor(settings: Settings):
+    def _extract(*, content: str, source_type: str, model_name: str) -> dict[str, object]:
+        prompt = (
+            "Extract Riskfolio graph entities and relationships from a source chunk. "
+            "Return strict JSON with keys 'nodes' and 'edges'. "
+            "Each node must include: label, name, properties. "
+            "Each edge must include: source_name, source_label, target_name, target_label, relation_type. "
+            "Use only known labels and relationships from the project ontology. "
+            "Do not include explanations or markdown.\n\n"
+            f"source_type: {source_type}\n"
+            "known_node_labels: Chunk, DocPage, ExampleNotebook, TestCase, PythonModule, "
+            "PythonClass, PythonFunction, Parameter, PortfolioMethod, RiskMeasure, ConstraintType, "
+            "Estimator, ReportType, PlotType, Solver, Concept\n"
+            "known_relationship_types: HAS_CHUNK, MENTIONS, DESCRIBES, DEMONSTRATES, VALIDATES, "
+            "IMPLEMENTS, DECLARES, HAS_PARAMETER, USES, SUPPORTS_RISK_MEASURE, SUPPORTS_CONSTRAINT, "
+            "USES_ESTIMATOR, PRODUCES_REPORT, RELATED_TO\n\n"
+            f"content:\n{content[:6000]}"
+        )
+
+        payload = {
+            "model": model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an information extraction engine. Output valid JSON only."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        }
+        endpoint = f"{settings.openai_base_url.rstrip('/')}/chat/completions"
+        body = json.dumps(payload).encode("utf-8")
+        http_request = request.Request(
+            url=endpoint,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+        try:
+            with request.urlopen(
+                http_request,
+                timeout=settings.openai_timeout_seconds,
+                context=_build_ssl_context(),
+            ) as response:
+                raw = response.read().decode("utf-8")
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="ignore")
+            raise RuntimeError(f"Graph LLM HTTP error {exc.code}: {detail}") from exc
+        except URLError as exc:
+            raise RuntimeError(f"Graph LLM endpoint unreachable: {exc}") from exc
+
+        try:
+            response_payload = json.loads(raw)
+            choices = response_payload.get("choices", [])
+            first_choice = choices[0] if isinstance(choices, list) and choices else {}
+            message = first_choice.get("message", {}) if isinstance(first_choice, dict) else {}
+            content_text = message.get("content", "") if isinstance(message, dict) else ""
+            if not isinstance(content_text, str) or not content_text.strip():
+                return {"nodes": [], "edges": []}
+            extracted = json.loads(content_text)
+            return extracted if isinstance(extracted, dict) else {"nodes": [], "edges": []}
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Graph LLM returned invalid JSON") from exc
+
+    return _extract
 
 
 def _resolve_source_directories(source_dir: str | None, settings: Settings) -> list[Path]:
@@ -170,6 +269,7 @@ def build_graph(
         drop_existing: When True, wipes the current graph before rebuilding.
     """
     settings = Settings()
+    _configure_logging(settings.log_level)
     source_dirs = _resolve_focus_directories(source_dir, settings)
     documents = _load_from_directories(source_dirs)
     summary = summarize_documents(documents)
@@ -178,6 +278,12 @@ def build_graph(
         neo4j_uri=settings.neo4j_uri,
         neo4j_user=settings.neo4j_user,
         neo4j_password=settings.neo4j_password,
+        llm_extract=(
+            _make_openai_graph_extractor(settings)
+            if settings.openai_enable_graph_extraction and settings.openai_api_key.strip()
+            else None
+        ),
+        llm_model_name=settings.openai_model,
     )
     try:
         builder.build(documents, drop_existing=drop_existing)
