@@ -6,36 +6,35 @@ from fastapi.testclient import TestClient
 
 from riskfolio_graphrag_agent.app.server import create_app
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
+from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
 
 
-class _FakeResult:
-    def __init__(self, rows):
-        self._rows = rows
+class _FakeHybridRetriever:
+    def __init__(self, *args, **kwargs):
+        _ = args, kwargs
 
-    def __iter__(self):
-        return iter(self._rows)
+    def retrieve(self, query: str) -> list[RetrievalResult]:
+        _ = query
+        return [
+            RetrievalResult(
+                content="hrp summary",
+                source_path="/tmp/Portfolio.py",
+                score=0.91,
+                graph_neighbours=["Portfolio.py::chunk:1"],
+                related_entities=["HRP", "Portfolio"],
+                metadata={
+                    "chunk_id": "Portfolio.py::chunk:0",
+                    "relative_path": "Portfolio.py",
+                    "chunk_index": 0,
+                    "section": "hrp_allocation",
+                    "line_start": 10,
+                    "line_end": 24,
+                },
+            )
+        ]
 
-
-class _FakeSession:
-    def __init__(self, rows):
-        self._rows = rows
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
+    def close(self) -> None:
         return None
-
-    def run(self, _cypher, **_kwargs):
-        return _FakeResult(self._rows)
-
-
-class _FakeDriver:
-    def __init__(self, rows):
-        self._rows = rows
-
-    def session(self):
-        return _FakeSession(self._rows)
 
 
 def test_health_endpoint():
@@ -64,22 +63,17 @@ def test_graph_stats_endpoint(monkeypatch):
 
 
 def test_query_endpoint_returns_citations(monkeypatch):
-    rows = [
-        {
-            "document": "Portfolio_py_0",
-            "source_path": "/tmp/Portfolio.py",
-            "chunk_index": 0,
-            "matched_entities": ["HRP", "Portfolio"],
-            "score": 2,
-        }
-    ]
-
-    monkeypatch.setattr(GraphBuilder, "_ensure_driver", lambda self: _FakeDriver(rows))
+    monkeypatch.setattr(
+        "riskfolio_graphrag_agent.app.server.HybridRetriever",
+        _FakeHybridRetriever,
+    )
 
     client = TestClient(create_app())
     response = client.post("/query", json={"question": "What is HRP?", "top_k": 3})
     assert response.status_code == 200
     body = response.json()
-    assert "matching graph chunks" in body["answer"]
+    assert "ranked hybrid contexts" in body["answer"]
     assert len(body["citations"]) == 1
-    assert body["citations"][0]["document"] == "Portfolio_py_0"
+    assert body["citations"][0]["chunk_id"] == "Portfolio.py::chunk:0"
+    assert body["citations"][0]["line_start"] == 10
+    assert body["citations"][0]["line_end"] == 24

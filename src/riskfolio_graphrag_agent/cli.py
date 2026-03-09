@@ -125,9 +125,23 @@ def ingest(
     documents = _load_from_directories(source_dirs)
     summary = summarize_documents(documents)
 
+    retriever = HybridRetriever(
+        neo4j_uri=settings.neo4j_uri,
+        neo4j_user=settings.neo4j_user,
+        neo4j_password=settings.neo4j_password,
+        vector_store_backend=settings.vector_store_backend,
+        chroma_persist_dir=settings.chroma_persist_dir,
+        embedding_dim=settings.embedding_dim,
+    )
+    try:
+        upserted = retriever.upsert_documents(documents)
+    finally:
+        retriever.close()
+
     console.print(
         "[bold cyan]ingest[/]",
         f"files={summary['files']} chunks={summary['chunks']}",
+        f"vector_upserted={upserted}",
         "from",
         ", ".join(str(path) for path in source_dirs),
     )

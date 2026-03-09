@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from riskfolio_graphrag_agent.config.settings import Settings
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
+from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class QueryResponse(BaseModel):
     """Minimal query response payload."""
 
     answer: str
-    citations: list[dict[str, str | int | list[str]]]
+    citations: list[dict[str, str | int | float | list[str]]]
 
 
 def _extract_query_tokens(question: str) -> list[str]:
@@ -38,6 +39,19 @@ def _extract_query_tokens(question: str) -> list[str]:
         seen.add(token)
         deduped.append(token)
     return deduped[:12]
+
+
+def _as_int(value: object, default: int) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
 
 
 def create_app() -> FastAPI:
@@ -75,41 +89,41 @@ def create_app() -> FastAPI:
         if not tokens:
             raise HTTPException(status_code=400, detail="Question must contain searchable text.")
 
-        builder = GraphBuilder(
+        retriever = HybridRetriever(
             neo4j_uri=settings.neo4j_uri,
             neo4j_user=settings.neo4j_user,
             neo4j_password=settings.neo4j_password,
-        )
-
-        cypher = (
-            "MATCH (s)-[:HAS_CHUNK]->(c:Chunk)-[:MENTIONS]->(e) "
-            "WHERE any(token IN $tokens WHERE toLower(e.name) CONTAINS token) "
-            "WITH s, c, collect(DISTINCT e.name)[0..10] AS matched_entities, count(*) AS score "
-            "ORDER BY score DESC LIMIT $top_k "
-            "RETURN s.name AS document, c.source_path AS source_path, "
-            "c.chunk_index AS chunk_index, matched_entities, score"
+            top_k=payload.top_k,
+            vector_store_backend=settings.vector_store_backend,
+            chroma_persist_dir=settings.chroma_persist_dir,
+            embedding_dim=settings.embedding_dim,
         )
 
         try:
-            driver = builder._ensure_driver()
-            with driver.session() as session:
-                rows = list(session.run(cypher, tokens=tokens, top_k=payload.top_k))
+            results = retriever.retrieve(payload.question)
         except Exception as exc:
             logger.exception("Failed to execute query endpoint")
             raise HTTPException(status_code=503, detail=f"Neo4j unavailable: {exc}") from exc
         finally:
-            builder.close()
+            retriever.close()
 
-        citations: list[dict[str, str | int | list[str]]] = [
-            {
-                "document": str(row["document"]),
-                "source_path": str(row["source_path"]),
-                "chunk_index": int(row["chunk_index"]),
-                "matched_entities": list(row["matched_entities"]),
-                "score": int(row["score"]),
-            }
-            for row in rows
-        ]
+        citations: list[dict[str, str | int | float | list[str]]] = []
+        for item in results:
+            metadata = item.metadata
+            citations.append(
+                {
+                    "chunk_id": str(metadata.get("chunk_id", "")),
+                    "source_path": item.source_path,
+                    "relative_path": str(metadata.get("relative_path", "")),
+                    "chunk_index": _as_int(metadata.get("chunk_index", 0), 0),
+                    "section": str(metadata.get("section", "")),
+                    "line_start": _as_int(metadata.get("line_start", 1), 1),
+                    "line_end": _as_int(metadata.get("line_end", 1), 1),
+                    "score": float(item.score),
+                    "matched_entities": item.related_entities,
+                    "graph_neighbours": item.graph_neighbours,
+                }
+            )
 
         if not citations:
             return QueryResponse(
@@ -117,9 +131,12 @@ def create_app() -> FastAPI:
                 citations=[],
             )
 
-        entity_preview = ", ".join(citations[0]["matched_entities"][:5])
+        top_entities = citations[0]["matched_entities"]
+        entity_preview = ", ".join(top_entities[:5]) if isinstance(top_entities, list) else ""
+        if not entity_preview:
+            entity_preview = "no explicit entities"
         answer = (
-            f"I found {len(citations)} matching graph chunks for '{payload.question}'. "
+            f"I found {len(citations)} ranked hybrid contexts for '{payload.question}'. "
             f"Top matched entities include: {entity_preview}."
         )
         return QueryResponse(answer=answer, citations=citations)

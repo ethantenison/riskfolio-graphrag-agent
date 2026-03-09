@@ -7,7 +7,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from neo4j import Driver, GraphDatabase
 
@@ -44,9 +44,11 @@ class VectorStore(Protocol):
 
     def upsert(self, documents: list[IngestDocument]) -> int:
         """Upsert chunk documents into the vector store and return count."""
+        ...
 
     def search(self, query: str, top_k: int) -> list[VectorHit]:
         """Return top-k chunk hits for query."""
+        ...
 
 
 class ChromaVectorStore:
@@ -57,7 +59,7 @@ class ChromaVectorStore:
         persist_dir: str,
         collection_name: str = "riskfolio_chunks",
         embedding_dim: int = 256,
-        client: object | None = None,
+        client: Any | None = None,
     ) -> None:
         self._persist_dir = persist_dir
         self._collection_name = collection_name
@@ -179,7 +181,7 @@ class Neo4jChunkVectorStore:
             "WHERE score > 0 "
             "RETURN c.name AS chunk_id, c.content AS content, c.source_path AS source_path, "
             "c.relative_path AS relative_path, c.chunk_index AS chunk_index, "
-            "c.chunk_kind AS chunk_kind, score "
+            "c.chunk_kind AS chunk_kind, c.line_start AS line_start, c.line_end AS line_end, score "
             "ORDER BY score DESC LIMIT $top_k"
         )
 
@@ -199,8 +201,8 @@ class Neo4jChunkVectorStore:
                         "chunk_index": int(row["chunk_index"]),
                         "chunk_kind": str(row["chunk_kind"]),
                         "section": "",
-                        "line_start": 1,
-                        "line_end": 1,
+                        "line_start": int(row["line_start"] or 1),
+                        "line_end": int(row["line_end"] or 1),
                         "content_hash": "",
                     },
                 )
@@ -352,7 +354,7 @@ def _graph_expand(hit_or_result, session=None):
         logger.debug("_graph_expand compatibility path for %s", hit_or_result.source_path)
         return hit_or_result
 
-    hit: VectorHit = hit_or_result
+    hit = cast(VectorHit, hit_or_result)
     if session is None:
         raise ValueError("session is required when expanding a VectorHit")
 
