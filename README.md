@@ -149,6 +149,9 @@ Current endpoints:
 
 ```bash
 poetry run riskfolio-agent eval --output eval_results.json
+
+# Legacy deterministic profile (for comparison)
+poetry run riskfolio-agent eval --metric-profile heuristic --output eval_results.json
 ```
 
 ---
@@ -181,7 +184,7 @@ poetry run ruff format src tests
 - [x] Agent: LangGraph workflow with tool use, model-backed generation, and self-correction
 - [x] App: FastAPI endpoints + OpenAPI docs
 - [ ] App: Gradio chat interface with graph visualisation
-- [ ] Eval: RAGAS-style metrics
+- [x] Eval: RAGAS-style metrics
 - [x] Eval: CI evaluation regression gate
 - [ ] Observability: LangSmith / OpenTelemetry tracing
 

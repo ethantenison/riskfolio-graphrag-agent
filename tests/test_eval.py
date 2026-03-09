@@ -5,6 +5,24 @@ from __future__ import annotations
 import json
 
 from riskfolio_graphrag_agent.eval.evaluator import EvalReport, EvalSample, Evaluator
+from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
+
+
+class _StubRetriever:
+    def retrieve(self, query: str) -> list[RetrievalResult]:
+        _ = query
+        return [
+            RetrievalResult(
+                content=(
+                    "Hierarchical Risk Parity uses clustering and risk parity "
+                    "to allocate portfolio weights."
+                ),
+                source_path="docs/hrp.md",
+                score=0.9,
+                related_entities=["HRP", "clustering", "risk parity"],
+                metadata={"chunk_id": "c1", "section": "HRP"},
+            )
+        ]
 
 
 def _make_samples(n: int = 3) -> list[EvalSample]:
@@ -31,6 +49,46 @@ def test_evaluator_run_stub():
     report = evaluator.run()
     assert isinstance(report, EvalReport)
     assert report.num_samples == 5
+
+
+def test_evaluator_default_profile_is_ragas_style():
+    samples = [
+        EvalSample(
+            question="What is Hierarchical Risk Parity?",
+            reference_answer="HRP uses clustering and risk parity.",
+            expected_context_terms=["hierarchical", "risk parity", "clustering"],
+        )
+    ]
+
+    evaluator = Evaluator(samples=samples, retriever=_StubRetriever())
+    report = evaluator.run()
+
+    assert report.metric_profile == "ragas-style"
+    assert report.num_samples == 1
+    assert 0.0 <= report.context_recall <= 1.0
+    assert 0.0 <= report.context_precision <= 1.0
+    assert 0.0 <= report.answer_faithfulness <= 1.0
+    assert 0.0 <= report.answer_relevance <= 1.0
+
+
+def test_evaluator_accepts_heuristic_profile():
+    samples = [
+        EvalSample(
+            question="What is Hierarchical Risk Parity?",
+            reference_answer="HRP uses clustering and risk parity.",
+            expected_context_terms=["hierarchical", "risk parity", "clustering"],
+        )
+    ]
+
+    evaluator = Evaluator(
+        samples=samples,
+        retriever=_StubRetriever(),
+        metric_profile="heuristic",
+    )
+    report = evaluator.run()
+
+    assert report.metric_profile == "heuristic"
+    assert report.num_samples == 1
 
 
 def test_evaluator_save(tmp_path):

@@ -11,10 +11,9 @@ app         Start the interactive Gradio/FastAPI application.
 
 import json
 import logging
-from pathlib import Path
-import socket
 import ssl
 import time
+from pathlib import Path
 from urllib import request
 from urllib.error import HTTPError, URLError
 
@@ -41,6 +40,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 def _build_ssl_context() -> ssl.SSLContext | None:
@@ -133,7 +133,7 @@ def _make_openai_graph_extractor(settings: Settings):
                         time.sleep(sleep_seconds)
                     continue
                 raise RuntimeError(f"Graph LLM HTTP error {exc.code}: {detail}") from exc
-            except (URLError, TimeoutError, socket.timeout) as exc:
+            except (URLError, TimeoutError) as exc:
                 if attempt < max_attempts:
                     sleep_seconds = backoff_seconds * attempt
                     logger.warning(
@@ -422,6 +422,12 @@ def eval(
     output_file: str = typer.Option(
         "eval_results.json", "--output", "-o", help="Path to write evaluation results JSON."
     ),
+    metric_profile: str = typer.Option(
+        "ragas-style",
+        "--metric-profile",
+        help="Evaluation metric profile to run: ragas-style or heuristic.",
+        case_sensitive=False,
+    ),
 ) -> None:
     """Run the retrieval-quality evaluation suite.
 
@@ -438,7 +444,15 @@ def eval(
     )
 
     try:
-        evaluator = Evaluator(samples=samples, retriever=retriever)
+        normalized_profile = metric_profile.strip().lower()
+        if normalized_profile not in {"ragas-style", "heuristic"}:
+            raise typer.BadParameter("--metric-profile must be one of: ragas-style, heuristic")
+
+        evaluator = Evaluator(
+            samples=samples,
+            retriever=retriever,
+            metric_profile=normalized_profile,
+        )
         report = evaluator.run()
         evaluator.save(output_file)
     finally:
@@ -450,7 +464,8 @@ def eval(
             f"samples={report.num_samples} recall={report.context_recall:.3f} "
             f"precision={report.context_precision:.3f} "
             f"faithfulness={report.answer_faithfulness:.3f} "
-            f"relevance={report.answer_relevance:.3f}"
+            f"relevance={report.answer_relevance:.3f} "
+            f"profile={report.metric_profile}"
         ),
     )
     console.print(f"saved report to {output_file}")

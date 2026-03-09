@@ -7,6 +7,7 @@ import logging
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever, RetrievalResult
 
@@ -34,6 +35,7 @@ class EvalReport:
     context_precision: float = 0.0
     answer_faithfulness: float = 0.0
     answer_relevance: float = 0.0
+    metric_profile: str = "ragas-style"
     per_sample: list[dict[str, str | float | int]] = field(default_factory=list)
 
 
@@ -44,9 +46,11 @@ class Evaluator:
         self,
         samples: list[EvalSample],
         retriever: HybridRetriever | None = None,
+        metric_profile: Literal["ragas-style", "heuristic"] = "ragas-style",
     ) -> None:
         self._samples = samples
         self._retriever = retriever
+        self._metric_profile = metric_profile
 
     def run(self) -> EvalReport:
         logger.info("Running evaluation over %d samples.", len(self._samples))
@@ -64,10 +68,23 @@ class Evaluator:
             sample.generated_answer = _synthesize_answer(sample.question, results)
 
             expected_terms = sample.expected_context_terms or _fallback_expected_terms(sample)
-            recall = _context_recall(expected_terms, sample.retrieved_contexts)
-            precision = _context_precision(expected_terms, sample.retrieved_contexts)
-            faithfulness = _answer_faithfulness(sample.generated_answer, sample.retrieved_contexts)
-            relevance = _answer_relevance(sample.question, sample.generated_answer)
+            if self._metric_profile == "heuristic":
+                recall = _context_recall(expected_terms, sample.retrieved_contexts)
+                precision = _context_precision(expected_terms, sample.retrieved_contexts)
+                faithfulness = _answer_faithfulness(sample.generated_answer, sample.retrieved_contexts)
+                relevance = _answer_relevance(sample.question, sample.generated_answer)
+            else:
+                recall = _ragas_style_context_recall(expected_terms, sample.retrieved_contexts)
+                precision = _ragas_style_context_precision(
+                    sample.question,
+                    expected_terms,
+                    sample.retrieved_contexts,
+                )
+                faithfulness = _ragas_style_faithfulness(
+                    sample.generated_answer,
+                    sample.retrieved_contexts,
+                )
+                relevance = _ragas_style_answer_relevance(sample.question, sample.generated_answer)
 
             recall_scores.append(recall)
             precision_scores.append(precision)
@@ -91,6 +108,7 @@ class Evaluator:
             context_precision=_mean(precision_scores),
             answer_faithfulness=_mean(faithfulness_scores),
             answer_relevance=_mean(relevance_scores),
+            metric_profile=self._metric_profile,
             per_sample=per_sample,
         )
 
@@ -214,3 +232,79 @@ def _mean(values: list[float]) -> float:
     if not values:
         return 0.0
     return round(sum(values) / len(values), 4)
+
+
+def _ragas_style_context_recall(expected_terms: list[str], contexts: list[str]) -> float:
+    return _context_recall(expected_terms, contexts)
+
+
+def _ragas_style_context_precision(
+    question: str,
+    expected_terms: list[str],
+    contexts: list[str],
+) -> float:
+    if not contexts:
+        return 0.0
+
+    query_tokens = set(_tokens(question))
+    expected = {term.lower() for term in expected_terms}
+    per_chunk_scores: list[float] = []
+
+    for context in contexts:
+        context_tokens = set(_tokens(context))
+        if not context_tokens:
+            per_chunk_scores.append(0.0)
+            continue
+
+        expected_hit_rate = (
+            len(expected & context_tokens) / len(expected)
+            if expected
+            else 0.0
+        )
+        query_overlap = _jaccard(query_tokens, context_tokens)
+        per_chunk_scores.append((0.65 * expected_hit_rate) + (0.35 * query_overlap))
+
+    return _mean(per_chunk_scores)
+
+
+def _ragas_style_faithfulness(answer: str, contexts: list[str]) -> float:
+    claims = _extract_claim_units(answer)
+    if not claims:
+        return 0.0
+
+    context_token_sets = [set(_tokens(context)) for context in contexts if context.strip()]
+    if not context_token_sets:
+        return 0.0
+
+    supported = 0
+    for claim in claims:
+        claim_tokens = set(_tokens(claim))
+        if not claim_tokens:
+            continue
+        if any(_jaccard(claim_tokens, context_tokens) >= 0.15 for context_tokens in context_token_sets):
+            supported += 1
+
+    return supported / len(claims)
+
+
+def _ragas_style_answer_relevance(question: str, answer: str) -> float:
+    question_tokens = set(_tokens(question))
+    answer_tokens = set(_tokens(answer))
+    if not question_tokens or not answer_tokens:
+        return 0.0
+
+    overlap = _jaccard(question_tokens, answer_tokens)
+    coverage = len(question_tokens & answer_tokens) / len(question_tokens)
+    return round((0.4 * overlap) + (0.6 * coverage), 4)
+
+
+def _extract_claim_units(text: str) -> list[str]:
+    units = [segment.strip() for segment in re.split(r"[.!?]\s+|\n+", text) if segment.strip()]
+    return [unit for unit in units if len(_tokens(unit)) >= 3]
+
+
+def _jaccard(left: set[str], right: set[str]) -> float:
+    union = left | right
+    if not union:
+        return 0.0
+    return len(left & right) / len(union)
