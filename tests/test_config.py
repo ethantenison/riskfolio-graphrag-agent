@@ -12,12 +12,15 @@ def test_settings_defaults():
     assert settings.neo4j_user == "neo4j"
     assert settings.log_level == "INFO"
     assert settings.embedding_dim == 1536
+    assert settings.vector_store_backend == "chroma"
 
 
 def test_settings_override(monkeypatch):
     """Environment variable overrides should take precedence over defaults."""
     monkeypatch.setenv("NEO4J_URI", "bolt://testhost:9999")
-    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("LOG_LEVEL", " debug ")
+    monkeypatch.setenv("VECTOR_STORE_BACKEND", " CHROMA ")
     settings = Settings()
     assert settings.neo4j_uri == "bolt://testhost:9999"
     assert settings.log_level == "DEBUG"
+    assert settings.vector_store_backend == "chroma"

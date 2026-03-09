@@ -11,6 +11,8 @@ Example::
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from typing import Literal
 
 
 class Settings(BaseSettings):
@@ -50,7 +52,7 @@ class Settings(BaseSettings):
     embedding_dim: int = 1536
 
     # Vector store
-    vector_store_backend: str = "chroma"
+    vector_store_backend: Literal["chroma", "qdrant"] = "chroma"
     chroma_persist_dir: str = ".chroma"
 
     # Logging
@@ -58,3 +60,19 @@ class Settings(BaseSettings):
 
     # Ingestion
     riskfolio_source_dir: str = "./data/riskfolio-lib"
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _normalize_log_level(cls, value: object) -> str:
+        if value is None:
+            return "INFO"
+        text = str(value).strip()
+        return text.upper() if text else "INFO"
+
+    @field_validator("vector_store_backend", mode="before")
+    @classmethod
+    def _normalize_vector_store_backend(cls, value: object) -> str:
+        if value is None:
+            return "chroma"
+        text = str(value).strip().lower()
+        return text if text else "chroma"

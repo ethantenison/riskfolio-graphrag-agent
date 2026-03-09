@@ -45,6 +45,7 @@ def test_graph_builder_build_stub(tmp_source_dir):
         neo4j_user="neo4j",
         neo4j_password="password",
     )
-    # Should not raise even with no real Neo4j connection (stub)
+    builder._ensure_driver = lambda: (_ for _ in ()).throw(OSError("offline test mode"))
+    # Should not raise when Neo4j is unavailable.
     builder.build(docs)
     builder.close()
