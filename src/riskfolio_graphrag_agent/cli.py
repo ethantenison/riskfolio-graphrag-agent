@@ -17,6 +17,7 @@ from rich.console import Console
 
 from riskfolio_graphrag_agent.config.settings import Settings
 from riskfolio_graphrag_agent.eval.evaluator import Evaluator, build_default_eval_samples
+from riskfolio_graphrag_agent.eval.regression_gate import run_regression_gate
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
 from riskfolio_graphrag_agent.ingestion.loader import Document, load_directory, summarize_documents
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
@@ -263,6 +264,25 @@ def eval(
         ),
     )
     console.print(f"saved report to {output_file}")
+
+
+@app.command(name="eval-gate")
+def eval_gate(
+    report_file: str = typer.Option(
+        "eval_results.json", "--report", help="Path to eval report JSON."
+    ),
+    min_faithfulness: float = typer.Option(0.35, "--min-faithfulness"),
+    min_relevance: float = typer.Option(0.8, "--min-relevance"),
+    min_context_recall: float = typer.Option(0.45, "--min-context-recall"),
+) -> None:
+    """Fail fast if evaluation metrics regress below minimum thresholds."""
+    run_regression_gate(
+        report_path=report_file,
+        min_faithfulness=min_faithfulness,
+        min_relevance=min_relevance,
+        min_context_recall=min_context_recall,
+    )
+    console.print("[bold green]eval-gate passed[/]")
 
 
 @app.command()

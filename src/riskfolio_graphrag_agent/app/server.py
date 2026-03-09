@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+from urllib import request
+from urllib.error import HTTPError, URLError
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from riskfolio_graphrag_agent.agent.workflow import AgentWorkflow
 from riskfolio_graphrag_agent.config.settings import Settings
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
-from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
+from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever, RetrievalResult
 
 logger = logging.getLogger(__name__)
 
@@ -41,17 +45,87 @@ def _extract_query_tokens(question: str) -> list[str]:
     return deduped[:12]
 
 
-def _as_int(value: object, default: int) -> int:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
+def _build_context_preview(context: list[RetrievalResult], max_items: int = 5) -> str:
+    lines: list[str] = []
+    for index, item in enumerate(context[:max_items], start=1):
+        section = str(item.metadata.get("section", "")).strip()
+        chunk_id = str(item.metadata.get("chunk_id", "")).strip()
+        label = section or chunk_id or item.source_path
+        snippet = " ".join(item.content.split())[:500]
+        lines.append(f"[{index}] source={item.source_path} section={label} evidence={snippet}")
+    return "\n".join(lines)
+
+
+def _extract_openai_message_text(payload: dict[str, object]) -> str:
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices:
+        first_choice = choices[0]
+        if isinstance(first_choice, dict):
+            message = first_choice.get("message")
+            if isinstance(message, dict):
+                content = message.get("content")
+                if isinstance(content, str):
+                    return content.strip()
+    return ""
+
+
+def _make_openai_llm_generate(settings: Settings):
+    def _generate(*, question: str, context: list[RetrievalResult], model_name: str) -> str:
+        prompt = (
+            "You are a GraphRAG assistant for Riskfolio-Lib. "
+            "Answer the question strictly using the provided evidence. "
+            "If evidence is insufficient, say that directly and do not invent facts.\n\n"
+            f"Question:\n{question}\n\n"
+            f"Evidence:\n{_build_context_preview(context)}\n\n"
+            "Return a concise answer with factual claims grounded in the evidence."
+        )
+
+        payload = {
+            "model": model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You produce grounded technical answers and avoid unsupported claims."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.1,
+        }
+        base_url = settings.openai_base_url.rstrip("/")
+        endpoint = f"{base_url}/chat/completions"
+        body = json.dumps(payload).encode("utf-8")
+        http_request = request.Request(
+            url=endpoint,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
         try:
-            return int(value)
-        except ValueError:
-            return default
-    return default
+            with request.urlopen(http_request, timeout=settings.openai_timeout_seconds) as response:
+                raw = response.read().decode("utf-8")
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="ignore")
+            raise RuntimeError(f"LLM HTTP error {exc.code}: {detail}") from exc
+        except URLError as exc:
+            raise RuntimeError(f"LLM endpoint unreachable: {exc}") from exc
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("LLM returned non-JSON response") from exc
+
+        answer = _extract_openai_message_text(data)
+        if not answer:
+            raise RuntimeError("LLM response did not contain assistant content")
+        return answer
+
+    return _generate
 
 
 def create_app() -> FastAPI:
@@ -99,31 +173,25 @@ def create_app() -> FastAPI:
             embedding_dim=settings.embedding_dim,
         )
 
+        llm_generate = None
+        if settings.openai_enable_generation and settings.openai_api_key.strip():
+            llm_generate = _make_openai_llm_generate(settings)
+
+        workflow = AgentWorkflow(
+            retriever=retriever,
+            model_name=settings.openai_model,
+            llm_generate=llm_generate,
+        )
+
         try:
-            results = retriever.retrieve(payload.question)
+            state = workflow.run(payload.question)
         except Exception as exc:
             logger.exception("Failed to execute query endpoint")
             raise HTTPException(status_code=503, detail=f"Neo4j unavailable: {exc}") from exc
         finally:
             retriever.close()
 
-        citations: list[dict[str, str | int | float | list[str]]] = []
-        for item in results:
-            metadata = item.metadata
-            citations.append(
-                {
-                    "chunk_id": str(metadata.get("chunk_id", "")),
-                    "source_path": item.source_path,
-                    "relative_path": str(metadata.get("relative_path", "")),
-                    "chunk_index": _as_int(metadata.get("chunk_index", 0), 0),
-                    "section": str(metadata.get("section", "")),
-                    "line_start": _as_int(metadata.get("line_start", 1), 1),
-                    "line_end": _as_int(metadata.get("line_end", 1), 1),
-                    "score": float(item.score),
-                    "matched_entities": item.related_entities,
-                    "graph_neighbours": item.graph_neighbours,
-                }
-            )
+        citations = state.citations
 
         if not citations:
             return QueryResponse(
@@ -131,14 +199,6 @@ def create_app() -> FastAPI:
                 citations=[],
             )
 
-        top_entities = citations[0]["matched_entities"]
-        entity_preview = ", ".join(top_entities[:5]) if isinstance(top_entities, list) else ""
-        if not entity_preview:
-            entity_preview = "no explicit entities"
-        answer = (
-            f"I found {len(citations)} ranked hybrid contexts for '{payload.question}'. "
-            f"Top matched entities include: {entity_preview}."
-        )
-        return QueryResponse(answer=answer, citations=citations)
+        return QueryResponse(answer=state.answer, citations=citations)
 
     return app

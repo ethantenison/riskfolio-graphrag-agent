@@ -24,6 +24,9 @@ class Settings(BaseSettings):
         neo4j_password: Neo4j password.
         openai_api_key: API key for the OpenAI-compatible LLM endpoint.
         openai_model: Model name to use for generation.
+        openai_base_url: Base URL for an OpenAI-compatible API.
+        openai_timeout_seconds: Timeout for LLM HTTP requests in seconds.
+        openai_enable_generation: Enables model-backed answer generation.
         embedding_model: Model name to use for text embeddings.
         embedding_dim: Dimensionality of embedding vectors.
         vector_store_backend: Which vector store to use ("chroma" | "qdrant").
@@ -46,6 +49,9 @@ class Settings(BaseSettings):
     # LLM
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_timeout_seconds: float = 30.0
+    openai_enable_generation: bool = True
 
     # Embeddings
     embedding_model: str = "text-embedding-3-small"

@@ -118,7 +118,7 @@ poetry run riskfolio-agent build-graph
 poetry run riskfolio-agent build-graph --drop-existing
 ```
 
-### 6 – Ask a question (planned)
+### 6 – Ask a question
 
 ```bash
 poetry run riskfolio-agent serve --host 127.0.0.1 --port 8000
@@ -172,11 +172,11 @@ poetry run ruff format src tests
 - [x] Retrieval: ChromaDB vector store integration
 - [x] Retrieval: Neo4j graph traversal queries (Cypher)
 - [x] Retrieval: Hybrid re-ranking
-- [ ] Agent: LangGraph workflow with tool use and self-correction
+- [x] Agent: LangGraph workflow with tool use, model-backed generation, and self-correction
 - [x] App: FastAPI endpoints + OpenAPI docs
 - [ ] App: Gradio chat interface with graph visualisation
 - [ ] Eval: RAGAS-style metrics
-- [ ] Eval: CI evaluation regression gate
+- [x] Eval: CI evaluation regression gate
 - [ ] Observability: LangSmith / OpenTelemetry tracing
 
 ---

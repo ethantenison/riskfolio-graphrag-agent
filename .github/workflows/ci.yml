@@ -52,3 +52,6 @@ jobs:
 
       - name: Run tests with coverage
         run: poetry run pytest --cov=riskfolio_graphrag_agent --cov-report=term-missing
+
+      - name: Eval regression gate
+        run: poetry run riskfolio-agent eval-gate --report eval_results.json --min-faithfulness 0.35 --min-relevance 0.8 --min-context-recall 0.45
