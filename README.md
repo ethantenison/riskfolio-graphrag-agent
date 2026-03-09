@@ -127,8 +127,12 @@ poetry run riskfolio-agent build-graph --drop-existing --chunk-offset 100 --max-
 ### 6 – Ask a question
 
 ```bash
+# FastAPI API
 poetry run riskfolio-agent serve --host 127.0.0.1 --port 8000
 # curl -X POST http://127.0.0.1:8000/query -H "Content-Type: application/json" -d '{"question":"Hierarchical Risk Parity (HRP) in Riskfolio?","top_k":3}'
+
+# Gradio chat interface + graph visualisation
+poetry run riskfolio-agent gradio --host 127.0.0.1 --port 7860
 ```
 
 ### API Docs
@@ -183,7 +187,7 @@ poetry run ruff format src tests
 - [x] Retrieval: Hybrid re-ranking
 - [x] Agent: LangGraph workflow with tool use, model-backed generation, and self-correction
 - [x] App: FastAPI endpoints + OpenAPI docs
-- [ ] App: Gradio chat interface with graph visualisation
+- [x] App: Gradio chat interface with graph visualisation
 - [x] Eval: RAGAS-style metrics
 - [x] Eval: CI evaluation regression gate
 - [ ] Observability: LangSmith / OpenTelemetry tracing

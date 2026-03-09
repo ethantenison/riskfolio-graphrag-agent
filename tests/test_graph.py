@@ -148,3 +148,88 @@ def test_graph_builder_build_stub(tmp_source_dir):
     # Should not raise when Neo4j is unavailable.
     builder.build(docs)
     builder.close()
+
+
+class _FakeResult(list):
+    def single(self):
+        return self[0] if self else None
+
+
+class _FakeSession:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        _ = exc_type, exc, tb
+        return False
+
+    def run(self, query: str, **params):
+        if "RETURN [n IN nodes" in query:
+            terms = params.get("terms", [])
+            if not terms:
+                return _FakeResult([])
+            return _FakeResult(
+                [
+                    {
+                        "nodes": [
+                            {
+                                "id": "n1",
+                                "name": "Hierarchical Risk Parity",
+                                "labels": ["PortfolioMethod"],
+                                "source_path": "docs/hrp.md",
+                            },
+                            {
+                                "id": "n2",
+                                "name": "CVaR",
+                                "labels": ["RiskMeasure"],
+                                "source_path": "docs/risk.md",
+                            },
+                        ]
+                    }
+                ]
+            )
+        if "MATCH (a)-[r]->(b)" in query:
+            return _FakeResult(
+                [
+                    {
+                        "source": "n1",
+                        "target": "n2",
+                        "type": "SUPPORTS_RISK_MEASURE",
+                    }
+                ]
+            )
+        return _FakeResult([])
+
+
+class _FakeDriver:
+    def session(self):
+        return _FakeSession()
+
+    def close(self):
+        return None
+
+
+def test_graph_builder_get_query_subgraph_returns_nodes_and_edges(monkeypatch):
+    builder = GraphBuilder(
+        neo4j_uri="bolt://localhost:7687",
+        neo4j_user="neo4j",
+        neo4j_password="password",
+    )
+    monkeypatch.setattr(builder, "_ensure_driver", lambda: _FakeDriver())
+
+    graph = builder.get_query_subgraph("What is HRP and CVaR?")
+    assert len(graph["nodes"]) == 2
+    assert len(graph["edges"]) == 1
+    assert graph["edges"][0]["type"] == "SUPPORTS_RISK_MEASURE"
+
+
+def test_graph_builder_get_query_subgraph_empty_for_blank_query(monkeypatch):
+    builder = GraphBuilder(
+        neo4j_uri="bolt://localhost:7687",
+        neo4j_user="neo4j",
+        neo4j_password="password",
+    )
+    monkeypatch.setattr(builder, "_ensure_driver", lambda: _FakeDriver())
+
+    graph = builder.get_query_subgraph("  ")
+    assert graph == {"nodes": [], "edges": []}

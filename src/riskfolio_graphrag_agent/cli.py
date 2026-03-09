@@ -6,7 +6,8 @@ ingest      Load and chunk source documents / code.
 build-graph Build the knowledge graph in Neo4j.
 graph-stats Show basic graph counts from Neo4j.
 eval        Run retrieval-quality evaluation suite.
-app         Start the interactive Gradio/FastAPI application.
+serve       Start the FastAPI server.
+gradio      Start the Gradio chat interface.
 """
 
 import json
@@ -506,6 +507,40 @@ def serve(
     initialize_ssl_truststore_once()
     console.print(f"[bold cyan]serve[/] starting API at http://{host}:{port}")
     uvicorn.run(create_app(), host=host, port=port)
+
+
+@app.command(name="gradio")
+def gradio_app(
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind host."),
+    port: int = typer.Option(7860, "--port", "-p", help="Bind port."),
+    top_k: int = typer.Option(5, "--top-k", min=1, max=20, help="Top-k contexts per query."),
+    graph_max_nodes: int = typer.Option(
+        40,
+        "--graph-max-nodes",
+        min=1,
+        max=200,
+        help="Maximum nodes in the rendered graph.",
+    ),
+    graph_max_edges: int = typer.Option(
+        80,
+        "--graph-max-edges",
+        min=1,
+        max=400,
+        help="Maximum edges in the rendered graph.",
+    ),
+) -> None:
+    """Start the Gradio chat interface with graph visualisation."""
+    from riskfolio_graphrag_agent.app.gradio_ui import launch_gradio_app
+
+    initialize_ssl_truststore_once()
+    console.print(f"[bold cyan]gradio[/] starting UI at http://{host}:{port}")
+    launch_gradio_app(
+        host=host,
+        port=port,
+        top_k_default=top_k,
+        graph_max_nodes=graph_max_nodes,
+        graph_max_edges=graph_max_edges,
+    )
 
 
 if __name__ == "__main__":

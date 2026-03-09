@@ -325,6 +325,91 @@ class GraphBuilder:
             "relationship_counts_by_type": relationship_counts_by_type,
         }
 
+    def get_query_subgraph(
+        self,
+        query: str,
+        max_seed_nodes: int = 12,
+        max_nodes: int = 40,
+        max_edges: int = 80,
+    ) -> dict[str, list[dict[str, str | list[str]]]]:
+        """Return a bounded one-hop subgraph relevant to a text query.
+
+        The method matches seed nodes by lexical overlap on common textual
+        properties, expands one hop, and returns node/edge dictionaries suitable
+        for UI visualisation.
+        """
+        terms = _query_terms(query)
+        if not terms:
+            return {"nodes": [], "edges": []}
+
+        driver = self._ensure_driver()
+        with driver.session() as session:
+            nodes_result = session.run(
+                (
+                    "MATCH (n) "
+                    "WHERE any(t IN $terms WHERE "
+                    "toLower(coalesce(n.name, '')) CONTAINS t OR "
+                    "toLower(coalesce(n.content, '')) CONTAINS t OR "
+                    "toLower(coalesce(n.relative_path, '')) CONTAINS t) "
+                    "WITH collect(DISTINCT n)[0..$max_seed_nodes] AS seeds "
+                    "UNWIND seeds AS seed "
+                    "OPTIONAL MATCH (seed)-[]-(nbr) "
+                    "WITH collect(DISTINCT seed) + collect(DISTINCT nbr) AS raw_nodes "
+                    "WITH [n IN raw_nodes WHERE n IS NOT NULL][0..$max_nodes] AS nodes "
+                    "RETURN [n IN nodes | {"
+                    "id: elementId(n), "
+                    "name: coalesce(n.name, ''), "
+                    "labels: labels(n), "
+                    "source_path: coalesce(n.source_path, coalesce(n.relative_path, ''))"
+                    "}] AS nodes"
+                ),
+                terms=terms,
+                max_seed_nodes=max(1, max_seed_nodes),
+                max_nodes=max(1, max_nodes),
+            ).single()
+
+            nodes = []
+            if nodes_result is not None:
+                raw_nodes = nodes_result.get("nodes", [])
+                if isinstance(raw_nodes, list):
+                    nodes = [
+                        {
+                            "id": str(node.get("id", "")),
+                            "name": str(node.get("name", "")),
+                            "labels": [str(label) for label in node.get("labels", [])],
+                            "source_path": str(node.get("source_path", "")),
+                        }
+                        for node in raw_nodes
+                        if isinstance(node, dict)
+                    ]
+
+            if not nodes:
+                return {"nodes": [], "edges": []}
+
+            node_ids = [str(node["id"]) for node in nodes if str(node.get("id", ""))]
+            edge_rows = list(
+                session.run(
+                    (
+                        "MATCH (a)-[r]->(b) "
+                        "WHERE elementId(a) IN $node_ids AND elementId(b) IN $node_ids "
+                        "RETURN elementId(a) AS source, elementId(b) AS target, type(r) AS type "
+                        "LIMIT $max_edges"
+                    ),
+                    node_ids=node_ids,
+                    max_edges=max(1, max_edges),
+                )
+            )
+
+        edges: list[dict[str, str | list[str]]] = [
+            {
+                "source": str(row["source"]),
+                "target": str(row["target"]),
+                "type": str(row["type"]),
+            }
+            for row in edge_rows
+        ]
+        return {"nodes": nodes, "edges": edges}
+
 
 def _extract_entities(
     doc: Document,
@@ -567,7 +652,7 @@ def _extract_entities_with_llm(
             for key, value in raw_properties.items():
                 if not isinstance(key, str):
                     continue
-                if isinstance(value, (str, int)):
+                if isinstance(value, str | int):
                     properties[key] = value
 
         nodes.append(GraphNode(label=label, name=name, properties=properties))
@@ -742,6 +827,18 @@ def _normalize_concept_name(name: str) -> str:
 
 def _safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "", value) or "Entity"
+
+
+def _query_terms(query: str) -> list[str]:
+    terms = re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", query.lower())
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        if term in seen:
+            continue
+        seen.add(term)
+        deduped.append(term)
+    return deduped[:12]
 
 
 def _dedupe_nodes(nodes: list[GraphNode]) -> list[GraphNode]:
