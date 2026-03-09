@@ -8,7 +8,7 @@ readme = "README.md"
 packages = [{ include = "riskfolio_graphrag_agent", from = "src" }]
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "3.13.12"
 typer = { version = "^0.15", extras = ["all"] }
 pydantic-settings = "^2.7"
 python-dotenv = "^1.0"
