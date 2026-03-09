@@ -164,7 +164,7 @@ poetry run ruff format src tests
 
 ## Roadmap
 
-- [X] Project scaffold (Poetry, src layout, CLI, Docker Compose, CI)
+- [x] Project scaffold (Poetry, src layout, CLI, Docker Compose, CI)
 - [x] Ingestion: AST-based Python chunker with docstring/signature extraction
 - [x] Ingestion: RST/Markdown section splitter
 - [ ] Graph: LLM-driven entity & relationship extraction (spaCy + GPT-4o)

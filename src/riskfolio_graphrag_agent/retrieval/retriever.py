@@ -119,6 +119,12 @@ class HybridRetriever:
             self._vector_store.close()  # type: ignore[call-arg]
         self._driver.close()
 
+    def __enter__(self) -> HybridRetriever:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
     def retrieve(self, query: str) -> list[RetrievalResult]:
         logger.info("Retrieving for query: %r (top_k=%d)", query, self._top_k)
 

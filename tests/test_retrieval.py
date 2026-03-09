@@ -37,5 +37,8 @@ def test_hybrid_retriever_retrieve_stub():
         neo4j_password="password",
         top_k=3,
     )
-    results = retriever.retrieve("What is portfolio optimisation?")
-    assert isinstance(results, list)
+    try:
+        results = retriever.retrieve("What is portfolio optimisation?")
+        assert isinstance(results, list)
+    finally:
+        retriever.close()
