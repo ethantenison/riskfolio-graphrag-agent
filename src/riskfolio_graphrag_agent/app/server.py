@@ -9,6 +9,13 @@ import ssl
 from urllib import request
 from urllib.error import HTTPError, URLError
 
+# Observability imports
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, ConsoleSpanExporter
+trace.set_tracer_provider(TracerProvider())
+trace.get_tracer_provider().add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+
 try:
     import certifi
 except Exception:  # pragma: no cover - optional dependency fallback
@@ -159,6 +166,12 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/trace")
+    def trace_info() -> dict[str, str]:
+        """Return a simple trace status for observability demo."""
+        tracer = trace.get_tracer("riskfolio-graphrag-agent")
+        return {"tracer": str(tracer), "provider": str(trace.get_tracer_provider())}
 
     @app.get("/graph/stats")
     def graph_stats() -> dict[str, int | dict[str, int]]:

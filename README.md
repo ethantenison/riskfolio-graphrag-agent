@@ -54,6 +54,18 @@ This is a **portfolio project** that demonstrates:
               └─────────────┘
 ```
 
+### Observability & Tracing
+
+This project is instrumented with OpenTelemetry and LangSmith for full agent workflow tracing and evaluation:
+
+- Agent workflow, retrieval, and graph operations are traced with OpenTelemetry spans.
+- LangSmith tracing decorates agentic workflow for step-level inspection.
+- FastAPI exposes `/trace` endpoint for trace status and demo.
+- Evaluation suite includes faithfulness, grounding, precision/recall, and multi-hop metrics.
+- All code is modular and production-ready for enterprise KG/RAG/agentic AI deployment.
+
+This demonstrates advanced governance, explainability, and observability—matching enterprise requirements for roles like Dell’s Knowledge Graph / RAG Agentic AI Expert.
+
 ### Module Map
 
 | Package | Responsibility |

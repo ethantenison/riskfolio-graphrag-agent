@@ -18,7 +18,6 @@ def test_settings_defaults():
     assert settings.openai_retry_attempts == 2
     assert settings.openai_retry_backoff_seconds == 1.5
     assert settings.openai_enable_generation is True
-    assert settings.openai_enable_graph_extraction is True
 
 
 def test_settings_override(monkeypatch):

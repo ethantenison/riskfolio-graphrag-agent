@@ -6,7 +6,9 @@ self-correction.
 """
 
 from __future__ import annotations
-
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind
+from langsmith import traceable
 import logging
 import re
 from dataclasses import dataclass, field
@@ -128,6 +130,47 @@ class AgentWorkflow:
             A final :class:`AgentState` with answer and citations populated.
         """
         logger.info("AgentWorkflow.run called. question=%r", question)
+        tracer = trace.get_tracer("riskfolio-graphrag-agent")
+        with tracer.start_as_current_span("AgentWorkflow.run", kind=SpanKind.SERVER) as span:
+            span.set_attribute("agent.question", question)
+            # LangSmith traceable decorator for full workflow
+            @traceable(name="AgentWorkflow.run")
+            def _run_inner(q: str) -> AgentState:
+                if self._graph is None:
+                    state = AgentState(question=q)
+                    state = _plan(state)
+                    state = _retrieve(state, self._retriever)
+                    state = _reason(state, llm_generate=self._llm_generate, model_name=self._model_name)
+                    state = _verify(state)
+                    if not state.verified and state.context:
+                        top = state.context[0]
+                        state.answer = (
+                            "I found relevant context but could not fully verify all claims. "
+                            f"Top source: {top.source_path}."
+                        )
+                    return state
+                initial_state: AgentGraphState = {
+                    "question": q,
+                    "sub_questions": [],
+                    "context": [],
+                    "answer": "",
+                    "citations": [],
+                    "verified": False,
+                    "retry_count": 0,
+                }
+                final_state = cast(AgentGraphState, self._graph.invoke(initial_state))
+                return AgentState(
+                    question=final_state["question"],
+                    sub_questions=final_state["sub_questions"],
+                    context=final_state["context"],
+                    answer=final_state["answer"],
+                    citations=final_state["citations"],
+                    verified=final_state["verified"],
+                )
+            result = _run_inner(question)
+            span.set_attribute("agent.answer_length", len(result.answer))
+            span.set_attribute("agent.citation_count", len(result.citations))
+            return result
 
         if self._graph is None:
             state = AgentState(question=question)
