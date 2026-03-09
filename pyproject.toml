@@ -16,6 +16,7 @@ neo4j = "^5.26"
 rich = "^13.9"
 fastapi = "^0.135.1"
 uvicorn = "^0.41.0"
+chromadb = "^1.0.20"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3"
