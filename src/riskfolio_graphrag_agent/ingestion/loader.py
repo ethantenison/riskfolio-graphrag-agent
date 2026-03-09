@@ -360,8 +360,11 @@ def _chunk_sections(
             overlap,
         )
 
-    heading_lines = [1] + [line for line in heading_lines if line > 1]
     heading_lines = sorted(set(heading_lines))
+    if heading_lines and heading_lines[0] > 1:
+        first_line = lines[0].strip() if lines else ""
+        if first_line and not _is_heading_adornment_line(first_line):
+            heading_lines = [1, *heading_lines]
     ranges: list[tuple[int, int]] = []
     for index, start in enumerate(heading_lines):
         end = heading_lines[index + 1] - 1 if index + 1 < len(heading_lines) else len(lines)
@@ -401,9 +404,13 @@ def _detect_heading_lines(lines: list[str], extension: str) -> list[int]:
         current = lines[index].strip()
         if not prev or not current:
             continue
-        if re.fullmatch(r"[=\-~^`:#\*]{3,}", current):
+        if _is_heading_adornment_line(current):
             results.append(index)
     return results
+
+
+def _is_heading_adornment_line(line: str) -> bool:
+    return bool(re.fullmatch(r"[=\-~^`:#\*]{3,}", line))
 
 
 def _resolve_section_name(
@@ -415,6 +422,8 @@ def _resolve_section_name(
     for line in lines[line_start - 1 : line_end]:
         candidate = line.strip()
         if not candidate:
+            continue
+        if _is_heading_adornment_line(candidate):
             continue
         if candidate.startswith("#"):
             candidate = re.sub(r"^#{1,6}\s+", "", candidate).strip()

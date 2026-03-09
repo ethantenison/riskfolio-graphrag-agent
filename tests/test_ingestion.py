@@ -84,3 +84,22 @@ def test_load_directory_is_deterministic_and_idempotent(tmp_source_dir):
         ]
 
     assert _snapshot(docs_first) == _snapshot(docs_second)
+
+
+def test_rst_section_titles_are_human_readable(tmp_path):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    rst_file = docs_dir / "risk.rst"
+    rst_file.write_text(
+        "##############\n"
+        "Risk Measures\n"
+        "##############\n\n"
+        "The risk module includes CVaR and EVaR.\n"
+    )
+
+    docs = load_directory(docs_dir)
+    assert docs
+
+    section_titles = [doc.section for doc in docs]
+    assert "Risk Measures" in section_titles
+    assert not any(title and set(title) <= set("#=-~^`:*") for title in section_titles)

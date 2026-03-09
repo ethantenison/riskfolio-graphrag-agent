@@ -169,9 +169,9 @@ poetry run ruff format src tests
 - [x] Ingestion: RST/Markdown section splitter
 - [ ] Graph: LLM-driven entity & relationship extraction (spaCy + GPT-4o)
 - [x] Graph: Ontology design for Riskfolio concepts (Portfolio, Asset, Metric, Method)
-- [ ] Retrieval: ChromaDB vector store integration
+- [x] Retrieval: ChromaDB vector store integration
 - [x] Retrieval: Neo4j graph traversal queries (Cypher)
-- [ ] Retrieval: Hybrid re-ranking
+- [x] Retrieval: Hybrid re-ranking
 - [ ] Agent: LangGraph workflow with tool use and self-correction
 - [x] App: FastAPI endpoints + OpenAPI docs
 - [ ] App: Gradio chat interface with graph visualisation
