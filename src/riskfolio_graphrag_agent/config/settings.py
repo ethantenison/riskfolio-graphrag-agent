@@ -26,6 +26,8 @@ class Settings(BaseSettings):
         openai_model: Model name to use for generation.
         openai_base_url: Base URL for an OpenAI-compatible API.
         openai_timeout_seconds: Timeout for LLM HTTP requests in seconds.
+        openai_retry_attempts: Number of retries for transient LLM network failures.
+        openai_retry_backoff_seconds: Base backoff in seconds between retries.
         openai_enable_generation: Enables model-backed answer generation.
         openai_enable_graph_extraction: Enables LLM-assisted graph extraction.
         embedding_model: Model name to use for text embeddings.
@@ -51,7 +53,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = "https://api.openai.com/v1"
-    openai_timeout_seconds: float = 10.0
+    openai_timeout_seconds: float = 30.0
+    openai_retry_attempts: int = 2
+    openai_retry_backoff_seconds: float = 1.5
     openai_enable_generation: bool = True
     openai_enable_graph_extraction: bool = True
 

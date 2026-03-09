@@ -7,6 +7,7 @@ from riskfolio_graphrag_agent.graph.builder import (
     GraphEdge,
     GraphNode,
     _extract_entities,
+    _extract_entities_with_llm,
 )
 from riskfolio_graphrag_agent.ingestion.loader import Document
 
@@ -104,6 +105,33 @@ def test_extract_entities_filters_invalid_llm_output():
     names = {node.name for node in nodes}
     assert "Bad Node" not in names
     assert all(edge.relation_type != "UNKNOWN_REL" for edge in edges)
+
+
+def test_extract_entities_with_llm_timeout_returns_empty(caplog):
+    doc = Document(
+        content="def foo(): pass",
+        source_path="/fake/path.py",
+        metadata={"source_type": "python"},
+    )
+
+    def _timeout_llm_extract(*, content: str, source_type: str, model_name: str):
+        _ = content, source_type, model_name
+        raise TimeoutError("The read operation timed out")
+
+    with caplog.at_level("WARNING"):
+        nodes, edges = _extract_entities_with_llm(
+            doc=doc,
+            source_name="riskfolio.src.module",
+            source_label="PythonModule",
+            chunk_id="AuxFunctions.py::chunk:3",
+            llm_extract=_timeout_llm_extract,
+            llm_model_name="gpt-4o-mini",
+        )
+
+    assert nodes == []
+    assert edges == []
+    assert "LLM extraction failed for chunk AuxFunctions.py::chunk:3" in caplog.text
+    assert "The read operation timed out" in caplog.text
 
 
 def test_graph_builder_build_stub(tmp_source_dir):

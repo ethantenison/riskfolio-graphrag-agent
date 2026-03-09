@@ -21,11 +21,14 @@ from riskfolio_graphrag_agent.agent.workflow import AgentWorkflow
 from riskfolio_graphrag_agent.config.settings import Settings
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever, RetrievalResult
+from riskfolio_graphrag_agent.runtime_ssl import initialize_ssl_truststore_once
 
 logger = logging.getLogger(__name__)
 
 
 def _build_ssl_context() -> ssl.SSLContext | None:
+    if initialize_ssl_truststore_once():
+        return None
     if certifi is None:
         return None
     return ssl.create_default_context(cafile=certifi.where())
@@ -150,6 +153,7 @@ def create_app() -> FastAPI:
     Returns:
         A configured ``FastAPI`` application object.
     """
+    initialize_ssl_truststore_once()
     app = FastAPI(title="riskfolio-graphrag-agent", version="0.1.0")
 
     @app.get("/health")

@@ -12,7 +12,9 @@ app         Start the interactive Gradio/FastAPI application.
 import json
 import logging
 from pathlib import Path
+import socket
 import ssl
+import time
 from urllib import request
 from urllib.error import HTTPError, URLError
 
@@ -31,6 +33,7 @@ from riskfolio_graphrag_agent.eval.regression_gate import run_regression_gate
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
 from riskfolio_graphrag_agent.ingestion.loader import Document, load_directory, summarize_documents
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
+from riskfolio_graphrag_agent.runtime_ssl import initialize_ssl_truststore_once
 
 app = typer.Typer(
     name="riskfolio-agent",
@@ -41,6 +44,8 @@ console = Console()
 
 
 def _build_ssl_context() -> ssl.SSLContext | None:
+    if initialize_ssl_truststore_once():
+        return None
     if certifi is None:
         return None
     return ssl.create_default_context(cafile=certifi.where())
@@ -100,18 +105,48 @@ def _make_openai_graph_extractor(settings: Settings):
             },
         )
 
-        try:
-            with request.urlopen(
-                http_request,
-                timeout=settings.openai_timeout_seconds,
-                context=_build_ssl_context(),
-            ) as response:
-                raw = response.read().decode("utf-8")
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
-            raise RuntimeError(f"Graph LLM HTTP error {exc.code}: {detail}") from exc
-        except URLError as exc:
-            raise RuntimeError(f"Graph LLM endpoint unreachable: {exc}") from exc
+        max_attempts = max(1, int(settings.openai_retry_attempts) + 1)
+        backoff_seconds = max(0.0, float(settings.openai_retry_backoff_seconds))
+        raw = ""
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with request.urlopen(
+                    http_request,
+                    timeout=settings.openai_timeout_seconds,
+                    context=_build_ssl_context(),
+                ) as response:
+                    raw = response.read().decode("utf-8")
+                break
+            except HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="ignore")
+                if exc.code in {408, 429, 500, 502, 503, 504} and attempt < max_attempts:
+                    sleep_seconds = backoff_seconds * attempt
+                    logger.warning(
+                        "Graph LLM transient HTTP %s on attempt %d/%d; retrying in %.1fs",
+                        exc.code,
+                        attempt,
+                        max_attempts,
+                        sleep_seconds,
+                    )
+                    if sleep_seconds > 0:
+                        time.sleep(sleep_seconds)
+                    continue
+                raise RuntimeError(f"Graph LLM HTTP error {exc.code}: {detail}") from exc
+            except (URLError, TimeoutError, socket.timeout) as exc:
+                if attempt < max_attempts:
+                    sleep_seconds = backoff_seconds * attempt
+                    logger.warning(
+                        "Graph LLM request failed on attempt %d/%d (%s); retrying in %.1fs",
+                        attempt,
+                        max_attempts,
+                        exc,
+                        sleep_seconds,
+                    )
+                    if sleep_seconds > 0:
+                        time.sleep(sleep_seconds)
+                    continue
+                raise RuntimeError(f"Graph LLM endpoint unreachable: {exc}") from exc
 
         try:
             response_payload = json.loads(raw)
@@ -206,6 +241,27 @@ def _load_from_directories(source_dirs: list[Path]) -> list[Document]:
     return documents
 
 
+def _select_documents_for_build(
+    documents: list[Document],
+    *,
+    chunk_offset: int = 0,
+    max_chunks: int | None = None,
+) -> list[Document]:
+    if chunk_offset < 0:
+        raise ValueError("chunk_offset must be >= 0")
+    if max_chunks is not None and max_chunks <= 0:
+        raise ValueError("max_chunks must be > 0 when provided")
+
+    if not documents:
+        return []
+
+    start = min(chunk_offset, len(documents))
+    if max_chunks is None:
+        return documents[start:]
+    end = start + max_chunks
+    return documents[start:end]
+
+
 @app.command()
 def ingest(
     source_dir: str | None = typer.Option(
@@ -262,17 +318,44 @@ def build_graph(
         "-s",
         help="Path to Riskfolio-Lib source/docs root or subdirectory.",
     ),
+    chunk_offset: int = typer.Option(
+        0,
+        "--chunk-offset",
+        min=0,
+        help="Skip this many chunks before graph extraction starts.",
+    ),
+    max_chunks: int | None = typer.Option(
+        None,
+        "--max-chunks",
+        min=1,
+        help="Limit graph extraction to at most this many chunks.",
+    ),
 ) -> None:
     """Build (or rebuild) the knowledge graph in Neo4j.
 
     Args:
         drop_existing: When True, wipes the current graph before rebuilding.
     """
+    initialize_ssl_truststore_once()
     settings = Settings()
     _configure_logging(settings.log_level)
     source_dirs = _resolve_focus_directories(source_dir, settings)
     documents = _load_from_directories(source_dirs)
+    selected_documents = _select_documents_for_build(
+        documents,
+        chunk_offset=chunk_offset,
+        max_chunks=max_chunks,
+    )
     summary = summarize_documents(documents)
+    selected_summary = summarize_documents(selected_documents)
+
+    if not selected_documents:
+        console.print(
+            "[yellow]build-graph skipped[/]",
+            "No chunks selected.",
+            f"total_chunks={summary['chunks']} chunk_offset={chunk_offset} max_chunks={max_chunks}",
+        )
+        return
 
     builder = GraphBuilder(
         neo4j_uri=settings.neo4j_uri,
@@ -286,18 +369,19 @@ def build_graph(
         llm_model_name=settings.openai_model,
     )
     try:
-        builder.build(documents, drop_existing=drop_existing)
+        builder.build(selected_documents, drop_existing=drop_existing)
     finally:
         builder.close()
 
     console.print(
         "[bold green]build-graph complete[/]",
         (
-            f"files={summary['files']} chunks={summary['chunks']} "
+            f"files={selected_summary['files']} chunks={selected_summary['chunks']} "
+            f"(selected from total_chunks={summary['chunks']} offset={chunk_offset}) "
             f"from {', '.join(str(path) for path in source_dirs)}"
         ),
     )
-    by_source_type = summary.get("by_source_type", {})
+    by_source_type = selected_summary.get("by_source_type", {})
     if isinstance(by_source_type, dict):
         for source_type, count in sorted(by_source_type.items()):
             console.print(f"  - {source_type}: {count}")
@@ -404,6 +488,7 @@ def serve(
     """
     from riskfolio_graphrag_agent.app.server import create_app
 
+    initialize_ssl_truststore_once()
     console.print(f"[bold cyan]serve[/] starting API at http://{host}:{port}")
     uvicorn.run(create_app(), host=host, port=port)
 
