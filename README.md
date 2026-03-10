@@ -54,6 +54,7 @@ This is a **portfolio project** that demonstrates:
               └─────────────┘
 ```
 
+
 ### Observability & Tracing
 
 This project is instrumented with OpenTelemetry and LangSmith for full agent workflow tracing and evaluation:
@@ -63,6 +64,45 @@ This project is instrumented with OpenTelemetry and LangSmith for full agent wor
 - FastAPI exposes `/trace` endpoint for trace status and demo.
 - Evaluation suite includes faithfulness, grounding, precision/recall, and multi-hop metrics.
 - All code is modular and production-ready for enterprise KG/RAG/agentic AI deployment.
+
+#### OpenTelemetry + Jaeger Setup
+
+To view traces in Jaeger:
+
+1. Start Jaeger with OTLP enabled:
+       ```bash
+       docker run -d --name jaeger \
+         -e COLLECTOR_OTLP_ENABLED=true \
+         -p 4317:4317 \
+         -p 16686:16686 \
+         jaegertracing/all-in-one:latest
+       ```
+       - Port 4317 is for OTLP gRPC (traces from FastAPI).
+       - Port 16686 is for the Jaeger web UI (http://localhost:16686).
+
+2. Restart your FastAPI app:
+       ```bash
+       poetry run riskfolio-agent serve --host 127.0.0.1 --port 8000
+       ```
+
+3. Submit queries (e.g. with curl):
+       ```bash
+       curl -X POST http://127.0.0.1:8000/query -H "Content-Type: application/json" -d '{"question":"HRP in Riskfolio?","top_k":3}'
+       ```
+
+4. Open Jaeger UI at http://localhost:16686 and search for traces from "riskfolio-graphrag-agent".
+
+You’ll see spans for each request, including agent workflow steps (plan, retrieve, reason, verify).
+
+#### LangSmith Tracing
+
+To use LangSmith, set your API key:
+```bash
+export LANGCHAIN_TRACING_V2=true
+export LANGCHAIN_API_KEY=your-key-here
+export LANGCHAIN_PROJECT=RiskfolioGraphRAG
+```
+Restart your app and view traces in your LangSmith dashboard.
 
 This demonstrates advanced governance, explainability, and observability—matching enterprise requirements for roles like Dell’s Knowledge Graph / RAG Agentic AI Expert.
 
@@ -141,7 +181,7 @@ poetry run riskfolio-agent build-graph --drop-existing --chunk-offset 100 --max-
 ```bash
 # FastAPI API
 poetry run riskfolio-agent serve --host 127.0.0.1 --port 8000
-# curl -X POST http://127.0.0.1:8000/query -H "Content-Type: application/json" -d '{"question":"Hierarchical Risk Parity (HRP) in Riskfolio?","top_k":3}'
+# curl -X POST http://127.0.0.1:8000/query -H "Content-Type: application/json" -d '{"question":"HRP in Riskfolio?","top_k":3}'
 
 # Gradio chat interface + graph visualisation
 poetry run riskfolio-agent gradio --host 127.0.0.1 --port 7860
