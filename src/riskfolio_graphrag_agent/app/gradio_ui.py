@@ -11,6 +11,7 @@ import gradio as gr
 from riskfolio_graphrag_agent.agent.workflow import AgentWorkflow
 from riskfolio_graphrag_agent.config.settings import Settings
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
+from riskfolio_graphrag_agent.retrieval.embeddings import resolve_embedding_provider
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
 
 
@@ -25,6 +26,14 @@ def run_query_with_graph(
         return "Please enter a question.", [], {"nodes": [], "edges": []}
 
     settings = Settings()
+    provider_resolution = resolve_embedding_provider(
+        provider_name=settings.embedding_provider,
+        embedding_dim=settings.embedding_dim,
+        openai_api_key=settings.openai_api_key,
+        openai_embedding_model=settings.embedding_model,
+        openai_base_url=settings.openai_base_url,
+        openai_timeout_seconds=settings.openai_timeout_seconds,
+    )
 
     retriever = HybridRetriever(
         neo4j_uri=settings.neo4j_uri,
@@ -33,7 +42,8 @@ def run_query_with_graph(
         top_k=max(1, int(top_k)),
         vector_store_backend=settings.vector_store_backend,
         chroma_persist_dir=settings.chroma_persist_dir,
-        embedding_dim=settings.embedding_dim,
+        embedding_provider=provider_resolution.provider,
+        retrieval_mode=settings.retrieval_mode,
     )
 
     llm_generate = None
@@ -149,7 +159,7 @@ def create_gradio_app(
 
     def _handle_submit(
         question: str,
-        history: list[tuple[str, str]] | None,
+        history: list[dict[str, str]] | None,
         top_k: int,
     ):
         answer, citations, graph = run_query_with_graph(
@@ -160,7 +170,8 @@ def create_gradio_app(
         )
         updated_history = list(history or [])
         if question.strip():
-            updated_history.append((question, answer))
+            updated_history.append({"role": "user", "content": question})
+            updated_history.append({"role": "assistant", "content": answer})
         graph_html = _render_graph_svg(graph)
         return "", updated_history, citations, graph_html
 
@@ -169,7 +180,7 @@ def create_gradio_app(
         gr.Markdown("Ask portfolio questions and inspect the connected Neo4j subgraph.")
 
         with gr.Row():
-            chatbot = gr.Chatbot(label="Chat", height=520)
+            chatbot = gr.Chatbot(label="Chat", height=520, type="messages")
             with gr.Column():
                 graph_panel = gr.HTML(label="Graph Visualisation", value=_render_graph_svg({"nodes": [], "edges": []}))
                 citations_json = gr.JSON(label="Citations", value=[])

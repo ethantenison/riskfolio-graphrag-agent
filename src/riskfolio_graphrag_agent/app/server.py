@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from riskfolio_graphrag_agent.agent.workflow import AgentWorkflow
 from riskfolio_graphrag_agent.config.settings import Settings
-from riskfolio_graphrag_agent.graph.builder import GraphBuilder
+from riskfolio_graphrag_agent.graph.builder import DOMAIN_ALIASES, GraphBuilder
 from riskfolio_graphrag_agent.graph.nl2cypher_guard import append_query_audit, guarded_nl_to_cypher
 from riskfolio_graphrag_agent.retrieval.embeddings import resolve_embedding_provider
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever, RetrievalResult
@@ -121,15 +121,54 @@ def _extract_openai_message_text(payload: dict[str, object]) -> str:
     return ""
 
 
+def _is_definition_question(question: str) -> bool:
+    lowered = question.strip().lower()
+    patterns = (
+        r"^what\s+is\s+",
+        r"^define\s+",
+        r"^what\s+does\s+.*\s+mean\??$",
+        r"^meaning\s+of\s+",
+    )
+    return any(re.search(pattern, lowered) is not None for pattern in patterns)
+
+
+def _build_background_hint(question: str) -> str:
+    lowered = question.lower()
+    for concepts in DOMAIN_ALIASES.values():
+        for canonical_name, aliases in concepts.items():
+            for alias in aliases:
+                if alias.lower() in lowered:
+                    return f"{canonical_name}: {alias}"
+            if canonical_name.lower() in lowered:
+                return canonical_name
+    return ""
+
+
 def _make_openai_llm_generate(settings: Settings):
     def _generate(*, question: str, context: list[RetrievalResult], model_name: str) -> str:
+        definition_mode = _is_definition_question(question)
+        background_hint = _build_background_hint(question)
+
+        response_policy = (
+            "Return a concise answer with factual claims grounded in the evidence."
+            if not definition_mode
+            else (
+                "If direct definition text is missing from evidence, provide two sections:\n"
+                "1) General background (label exactly: 'General background:') with a short standard definition.\n"
+                "2) Repo evidence (label exactly: 'Repo evidence:') summarizing what retrieved sources confirm.\n"
+                "Do not fabricate repository-specific claims; if repo evidence is thin, state that explicitly in section 2."
+            )
+        )
+
+        hint_block = f"\n\nDefinition hint:\n{background_hint}" if background_hint else ""
         prompt = (
             "You are a GraphRAG assistant for Riskfolio-Lib. "
-            "Answer the question strictly using the provided evidence. "
-            "If evidence is insufficient, say that directly and do not invent facts.\n\n"
+            "Prefer evidence-grounded answers. "
+            "Do not invent repository-specific facts.\n\n"
             f"Question:\n{question}\n\n"
             f"Evidence:\n{_build_context_preview(context)}\n\n"
-            "Return a concise answer with factual claims grounded in the evidence."
+            f"{response_policy}"
+            f"{hint_block}"
         )
 
         payload = {
