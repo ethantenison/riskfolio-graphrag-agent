@@ -26,7 +26,7 @@ except Exception:  # pragma: no cover - optional dependency fallback
     StateGraph = None
     LANGGRAPH_AVAILABLE = False
 
-from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
+from riskfolio_graphrag_agent.retrieval.retriever import RetrievalMode, RetrievalResult
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,17 @@ class AgentState:
 
 
 class RetrieverProtocol(Protocol):
-    def retrieve(self, query: str) -> list[RetrievalResult]: ...
+    def retrieve(self, query: str, mode_override: RetrievalMode | None = None) -> list[RetrievalResult]: ...
+
+
+class RouterDecisionProtocol(Protocol):
+    mode: RetrievalMode
+    confidence: float
+    reason: str
+
+
+class QueryRouterProtocol(Protocol):
+    def decide(self, query: str) -> RouterDecisionProtocol: ...
 
 
 class LLMGenerateProtocol(Protocol):
@@ -89,10 +99,12 @@ class AgentWorkflow:
         retriever: RetrieverProtocol | None,
         model_name: str = "gpt-4o-mini",
         llm_generate: LLMGenerateProtocol | None = None,
+        query_router: QueryRouterProtocol | None = None,
     ) -> None:
         self._retriever = retriever
         self._model_name = model_name
         self._llm_generate = llm_generate
+        self._query_router = query_router
         self._graph = self._build_graph()
 
     def _build_graph(self):
@@ -140,7 +152,7 @@ class AgentWorkflow:
                 if self._graph is None:
                     state = AgentState(question=q)
                     state = _plan(state)
-                    state = _retrieve(state, self._retriever)
+                    state = _retrieve(state, self._retriever, query_router=self._query_router)
                     state = _reason(state, llm_generate=self._llm_generate, model_name=self._model_name)
                     state = _verify(state)
                     if not state.verified and state.context:
@@ -176,7 +188,7 @@ class AgentWorkflow:
         if self._graph is None:
             state = AgentState(question=question)
             state = _plan(state)
-            state = _retrieve(state, self._retriever)
+            state = _retrieve(state, self._retriever, query_router=self._query_router)
             state = _reason(state, llm_generate=self._llm_generate, model_name=self._model_name)
             state = _verify(state)
             if not state.verified and state.context:
@@ -225,7 +237,7 @@ class AgentWorkflow:
             citations=state["citations"],
             verified=state["verified"],
         )
-        retrieved = _retrieve(agent_state, self._retriever)
+        retrieved = _retrieve(agent_state, self._retriever, query_router=self._query_router)
         state["context"] = retrieved.context
         return state
 
@@ -305,7 +317,11 @@ def _plan(state: AgentState) -> AgentState:
     return state
 
 
-def _retrieve(state: AgentState, retriever: RetrieverProtocol | None) -> AgentState:
+def _retrieve(
+    state: AgentState,
+    retriever: RetrieverProtocol | None,
+    query_router: QueryRouterProtocol | None = None,
+) -> AgentState:
     """Retrieve relevant context for each sub-question.
 
     Args:
@@ -322,13 +338,27 @@ def _retrieve(state: AgentState, retriever: RetrieverProtocol | None) -> AgentSt
 
     merged: dict[str, RetrievalResult] = {}
     for sub_question in state.sub_questions:
+        mode_override: RetrievalMode | None = None
+        route_confidence = 0.0
+        route_reason = ""
+        if query_router is not None:
+            decision = query_router.decide(sub_question)
+            mode_override = decision.mode
+            route_confidence = float(decision.confidence)
+            route_reason = decision.reason
+
         try:
-            results = retriever.retrieve(sub_question)
+            results = retriever.retrieve(sub_question, mode_override=mode_override)
         except Exception as exc:
             logger.warning("Retriever failed for sub-question %r: %s", sub_question, exc)
             continue
 
         for result in results:
+            if mode_override:
+                result.metadata["retrieval_mode"] = mode_override
+                result.metadata["route_confidence"] = round(route_confidence, 4)
+                if route_reason:
+                    result.metadata["route_reason"] = route_reason
             chunk_id = str(result.metadata.get("chunk_id", ""))
             key = chunk_id or f"{result.source_path}::{len(merged)}"
             existing = merged.get(key)

@@ -207,14 +207,15 @@ class HybridRetriever:
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
 
-    def retrieve(self, query: str) -> list[RetrievalResult]:
-        logger.info("Retrieving for query: %r (top_k=%d mode=%s)", query, self._top_k, self._retrieval_mode)
+    def retrieve(self, query: str, mode_override: RetrievalMode | None = None) -> list[RetrievalResult]:
+        retrieval_mode = mode_override or self._retrieval_mode
+        logger.info("Retrieving for query: %r (top_k=%d mode=%s)", query, self._top_k, retrieval_mode)
 
-        if self._retrieval_mode == "dense":
+        if retrieval_mode == "dense":
             hits = self._vector_store.search(query, top_k=self._top_k)
-        elif self._retrieval_mode == "sparse":
+        elif retrieval_mode == "sparse":
             hits = _sparse_query_hits(self._driver, query, top_k=self._top_k)
-        elif self._retrieval_mode == "graph":
+        elif retrieval_mode == "graph":
             hits = _graph_seed_hits(self._driver, query, top_k=self._top_k)
         else:
             dense_hits = self._vector_store.search(query, top_k=self._top_k)
@@ -229,7 +230,7 @@ class HybridRetriever:
             for hit in hits:
                 results.append(_graph_expand(hit, session))
 
-        if self._retrieval_mode == "hybrid_rerank":
+        if retrieval_mode == "hybrid_rerank":
             for result in results:
                 graph_boost = 0.03 * len(result.related_entities) + 0.015 * len(result.graph_neighbours)
                 result.score = round(float(result.score) + graph_boost, 6)

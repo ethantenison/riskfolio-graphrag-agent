@@ -23,6 +23,7 @@ from riskfolio_graphrag_agent.graph.builder import DOMAIN_ALIASES, GraphBuilder
 from riskfolio_graphrag_agent.graph.nl2cypher_guard import append_query_audit, guarded_nl_to_cypher
 from riskfolio_graphrag_agent.retrieval.embeddings import resolve_embedding_provider
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever, RetrievalResult
+from riskfolio_graphrag_agent.retrieval.router import QueryToolRouter
 from riskfolio_graphrag_agent.runtime_ssl import initialize_ssl_truststore_once
 
 try:
@@ -288,10 +289,17 @@ def create_app() -> FastAPI:
         if settings.openai_enable_generation and settings.openai_api_key.strip():
             llm_generate = _make_openai_llm_generate(settings)
 
+        query_router = None
+        if settings.adaptive_tool_routing_enabled:
+            query_router = QueryToolRouter(
+                min_confidence=settings.adaptive_tool_routing_min_confidence,
+            )
+
         workflow = AgentWorkflow(
             retriever=retriever,
             model_name=settings.openai_model,
             llm_generate=llm_generate,
+            query_router=query_router,
         )
 
         tracer = trace.get_tracer("riskfolio-graphrag-agent")

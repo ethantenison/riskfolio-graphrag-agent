@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     vector_store_backend: Literal["chroma", "neo4j", "qdrant"] = "chroma"
     chroma_persist_dir: str = ".chroma"
     retrieval_mode: Literal["dense", "sparse", "graph", "hybrid_rerank"] = "hybrid_rerank"
+    adaptive_tool_routing_enabled: bool = True
+    adaptive_tool_routing_min_confidence: float = 0.2
 
     # Tracing and observability
     tracing_enabled: bool = True
