@@ -1,19 +1,21 @@
-"""Hybrid retriever combining chunk search and graph expansion."""
+"""Hybrid retriever combining dense, sparse, and graph retrieval modes."""
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 from neo4j import Driver, GraphDatabase
 
 from riskfolio_graphrag_agent.ingestion.loader import Document as IngestDocument
+from riskfolio_graphrag_agent.retrieval.embeddings import EmbeddingProvider, HashEmbeddingProvider, hash_embedding
 
 logger = logging.getLogger(__name__)
+
+RetrievalMode = Literal["dense", "sparse", "graph", "hybrid_rerank"]
 
 
 @dataclass
@@ -25,45 +27,41 @@ class RetrievalResult:
     score: float = 0.0
     graph_neighbours: list[str] = field(default_factory=list)
     related_entities: list[str] = field(default_factory=list)
-    metadata: dict[str, str | int | list[str]] = field(default_factory=dict)
+    metadata: dict[str, str | int | list[str] | float] = field(default_factory=dict)
 
 
 @dataclass
 class VectorHit:
-    """A vector store hit for a chunk."""
+    """A retrieval hit for a chunk."""
 
     chunk_id: str
     content: str
     source_path: str
     score: float
-    metadata: dict[str, str | int | list[str]] = field(default_factory=dict)
+    metadata: dict[str, str | int | list[str] | float] = field(default_factory=dict)
 
 
 class VectorStore(Protocol):
     """Vector store interface for chunk retrieval."""
 
-    def upsert(self, documents: list[IngestDocument]) -> int:
-        """Upsert chunk documents into the vector store and return count."""
-        ...
+    def upsert(self, documents: list[IngestDocument]) -> int: ...
 
-    def search(self, query: str, top_k: int) -> list[VectorHit]:
-        """Return top-k chunk hits for query."""
-        ...
+    def search(self, query: str, top_k: int) -> list[VectorHit]: ...
 
 
 class ChromaVectorStore:
-    """Chroma-backed vector store for ingestion-time upserts and query-time search."""
+    """Chroma-backed vector store for upsert and dense search."""
 
     def __init__(
         self,
         persist_dir: str,
         collection_name: str = "riskfolio_chunks",
-        embedding_dim: int = 256,
+        embedding_provider: EmbeddingProvider | None = None,
         client: Any | None = None,
     ) -> None:
         self._persist_dir = persist_dir
         self._collection_name = collection_name
-        self._embedding_dim = embedding_dim
+        self._embedding_provider = embedding_provider or HashEmbeddingProvider(dimension=256)
 
         if client is not None:
             self._client = client
@@ -88,14 +86,13 @@ class ChromaVectorStore:
 
         ids: list[str] = []
         texts: list[str] = []
-        embeddings: list[list[float]] = []
         metadatas: list[dict[str, str | int | float | bool]] = []
         for doc in documents:
             ids.append(doc.chunk_id)
             texts.append(doc.content)
-            embeddings.append(_hash_embedding(doc.content, dim=self._embedding_dim))
             metadatas.append(_sanitize_metadata_for_chroma(doc))
 
+        embeddings = self._embedding_provider.embed_texts(texts)
         self._collection.upsert(
             ids=ids,
             documents=texts,
@@ -108,7 +105,7 @@ class ChromaVectorStore:
         if top_k <= 0:
             return []
 
-        query_embedding = _hash_embedding(query, dim=self._embedding_dim)
+        query_embedding = self._embedding_provider.embed_texts([query])[0]
         response = self._collection.query(
             query_embeddings=[query_embedding],
             n_results=top_k,
@@ -126,9 +123,7 @@ class ChromaVectorStore:
             distance = float(distances[index]) if index < len(distances) else 0.0
             score = 1.0 / (1.0 + max(0.0, distance))
 
-            source_path = str(metadata.get("source_path", ""))
-            if not source_path:
-                source_path = str(metadata.get("relative_path", ""))
+            source_path = str(metadata.get("source_path", "")) or str(metadata.get("relative_path", ""))
 
             hits.append(
                 VectorHit(
@@ -147,16 +142,11 @@ class ChromaVectorStore:
                     },
                 )
             )
-
         return hits
 
 
 class Neo4jChunkVectorStore:
-    """Neo4j-backed lexical proxy for vector search over Chunk nodes.
-
-    This is intentionally backend-agnostic at the retriever layer. A future
-    embedding backend can implement :class:`VectorStore` and be swapped in.
-    """
+    """Neo4j-backed lexical retrieval over Chunk nodes."""
 
     def __init__(self, neo4j_uri: str, neo4j_user: str, neo4j_password: str) -> None:
         self._driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
@@ -169,48 +159,11 @@ class Neo4jChunkVectorStore:
         return 0
 
     def search(self, query: str, top_k: int) -> list[VectorHit]:
-        tokens = _query_tokens(query)
-        if not tokens:
-            return []
-
-        cypher = (
-            "MATCH (c:Chunk) "
-            "WITH c, [t IN $tokens WHERE toLower(c.content) CONTAINS t] AS matched "
-            "WITH c, matched, size(matched) AS score "
-            "WHERE score > 0 "
-            "RETURN c.name AS chunk_id, c.content AS content, c.source_path AS source_path, "
-            "c.relative_path AS relative_path, c.chunk_index AS chunk_index, "
-            "c.chunk_kind AS chunk_kind, c.line_start AS line_start, c.line_end AS line_end, score "
-            "ORDER BY score DESC LIMIT $top_k"
-        )
-
-        with self._driver.session() as session:
-            rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
-
-        hits: list[VectorHit] = []
-        for row in rows:
-            hits.append(
-                VectorHit(
-                    chunk_id=str(row["chunk_id"]),
-                    content=str(row["content"]),
-                    source_path=str(row["source_path"]),
-                    score=float(row["score"]),
-                    metadata={
-                        "relative_path": str(row["relative_path"]),
-                        "chunk_index": int(row["chunk_index"]),
-                        "chunk_kind": str(row["chunk_kind"]),
-                        "section": "",
-                        "line_start": int(row["line_start"] or 1),
-                        "line_end": int(row["line_end"] or 1),
-                        "content_hash": "",
-                    },
-                )
-            )
-        return hits
+        return _sparse_query_hits(self._driver, query, top_k=top_k)
 
 
 class HybridRetriever:
-    """Combines vector search with graph-guided expansion around chunks."""
+    """Retrieval orchestrator supporting ablation modes."""
 
     def __init__(
         self,
@@ -221,16 +174,19 @@ class HybridRetriever:
         vector_store: VectorStore | None = None,
         vector_store_backend: str = "neo4j",
         chroma_persist_dir: str = ".chroma",
-        embedding_dim: int = 256,
+        embedding_provider: EmbeddingProvider | None = None,
+        retrieval_mode: RetrievalMode = "hybrid_rerank",
     ) -> None:
         self._uri = neo4j_uri
         self._user = neo4j_user
         self._password = neo4j_password
         self._top_k = top_k
+        self._retrieval_mode: RetrievalMode = retrieval_mode
+        self._embedding_provider = embedding_provider or HashEmbeddingProvider(dimension=256)
         self._vector_store = vector_store or _build_default_vector_store(
             backend=vector_store_backend,
             chroma_persist_dir=chroma_persist_dir,
-            embedding_dim=embedding_dim,
+            embedding_provider=self._embedding_provider,
             neo4j_uri=neo4j_uri,
             neo4j_user=neo4j_user,
             neo4j_password=neo4j_password,
@@ -252,18 +208,34 @@ class HybridRetriever:
         self.close()
 
     def retrieve(self, query: str) -> list[RetrievalResult]:
-        logger.info("Retrieving for query: %r (top_k=%d)", query, self._top_k)
+        logger.info("Retrieving for query: %r (top_k=%d mode=%s)", query, self._top_k, self._retrieval_mode)
 
-        hits = self._vector_store.search(query, top_k=self._top_k)
+        if self._retrieval_mode == "dense":
+            hits = self._vector_store.search(query, top_k=self._top_k)
+        elif self._retrieval_mode == "sparse":
+            hits = _sparse_query_hits(self._driver, query, top_k=self._top_k)
+        elif self._retrieval_mode == "graph":
+            hits = _graph_seed_hits(self._driver, query, top_k=self._top_k)
+        else:
+            dense_hits = self._vector_store.search(query, top_k=self._top_k)
+            sparse_hits = _sparse_query_hits(self._driver, query, top_k=self._top_k)
+            hits = _merge_hits(dense_hits, sparse_hits, top_k=self._top_k)
+
         if not hits:
             return []
+
         results: list[RetrievalResult] = []
         with self._driver.session() as session:
             for hit in hits:
                 results.append(_graph_expand(hit, session))
 
+        if self._retrieval_mode == "hybrid_rerank":
+            for result in results:
+                graph_boost = 0.03 * len(result.related_entities) + 0.015 * len(result.graph_neighbours)
+                result.score = round(float(result.score) + graph_boost, 6)
+
         results.sort(key=lambda item: item.score, reverse=True)
-        return results
+        return results[: self._top_k]
 
 
 def _query_tokens(query: str) -> list[str]:
@@ -287,7 +259,7 @@ def _vector_search(query: str, top_k: int) -> list[RetrievalResult]:
 def _build_default_vector_store(
     backend: str,
     chroma_persist_dir: str,
-    embedding_dim: int,
+    embedding_provider: EmbeddingProvider,
     neo4j_uri: str,
     neo4j_user: str,
     neo4j_password: str,
@@ -297,7 +269,7 @@ def _build_default_vector_store(
         try:
             return ChromaVectorStore(
                 persist_dir=chroma_persist_dir,
-                embedding_dim=embedding_dim,
+                embedding_provider=embedding_provider,
             )
         except Exception as exc:
             logger.warning(
@@ -326,29 +298,12 @@ def _sanitize_metadata_for_chroma(doc: IngestDocument) -> dict[str, str | int | 
 
 
 def _hash_embedding(text: str, dim: int = 256) -> list[float]:
-    vector = [0.0] * max(8, dim)
-    tokens = _query_tokens(text)
-    if not tokens:
-        return vector
-
-    for token in tokens:
-        digest = hashlib.sha256(token.encode("utf-8")).digest()
-        index = int.from_bytes(digest[:4], "big") % len(vector)
-        sign = 1.0 if digest[4] % 2 == 0 else -1.0
-        vector[index] += sign
-
-    norm = sum(value * value for value in vector) ** 0.5
-    if norm == 0.0:
-        return vector
-    return [value / norm for value in vector]
+    """Compatibility wrapper kept for existing tests."""
+    return hash_embedding(text, dim=dim)
 
 
 def _graph_expand(hit_or_result, session=None):
-    """Expand a vector hit with neighboring entities/chunks.
-
-    This function supports legacy test usage where it receives a
-    :class:`RetrievalResult` and no session.
-    """
+    """Expand a hit with neighboring entities/chunks."""
     if isinstance(hit_or_result, RetrievalResult) and session is None:
         logger.debug("_graph_expand compatibility path for %s", hit_or_result.source_path)
         return hit_or_result
@@ -385,3 +340,119 @@ def _graph_expand(hit_or_result, session=None):
             "graph_neighbor_chunks": neighbour_chunks,
         },
     )
+
+
+def _sparse_query_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
+    if top_k <= 0:
+        return []
+    tokens = _query_tokens(query)
+    if not tokens:
+        return []
+
+    cypher = (
+        "MATCH (c:Chunk) "
+        "WITH c, [t IN $tokens WHERE toLower(c.content) CONTAINS t] AS matched "
+        "WITH c, matched, size(matched) AS score "
+        "WHERE score > 0 "
+        "RETURN c.name AS chunk_id, c.content AS content, c.source_path AS source_path, "
+        "c.relative_path AS relative_path, c.chunk_index AS chunk_index, "
+        "c.chunk_kind AS chunk_kind, c.line_start AS line_start, c.line_end AS line_end, score "
+        "ORDER BY score DESC LIMIT $top_k"
+    )
+
+    with driver.session() as session:
+        rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
+
+    hits: list[VectorHit] = []
+    for row in rows:
+        hits.append(
+            VectorHit(
+                chunk_id=str(row["chunk_id"]),
+                content=str(row["content"]),
+                source_path=str(row["source_path"]),
+                score=float(row["score"]),
+                metadata={
+                    "relative_path": str(row["relative_path"]),
+                    "chunk_index": int(row["chunk_index"]),
+                    "chunk_kind": str(row["chunk_kind"]),
+                    "section": "",
+                    "line_start": int(row["line_start"] or 1),
+                    "line_end": int(row["line_end"] or 1),
+                    "content_hash": "",
+                },
+            )
+        )
+    return hits
+
+
+def _graph_seed_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
+    tokens = _query_tokens(query)
+    if not tokens:
+        return []
+
+    cypher = (
+        "MATCH (e) "
+        "WHERE e.name IS NOT NULL "
+        "AND any(t IN $tokens WHERE toLower(e.name) CONTAINS t) "
+        "WITH e, size([t IN $tokens WHERE toLower(e.name) CONTAINS t]) AS entity_score "
+        "OPTIONAL MATCH (c:Chunk)-[:MENTIONS]->(e) "
+        "WHERE c.name IS NOT NULL "
+        "WITH c, max(entity_score) AS score "
+        "WHERE c IS NOT NULL "
+        "RETURN c.name AS chunk_id, c.content AS content, c.source_path AS source_path, "
+        "c.relative_path AS relative_path, c.chunk_index AS chunk_index, "
+        "c.chunk_kind AS chunk_kind, c.line_start AS line_start, c.line_end AS line_end, score "
+        "ORDER BY score DESC LIMIT $top_k"
+    )
+
+    with driver.session() as session:
+        rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
+
+    hits: list[VectorHit] = []
+    for row in rows:
+        hits.append(
+            VectorHit(
+                chunk_id=str(row["chunk_id"]),
+                content=str(row["content"]),
+                source_path=str(row["source_path"]),
+                score=float(row["score"]),
+                metadata={
+                    "relative_path": str(row["relative_path"]),
+                    "chunk_index": int(row["chunk_index"]),
+                    "chunk_kind": str(row["chunk_kind"]),
+                    "section": "",
+                    "line_start": int(row["line_start"] or 1),
+                    "line_end": int(row["line_end"] or 1),
+                    "content_hash": "",
+                },
+            )
+        )
+    return hits
+
+
+def _merge_hits(dense_hits: list[VectorHit], sparse_hits: list[VectorHit], top_k: int) -> list[VectorHit]:
+    merged: dict[str, VectorHit] = {}
+    for hit in dense_hits:
+        key = hit.chunk_id
+        merged[key] = hit
+
+    for hit in sparse_hits:
+        key = hit.chunk_id
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = VectorHit(
+                chunk_id=hit.chunk_id,
+                content=hit.content,
+                source_path=hit.source_path,
+                score=0.0,
+                metadata=dict(hit.metadata),
+            )
+            existing = merged[key]
+
+        existing.score = (0.65 * float(existing.score)) + (0.35 * float(hit.score))
+        for field_name in ("content", "source_path"):
+            if not getattr(existing, field_name):
+                setattr(existing, field_name, getattr(hit, field_name))
+
+    ordered = sorted(merged.values(), key=lambda item: item.score, reverse=True)
+    return ordered[:top_k]

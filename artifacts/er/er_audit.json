@@ -1,0 +1,78 @@
+{
+  "input_entities": [
+    {
+      "entity_id": "e1",
+      "name": "Hierarchical Risk Parity",
+      "source": "docs",
+      "entity_type": "Concept"
+    },
+    {
+      "entity_id": "e2",
+      "name": "hierarchical-risk-parity",
+      "source": "code",
+      "entity_type": "Concept"
+    },
+    {
+      "entity_id": "e3",
+      "name": "CVaR",
+      "source": "docs",
+      "entity_type": "Concept"
+    },
+    {
+      "entity_id": "e4",
+      "name": "conditional value at risk",
+      "source": "docs",
+      "entity_type": "Concept"
+    }
+  ],
+  "canonical_entities": [
+    {
+      "canonical_id": "canon::conditional_var",
+      "canonical_name": "conditional value at risk",
+      "aliases": [],
+      "source_entity_ids": [
+        "e4"
+      ]
+    },
+    {
+      "canonical_id": "canon::cvar",
+      "canonical_name": "CVaR",
+      "aliases": [],
+      "source_entity_ids": [
+        "e3"
+      ]
+    },
+    {
+      "canonical_id": "canon::hierarchical_riskparity",
+      "canonical_name": "Hierarchical Risk Parity",
+      "aliases": [
+        "hierarchical-risk-parity"
+      ],
+      "source_entity_ids": [
+        "e1",
+        "e2"
+      ]
+    }
+  ],
+  "predicted_pairs": [
+    [
+      "e1",
+      "e2"
+    ]
+  ],
+  "gold_pairs": [
+    [
+      "e1",
+      "e2"
+    ],
+    [
+      "e3",
+      "e4"
+    ]
+  ],
+  "metrics": {
+    "precision": 1.0,
+    "recall": 0.5,
+    "f1": 0.6667
+  }
+}

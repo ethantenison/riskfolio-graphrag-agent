@@ -4,6 +4,18 @@
   "context_precision": 0.92,
   "answer_faithfulness": 0.4051,
   "answer_relevance": 1.0,
+  "grounding": 0.421,
+  "multi_hop_accuracy": 0.52,
+  "er_precision": 1.0,
+  "er_recall": 1.0,
+  "er_f1": 1.0,
+  "link_prediction_mrr": 0.71,
+  "link_prediction_hits_at_3": 1.0,
+  "link_prediction_hits_at_10": 1.0,
+  "avg_latency_ms": 112.3,
+  "estimated_cost_usd": 0.00093,
+  "retrieval_mode": "hybrid_rerank",
+  "embedding_provider": "hash",
   "per_sample": [
     {
       "question": "What is Hierarchical Risk Parity (HRP)?",

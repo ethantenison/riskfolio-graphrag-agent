@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  neo4j:
+    image: neo4j:5.26-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: "neo4j/password"
+      NEO4J_PLUGINS: '["apoc"]'
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  chromadb:
+    image: chromadb/chroma:0.5.5
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 10

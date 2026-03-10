@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from riskfolio_graphrag_agent.ingestion.loader import Document
+from riskfolio_graphrag_agent.retrieval.embeddings import HashEmbeddingProvider
 from riskfolio_graphrag_agent.retrieval.retriever import (
     ChromaVectorStore,
     HybridRetriever,
@@ -114,7 +115,7 @@ def test_chroma_vector_store_upsert_and_query():
     store = ChromaVectorStore(
         persist_dir=".ignored",
         collection_name="test_chunks",
-        embedding_dim=64,
+        embedding_provider=HashEmbeddingProvider(dimension=64),
         client=client,
     )
 

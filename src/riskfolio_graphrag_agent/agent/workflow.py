@@ -285,6 +285,7 @@ def _plan(state: AgentState) -> AgentState:
     Returns:
         Updated state with ``sub_questions`` populated.
     """
+    trace.get_current_span().set_attribute("workflow.stage", "plan")
     focus_terms = _extract_focus_terms(state.question)
     state.sub_questions = [state.question]
     if focus_terms:
@@ -314,6 +315,7 @@ def _retrieve(state: AgentState, retriever: RetrieverProtocol | None) -> AgentSt
     Returns:
         Updated state with ``context`` populated.
     """
+    trace.get_current_span().set_attribute("workflow.stage", "retrieve")
     if retriever is None:
         state.context = []
         return state
@@ -350,6 +352,7 @@ def _reason(
     Returns:
         Updated state with ``answer`` and ``citations`` populated.
     """
+    trace.get_current_span().set_attribute("workflow.stage", "reason")
     if not state.context:
         state.answer = "I could not find supporting context for that question yet."
         state.citations = []
@@ -415,6 +418,7 @@ def _verify(state: AgentState) -> AgentState:
     Returns:
         Updated state with ``verified`` set.
     """
+    trace.get_current_span().set_attribute("workflow.stage", "verify")
     if not state.answer or not state.context:
         state.verified = False
         return state

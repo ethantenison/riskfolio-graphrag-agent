@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import ssl
+import uuid
 from urllib import request
 from urllib.error import HTTPError, URLError
 
@@ -19,6 +20,8 @@ from pydantic import BaseModel, Field
 from riskfolio_graphrag_agent.agent.workflow import AgentWorkflow
 from riskfolio_graphrag_agent.config.settings import Settings
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
+from riskfolio_graphrag_agent.graph.nl2cypher_guard import append_query_audit, guarded_nl_to_cypher
+from riskfolio_graphrag_agent.retrieval.embeddings import resolve_embedding_provider
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever, RetrievalResult
 from riskfolio_graphrag_agent.runtime_ssl import initialize_ssl_truststore_once
 
@@ -30,13 +33,19 @@ except Exception:  # pragma: no cover - optional dependency fallback
 logger = logging.getLogger(__name__)
 
 
-def _configure_tracing() -> None:
+def _configure_tracing(settings: Settings) -> None:
+    if not settings.tracing_enabled:
+        return
+
     provider = trace.get_tracer_provider()
     if isinstance(provider, TracerProvider):
         return
 
     trace.set_tracer_provider(TracerProvider())
-    otlp_exporter = OTLPSpanExporter(endpoint="localhost:4317", insecure=True)
+    otlp_exporter = OTLPSpanExporter(
+        endpoint=settings.tracing_otlp_endpoint,
+        insecure=settings.tracing_otlp_insecure,
+    )
     trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(otlp_exporter))
 
 
@@ -60,6 +69,20 @@ class QueryResponse(BaseModel):
 
     answer: str
     citations: list[dict[str, str | int | float | list[str]]]
+
+
+class NLToCypherRequest(BaseModel):
+    question: str = Field(min_length=1)
+    tenant_id: str = Field(default="demo-tenant")
+
+
+class NLToCypherResponse(BaseModel):
+    status: str
+    reason: str
+    requires_human_review: bool
+    cypher: str = ""
+    params: dict[str, str] = Field(default_factory=dict)
+    rows: list[dict[str, str | int | float]] = Field(default_factory=list)
 
 
 def _extract_query_tokens(question: str) -> list[str]:
@@ -165,7 +188,8 @@ def create_app() -> FastAPI:
     Returns:
         A configured ``FastAPI`` application object.
     """
-    _configure_tracing()
+    settings = Settings()
+    _configure_tracing(settings)
     initialize_ssl_truststore_once()
     app = FastAPI(title="riskfolio-graphrag-agent", version="0.1.0")
 
@@ -209,7 +233,16 @@ def create_app() -> FastAPI:
             top_k=payload.top_k,
             vector_store_backend=settings.vector_store_backend,
             chroma_persist_dir=settings.chroma_persist_dir,
-            embedding_dim=settings.embedding_dim,
+            embedding_provider=resolve_embedding_provider(
+                provider_name=settings.embedding_provider,
+                embedding_dim=settings.embedding_dim,
+                openai_api_key=settings.openai_api_key,
+                openai_embedding_model=settings.embedding_model,
+                openai_base_url=settings.openai_base_url,
+                openai_timeout_seconds=settings.openai_timeout_seconds,
+                ssl_context=_build_ssl_context(),
+            ).provider,
+            retrieval_mode=settings.retrieval_mode,
         )
 
         llm_generate = None
@@ -222,13 +255,25 @@ def create_app() -> FastAPI:
             llm_generate=llm_generate,
         )
 
-        try:
-            state = workflow.run(payload.question)
-        except Exception as exc:
-            logger.exception("Failed to execute query endpoint")
-            raise HTTPException(status_code=503, detail=f"Neo4j unavailable: {exc}") from exc
-        finally:
-            retriever.close()
+        tracer = trace.get_tracer("riskfolio-graphrag-agent")
+        with tracer.start_as_current_span("api.query") as span:
+            request_id = str(uuid.uuid4())
+            span.set_attribute("tenant.id", settings.default_tenant_id)
+            span.set_attribute("request.id", request_id)
+            span.set_attribute("model.name", settings.openai_model)
+            span.set_attribute("retrieval.mode", settings.retrieval_mode)
+            span.set_attribute("workflow.stage", "query")
+
+            try:
+                state = workflow.run(payload.question)
+            except Exception as exc:
+                logger.exception("Failed to execute query endpoint")
+                raise HTTPException(status_code=503, detail=f"Neo4j unavailable: {exc}") from exc
+            finally:
+                retriever.close()
+
+            estimated_cost = max(0.0, len(payload.question.split()) * 0.000001)
+            span.set_attribute("cost.estimated_usd", estimated_cost)
 
         citations = state.citations
 
@@ -239,5 +284,50 @@ def create_app() -> FastAPI:
             )
 
         return QueryResponse(answer=state.answer, citations=citations)
+
+    @app.post("/graph/nl2cypher", response_model=NLToCypherResponse)
+    def nl2cypher(payload: NLToCypherRequest) -> NLToCypherResponse:
+        settings = Settings()
+        request_id = str(uuid.uuid4())
+        decision = guarded_nl_to_cypher(payload.question)
+
+        append_query_audit(
+            tenant_id=payload.tenant_id or settings.default_tenant_id,
+            request_id=request_id,
+            question=payload.question,
+            decision=decision,
+            audit_path=settings.cypher_audit_log_path,
+        )
+
+        if decision.status != "safe":
+            return NLToCypherResponse(
+                status=decision.status,
+                reason=decision.reason,
+                requires_human_review=decision.requires_human_review,
+                cypher=decision.cypher,
+                params=decision.params or {},
+                rows=[],
+            )
+
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password))
+        try:
+            with driver.session() as session:
+                records = list(session.run(decision.cypher, **(decision.params or {})))
+                rows = [dict(row.data()) for row in records]
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Neo4j unavailable: {exc}") from exc
+        finally:
+            driver.close()
+
+        return NLToCypherResponse(
+            status=decision.status,
+            reason=decision.reason,
+            requires_human_review=decision.requires_human_review,
+            cypher=decision.cypher,
+            params=decision.params or {},
+            rows=rows,
+        )
 
     return app

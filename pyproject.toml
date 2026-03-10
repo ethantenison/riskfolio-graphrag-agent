@@ -26,6 +26,7 @@ opentelemetry-sdk = "^1.24.0"
 opentelemetry-instrumentation = "^0.46b0"
 langsmith = "^0.3.45"
 pre-commit = "4.5.1"
+rdflib = "^7.1.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3"

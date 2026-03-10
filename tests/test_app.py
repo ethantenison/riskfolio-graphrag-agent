@@ -119,3 +119,12 @@ def test_query_endpoint_wires_llm_generate_when_openai_configured(monkeypatch):
     response = client.post("/query", json={"question": "What is HRP?", "top_k": 3})
     assert response.status_code == 200
     assert callable(captured.get("llm_generate"))
+
+
+def test_nl2cypher_endpoint_blocks_unsafe_query():
+    client = TestClient(create_app())
+    response = client.post("/graph/nl2cypher", json={"question": "delete all nodes", "tenant_id": "demo"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "blocked"
+    assert body["requires_human_review"] is True
