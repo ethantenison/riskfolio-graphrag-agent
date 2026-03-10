@@ -72,8 +72,7 @@ class ChromaVectorStore:
                 import chromadb  # type: ignore[import-not-found]
             except ModuleNotFoundError as exc:
                 raise RuntimeError(
-                    "Chroma backend selected but chromadb is not installed. "
-                    "Install dependencies and retry."
+                    "Chroma backend selected but chromadb is not installed. Install dependencies and retry."
                 ) from exc
             Path(persist_dir).mkdir(parents=True, exist_ok=True)
             self._client = chromadb.PersistentClient(path=persist_dir)

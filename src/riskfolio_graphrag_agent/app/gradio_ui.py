@@ -6,6 +6,8 @@ import html
 import math
 from typing import Any
 
+import gradio as gr
+
 from riskfolio_graphrag_agent.agent.workflow import AgentWorkflow
 from riskfolio_graphrag_agent.config.settings import Settings
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
@@ -108,10 +110,7 @@ def _render_graph_svg(graph: dict[str, list[dict[str, Any]]], size: int = 700) -
             f"<line x1='{x1:.1f}' y1='{y1:.1f}' x2='{x2:.1f}' y2='{y2:.1f}' "
             "stroke='#8AA0B8' stroke-width='1.8' stroke-opacity='0.7' marker-end='url(#arrow)'/>"
         )
-        edge_lines.append(
-            f"<text x='{label_x:.1f}' y='{label_y:.1f}' font-size='10' fill='#5A6570'>"
-            f"{edge_type}</text>"
-        )
+        edge_lines.append(f"<text x='{label_x:.1f}' y='{label_y:.1f}' font-size='10' fill='#5A6570'>{edge_type}</text>")
 
     node_shapes: list[str] = []
     for node in nodes:
@@ -138,10 +137,7 @@ def _render_graph_svg(graph: dict[str, list[dict[str, Any]]], size: int = 700) -
         f"<svg viewBox='0 0 {width} {height}' width='100%' height='100%' xmlns='http://www.w3.org/2000/svg'>"
         "<defs><marker id='arrow' markerWidth='10' markerHeight='7' refX='8' refY='3.5' orient='auto'>"
         "<polygon points='0 0, 10 3.5, 0 7' fill='#8AA0B8'/></marker></defs>"
-        "<rect width='100%' height='100%' fill='white'/>"
-        + "".join(edge_lines)
-        + "".join(node_shapes)
-        + "</svg>"
+        "<rect width='100%' height='100%' fill='white'/>" + "".join(edge_lines) + "".join(node_shapes) + "</svg>"
     )
 
 
@@ -150,7 +146,6 @@ def create_gradio_app(
     graph_max_nodes: int = 40,
     graph_max_edges: int = 80,
 ):
-    import gradio as gr
 
     def _handle_submit(
         question: str,

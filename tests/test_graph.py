@@ -65,10 +65,7 @@ def test_extract_entities_includes_llm_nodes_and_edges():
 
     nodes, edges = _extract_entities(doc, llm_extract=_fake_llm_extract, llm_model_name="gpt-4o-mini")
     node_pairs = {(node.label, node.name) for node in nodes}
-    edge_keys = {
-        (edge.source_label, edge.source_name, edge.relation_type, edge.target_label, edge.target_name)
-        for edge in edges
-    }
+    edge_keys = {(edge.source_label, edge.source_name, edge.relation_type, edge.target_label, edge.target_name) for edge in edges}
 
     assert ("PortfolioMethod", "Hierarchical Risk Parity") in node_pairs
     assert ("RiskMeasure", "CVaR") in node_pairs

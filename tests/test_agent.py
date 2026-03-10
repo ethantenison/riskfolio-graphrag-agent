@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
-
 from riskfolio_graphrag_agent.agent.workflow import (
     AgentState,
     AgentWorkflow,
-    is_langgraph_enabled,
     _plan,
     _reason,
     _retrieve,
     _verify,
+    is_langgraph_enabled,
 )
+from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
 
 
 class _FakeRetriever:

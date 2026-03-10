@@ -136,7 +136,9 @@ DEFAULT_EVAL_SAMPLES: list[EvalSample] = [
     ),
     EvalSample(
         question="How does Riskfolio compute CVaR-based optimization?",
-        reference_answer="Riskfolio supports CVaR as a risk measure and can optimize portfolios under CVaR objectives/constraints.",
+        reference_answer=(
+            "Riskfolio supports CVaR as a risk measure and can optimize portfolios under CVaR objectives/constraints."
+        ),
         expected_context_terms=["cvar", "value at risk", "risk measure", "optimization"],
     ),
     EvalSample(
@@ -146,7 +148,9 @@ DEFAULT_EVAL_SAMPLES: list[EvalSample] = [
     ),
     EvalSample(
         question="What constraints can be applied in Riskfolio optimization?",
-        reference_answer="Riskfolio supports multiple portfolio constraints such as budget, leverage, and risk-related constraints.",
+        reference_answer=(
+            "Riskfolio supports multiple portfolio constraints such as budget, leverage, and risk-related constraints."
+        ),
         expected_context_terms=["constraint", "budget", "leverage", "risk contribution"],
     ),
     EvalSample(
@@ -217,10 +221,7 @@ def _synthesize_answer(question: str, results: list[RetrievalResult]) -> str:
     top = results[0]
     entities = top.related_entities[:5]
     if entities:
-        return (
-            f"For '{question}', top evidence comes from {top.source_path}. "
-            f"Key related entities: {', '.join(entities)}."
-        )
+        return f"For '{question}', top evidence comes from {top.source_path}. Key related entities: {', '.join(entities)}."
     return f"For '{question}', top evidence comes from {top.source_path}."
 
 
@@ -256,11 +257,7 @@ def _ragas_style_context_precision(
             per_chunk_scores.append(0.0)
             continue
 
-        expected_hit_rate = (
-            len(expected & context_tokens) / len(expected)
-            if expected
-            else 0.0
-        )
+        expected_hit_rate = len(expected & context_tokens) / len(expected) if expected else 0.0
         query_overlap = _jaccard(query_tokens, context_tokens)
         per_chunk_scores.append((0.65 * expected_hit_rate) + (0.35 * query_overlap))
 

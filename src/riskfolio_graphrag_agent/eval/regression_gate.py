@@ -25,9 +25,7 @@ def run_regression_gate(
 
     failures: list[str] = []
     if faithfulness < min_faithfulness:
-        failures.append(
-            f"answer_faithfulness={faithfulness:.4f} < min_faithfulness={min_faithfulness:.4f}"
-        )
+        failures.append(f"answer_faithfulness={faithfulness:.4f} < min_faithfulness={min_faithfulness:.4f}")
     if relevance < min_relevance:
         failures.append(f"answer_relevance={relevance:.4f} < min_relevance={min_relevance:.4f}")
     if recall < min_context_recall:

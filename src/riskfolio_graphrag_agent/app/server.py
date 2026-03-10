@@ -9,22 +9,11 @@ import ssl
 from urllib import request
 from urllib.error import HTTPError, URLError
 
-# Observability imports
+from fastapi import FastAPI, HTTPException
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-
-trace.set_tracer_provider(TracerProvider())
-otlp_exporter = OTLPSpanExporter(endpoint="localhost:4317", insecure=True)
-trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(otlp_exporter))
-
-try:
-    import certifi
-except Exception:  # pragma: no cover - optional dependency fallback
-    certifi = None
-
-from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from riskfolio_graphrag_agent.agent.workflow import AgentWorkflow
@@ -33,7 +22,22 @@ from riskfolio_graphrag_agent.graph.builder import GraphBuilder
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever, RetrievalResult
 from riskfolio_graphrag_agent.runtime_ssl import initialize_ssl_truststore_once
 
+try:
+    import certifi
+except Exception:  # pragma: no cover - optional dependency fallback
+    certifi = None
+
 logger = logging.getLogger(__name__)
+
+
+def _configure_tracing() -> None:
+    provider = trace.get_tracer_provider()
+    if isinstance(provider, TracerProvider):
+        return
+
+    trace.set_tracer_provider(TracerProvider())
+    otlp_exporter = OTLPSpanExporter(endpoint="localhost:4317", insecure=True)
+    trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(otlp_exporter))
 
 
 def _build_ssl_context() -> ssl.SSLContext | None:
@@ -110,9 +114,7 @@ def _make_openai_llm_generate(settings: Settings):
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "You produce grounded technical answers and avoid unsupported claims."
-                    ),
+                    "content": ("You produce grounded technical answers and avoid unsupported claims."),
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -163,6 +165,7 @@ def create_app() -> FastAPI:
     Returns:
         A configured ``FastAPI`` application object.
     """
+    _configure_tracing()
     initialize_ssl_truststore_once()
     app = FastAPI(title="riskfolio-graphrag-agent", version="0.1.0")
 

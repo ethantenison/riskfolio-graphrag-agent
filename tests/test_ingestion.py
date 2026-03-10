@@ -90,12 +90,7 @@ def test_rst_section_titles_are_human_readable(tmp_path):
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir(parents=True, exist_ok=True)
     rst_file = docs_dir / "risk.rst"
-    rst_file.write_text(
-        "##############\n"
-        "Risk Measures\n"
-        "##############\n\n"
-        "The risk module includes CVaR and EVaR.\n"
-    )
+    rst_file.write_text("##############\nRisk Measures\n##############\n\nThe risk module includes CVaR and EVaR.\n")
 
     docs = load_directory(docs_dir)
     assert docs

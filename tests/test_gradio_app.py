@@ -48,7 +48,12 @@ class _FakeGraphBuilder:
         _ = query, max_seed_nodes, max_nodes, max_edges
         return {
             "nodes": [
-                {"id": "n1", "name": "Hierarchical Risk Parity", "labels": ["PortfolioMethod"], "source_path": "docs/hrp.md"},
+                {
+                    "id": "n1",
+                    "name": "Hierarchical Risk Parity",
+                    "labels": ["PortfolioMethod"],
+                    "source_path": "docs/hrp.md",
+                },
                 {"id": "n2", "name": "CVaR", "labels": ["RiskMeasure"], "source_path": "docs/risk.md"},
             ],
             "edges": [{"source": "n1", "target": "n2", "type": "SUPPORTS_RISK_MEASURE"}],
@@ -74,7 +79,12 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
 def test_render_graph_svg_contains_svg_markup():
     graph = {
         "nodes": [
-            {"id": "n1", "name": "Hierarchical Risk Parity", "labels": ["PortfolioMethod"], "source_path": "docs/hrp.md"},
+            {
+                "id": "n1",
+                "name": "Hierarchical Risk Parity",
+                "labels": ["PortfolioMethod"],
+                "source_path": "docs/hrp.md",
+            },
             {"id": "n2", "name": "CVaR", "labels": ["RiskMeasure"], "source_path": "docs/risk.md"},
         ],
         "edges": [{"source": "n1", "target": "n2", "type": "SUPPORTS_RISK_MEASURE"}],

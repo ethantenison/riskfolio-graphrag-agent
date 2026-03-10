@@ -85,9 +85,7 @@ def _make_openai_graph_extractor(settings: Settings):
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "You are an information extraction engine. Output valid JSON only."
-                    ),
+                    "content": ("You are an information extraction engine. Output valid JSON only."),
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -310,9 +308,7 @@ def ingest(
 
 @app.command(name="build-graph")
 def build_graph(
-    drop_existing: bool = typer.Option(
-        False, "--drop-existing", help="Drop all graph nodes before rebuilding."
-    ),
+    drop_existing: bool = typer.Option(False, "--drop-existing", help="Drop all graph nodes before rebuilding."),
     source_dir: str | None = typer.Option(
         None,
         "--source-dir",
@@ -419,10 +415,8 @@ def graph_stats() -> None:
 
 
 @app.command()
-def eval(
-    output_file: str = typer.Option(
-        "eval_results.json", "--output", "-o", help="Path to write evaluation results JSON."
-    ),
+def eval_command(
+    output_file: str = typer.Option("eval_results.json", "--output", "-o", help="Path to write evaluation results JSON."),
     metric_profile: str = typer.Option(
         "ragas-style",
         "--metric-profile",
@@ -474,9 +468,7 @@ def eval(
 
 @app.command(name="eval-gate")
 def eval_gate(
-    report_file: str = typer.Option(
-        "eval_results.json", "--report", help="Path to eval report JSON."
-    ),
+    report_file: str = typer.Option("eval_results.json", "--report", help="Path to eval report JSON."),
     min_faithfulness: float = typer.Option(0.35, "--min-faithfulness"),
     min_relevance: float = typer.Option(0.8, "--min-relevance"),
     min_context_recall: float = typer.Option(0.45, "--min-context-recall"),

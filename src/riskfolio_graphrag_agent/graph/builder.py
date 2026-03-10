@@ -131,11 +131,7 @@ def _alias_pattern(alias: str) -> re.Pattern[str]:
 
 
 DOMAIN_PATTERNS: dict[str, list[tuple[str, re.Pattern[str]]]] = {
-    label: [
-        (canonical, _alias_pattern(alias))
-        for canonical, aliases in concepts.items()
-        for alias in aliases
-    ]
+    label: [(canonical, _alias_pattern(alias)) for canonical, aliases in concepts.items() for alias in aliases]
     for label, concepts in DOMAIN_ALIASES.items()
 }
 
@@ -168,8 +164,7 @@ class LLMExtractProtocol(Protocol):
         content: str,
         source_type: str,
         model_name: str,
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...
 
 
 class GraphBuilder:
@@ -215,10 +210,7 @@ class GraphBuilder:
                 )
                 session.run(cypher)
 
-            session.run(
-                "CREATE INDEX chunk_source_path IF NOT EXISTS "
-                "FOR (c:Chunk) ON (c.source_path, c.chunk_index)"
-            )
+            session.run("CREATE INDEX chunk_source_path IF NOT EXISTS FOR (c:Chunk) ON (c.source_path, c.chunk_index)")
 
     def build(
         self,
@@ -287,9 +279,7 @@ class GraphBuilder:
             _upsert_nodes(session, unique_nodes)
             _upsert_edges(session, unique_edges)
 
-        logger.info(
-            "Graph write complete: %d nodes, %d edges.", len(unique_nodes), len(unique_edges)
-        )
+        logger.info("Graph write complete: %d nodes, %d edges.", len(unique_nodes), len(unique_edges))
 
     def get_stats(self) -> dict[str, int | dict[str, int]]:
         """Return graph counts by label and relationship type."""
@@ -298,29 +288,18 @@ class GraphBuilder:
             node_count = session.run("MATCH (n) RETURN count(n) AS count").single()
             relationship_count = session.run("MATCH ()-[r]->() RETURN count(r) AS count").single()
             label_rows = list(
-                session.run(
-                    "MATCH (n) UNWIND labels(n) AS label "
-                    "RETURN label, count(*) AS count ORDER BY count DESC"
-                )
+                session.run("MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS count ORDER BY count DESC")
             )
             relationship_rows = list(
-                session.run(
-                    "MATCH ()-[r]->() "
-                    "RETURN type(r) AS relationship_type, count(*) AS count "
-                    "ORDER BY count DESC"
-                )
+                session.run("MATCH ()-[r]->() RETURN type(r) AS relationship_type, count(*) AS count ORDER BY count DESC")
             )
 
         node_counts_by_label = {str(row["label"]): int(row["count"]) for row in label_rows}
-        relationship_counts_by_type = {
-            str(row["relationship_type"]): int(row["count"]) for row in relationship_rows
-        }
+        relationship_counts_by_type = {str(row["relationship_type"]): int(row["count"]) for row in relationship_rows}
 
         return {
             "nodes": int(node_count["count"]) if node_count is not None else 0,
-            "relationships": int(relationship_count["count"])
-            if relationship_count is not None
-            else 0,
+            "relationships": int(relationship_count["count"]) if relationship_count is not None else 0,
             "node_counts_by_label": node_counts_by_label,
             "relationship_counts_by_type": relationship_counts_by_type,
         }
@@ -546,11 +525,7 @@ def _extract_entities(
     for label, concept_name in _extract_domain_mentions(doc.content):
         nodes.append(GraphNode(label=label, name=concept_name))
         concept_node_name = _normalize_concept_name(concept_name)
-        nodes.append(
-            GraphNode(
-                label="Concept", name=concept_node_name, properties={"canonical": concept_name}
-            )
-        )
+        nodes.append(GraphNode(label="Concept", name=concept_node_name, properties={"canonical": concept_name}))
 
         mentioned_domain_nodes.append((label, concept_name))
 
@@ -584,9 +559,7 @@ def _extract_entities(
             )
         )
 
-    for (left_label, left_name), (right_label, right_name) in combinations(
-        sorted(set(mentioned_domain_nodes)), 2
-    ):
+    for (left_label, left_name), (right_label, right_name) in combinations(sorted(set(mentioned_domain_nodes)), 2):
         edges.append(
             GraphEdge(
                 source_name=left_name,
@@ -699,11 +672,7 @@ def _extract_entities_with_llm(
         )
 
     if nodes:
-        anchored_nodes = [
-            node
-            for node in nodes
-            if node.label in {"PythonModule", "DocPage", "ExampleNotebook", "TestCase"}
-        ]
+        anchored_nodes = [node for node in nodes if node.label in {"PythonModule", "DocPage", "ExampleNotebook", "TestCase"}]
         for node in anchored_nodes:
             if node.name == source_name and node.label == source_label:
                 continue
@@ -846,9 +815,7 @@ def _dedupe_nodes(nodes: list[GraphNode]) -> list[GraphNode]:
     for node in nodes:
         key = (node.label, node.name)
         if key not in deduped:
-            deduped[key] = GraphNode(
-                label=node.label, name=node.name, properties=dict(node.properties)
-            )
+            deduped[key] = GraphNode(label=node.label, name=node.name, properties=dict(node.properties))
             continue
         deduped[key].properties.update(node.properties)
     return list(deduped.values())
@@ -888,9 +855,7 @@ def _upsert_nodes(session, nodes: list[GraphNode]) -> None:
 
     for label, labeled_nodes in by_label.items():
         safe_label = _safe_name(label)
-        cypher = (
-            f"UNWIND $rows AS row MERGE (n:{safe_label} {{name: row.name}}) SET n += row.properties"
-        )
+        cypher = f"UNWIND $rows AS row MERGE (n:{safe_label} {{name: row.name}}) SET n += row.properties"
         rows = [{"name": n.name, "properties": n.properties} for n in labeled_nodes]
         session.run(cypher, rows=rows)
 

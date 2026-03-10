@@ -6,13 +6,15 @@ self-correction.
 """
 
 from __future__ import annotations
-from opentelemetry import trace
-from opentelemetry.trace import SpanKind
-from langsmith import traceable
+
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypedDict, cast
+from typing import Protocol, TypedDict, cast
+
+from langsmith import traceable
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind
 
 try:
     from langgraph.graph import END, START, StateGraph
@@ -51,8 +53,7 @@ class AgentState:
 
 
 class RetrieverProtocol(Protocol):
-    def retrieve(self, query: str) -> list[RetrievalResult]:
-        ...
+    def retrieve(self, query: str) -> list[RetrievalResult]: ...
 
 
 class LLMGenerateProtocol(Protocol):
@@ -62,8 +63,7 @@ class LLMGenerateProtocol(Protocol):
         question: str,
         context: list[RetrievalResult],
         model_name: str,
-    ) -> str:
-        ...
+    ) -> str: ...
 
 
 class AgentGraphState(TypedDict):
@@ -133,6 +133,7 @@ class AgentWorkflow:
         tracer = trace.get_tracer("riskfolio-graphrag-agent")
         with tracer.start_as_current_span("AgentWorkflow.run", kind=SpanKind.SERVER) as span:
             span.set_attribute("agent.question", question)
+
             # LangSmith traceable decorator for full workflow
             @traceable(name="AgentWorkflow.run")
             def _run_inner(q: str) -> AgentState:
@@ -145,8 +146,7 @@ class AgentWorkflow:
                     if not state.verified and state.context:
                         top = state.context[0]
                         state.answer = (
-                            "I found relevant context but could not fully verify all claims. "
-                            f"Top source: {top.source_path}."
+                            f"I found relevant context but could not fully verify all claims. Top source: {top.source_path}."
                         )
                     return state
                 initial_state: AgentGraphState = {
@@ -167,6 +167,7 @@ class AgentWorkflow:
                     citations=final_state["citations"],
                     verified=final_state["verified"],
                 )
+
             result = _run_inner(question)
             span.set_attribute("agent.answer_length", len(result.answer))
             span.set_attribute("agent.citation_count", len(result.citations))
@@ -180,10 +181,7 @@ class AgentWorkflow:
             state = _verify(state)
             if not state.verified and state.context:
                 top = state.context[0]
-                state.answer = (
-                    "I found relevant context but could not fully verify all claims. "
-                    f"Top source: {top.source_path}."
-                )
+                state.answer = f"I found relevant context but could not fully verify all claims. Top source: {top.source_path}."
             return state
 
         initial_state: AgentGraphState = {
@@ -265,8 +263,7 @@ class AgentWorkflow:
             if state["retry_count"] == 1 and state["context"]:
                 top = state["context"][0]
                 state["answer"] = (
-                    "I am revising the response to stay grounded in the retrieved sources. "
-                    f"Primary source: {top.source_path}."
+                    f"I am revising the response to stay grounded in the retrieved sources. Primary source: {top.source_path}."
                 )
         return state
 

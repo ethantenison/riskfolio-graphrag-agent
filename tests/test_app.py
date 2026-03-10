@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from riskfolio_graphrag_agent.app.server import create_app
 from riskfolio_graphrag_agent.agent.workflow import AgentState
+from riskfolio_graphrag_agent.app.server import create_app
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
 
 

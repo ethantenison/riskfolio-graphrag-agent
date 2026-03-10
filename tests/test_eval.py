@@ -13,10 +13,7 @@ class _StubRetriever:
         _ = query
         return [
             RetrievalResult(
-                content=(
-                    "Hierarchical Risk Parity uses clustering and risk parity "
-                    "to allocate portfolio weights."
-                ),
+                content=("Hierarchical Risk Parity uses clustering and risk parity to allocate portfolio weights."),
                 source_path="docs/hrp.md",
                 score=0.9,
                 related_entities=["HRP", "clustering", "risk parity"],

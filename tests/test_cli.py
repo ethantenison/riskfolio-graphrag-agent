@@ -7,10 +7,7 @@ from riskfolio_graphrag_agent.ingestion.loader import Document
 
 
 def _make_docs(count: int) -> list[Document]:
-    return [
-        Document(content=f"chunk-{index}", source_path=f"/tmp/file_{index}.py", chunk_index=index)
-        for index in range(count)
-    ]
+    return [Document(content=f"chunk-{index}", source_path=f"/tmp/file_{index}.py", chunk_index=index) for index in range(count)]
 
 
 def test_select_documents_for_build_all_when_unbounded():

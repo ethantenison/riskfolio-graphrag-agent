@@ -5,14 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from riskfolio_graphrag_agent.ingestion.loader import Document
-
 from riskfolio_graphrag_agent.retrieval.retriever import (
     ChromaVectorStore,
     HybridRetriever,
     RetrievalResult,
     VectorHit,
-    _hash_embedding,
     _graph_expand,
+    _hash_embedding,
     _vector_search,
 )
 
@@ -75,7 +74,7 @@ class _FakeVectorStore:
 
 
 def _l2_distance(left: list[float], right: list[float]) -> float:
-    return sum((a - b) ** 2 for a, b in zip(left, right)) ** 0.5
+    return sum((a - b) ** 2 for a, b in zip(left, right, strict=False)) ** 0.5
 
 
 def _make_doc(content: str, chunk_index: int, section: str) -> Document:

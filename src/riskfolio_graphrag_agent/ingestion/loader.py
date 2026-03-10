@@ -48,9 +48,7 @@ class Document:
     metadata: dict[str, str | int] = field(default_factory=dict)
 
 
-def load_directory(
-    source_dir: str | Path, chunk_size: int = 1000, overlap: int = 100
-) -> list[Document]:
+def load_directory(source_dir: str | Path, chunk_size: int = 1000, overlap: int = 100) -> list[Document]:
     """Walk *source_dir* and return a flat list of chunked :class:`Document` objects.
 
     Args:
@@ -266,9 +264,7 @@ def _chunk_tests(
 
     test_nodes: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name.startswith(
-            "test_"
-        ):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name.startswith("test_"):
             test_nodes.append(node)
 
     for node in sorted(test_nodes, key=lambda item: item.lineno):
@@ -302,9 +298,7 @@ def _chunk_example_notebook(
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
-        return _chunk_fallback(
-            text, file_path, base_metadata, "example_section", chunk_size, overlap
-        )
+        return _chunk_fallback(text, file_path, base_metadata, "example_section", chunk_size, overlap)
 
     cells = payload.get("cells", [])
     chunks: list[Document] = []
@@ -558,12 +552,7 @@ def _emit_text_chunk(
     line_end = int(metadata.get("line_end", line_start))
     total_lines = max(1, line_end - line_start + 1)
     relative_path = str(metadata.get("relative_path", file_path.name))
-    section = str(
-        metadata.get("section")
-        or metadata.get("symbol_name")
-        or metadata.get("chunk_kind")
-        or "section"
-    )
+    section = str(metadata.get("section") or metadata.get("symbol_name") or metadata.get("chunk_kind") or "section")
 
     while start < text_len:
         end = min(text_len, start + chunk_size)
