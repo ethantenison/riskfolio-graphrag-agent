@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "riskfolio-graphrag-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Explainable GraphRAG and agentic AI demo over the Riskfolio-Lib codebase and documentation"
 authors = ["Ethan Tenison"]
 license = "MIT"
