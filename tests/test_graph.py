@@ -7,6 +7,7 @@ from riskfolio_graphrag_agent.graph.builder import (
     GraphEdge,
     GraphNode,
     _extract_entities,
+    _extract_entities_with_llm,
 )
 from riskfolio_graphrag_agent.ingestion.loader import Document
 
@@ -35,6 +36,101 @@ def test_extract_entities_returns_lists():
     assert isinstance(edges, list)
 
 
+def test_extract_entities_includes_llm_nodes_and_edges():
+    doc = Document(
+        content="HRP optimization uses CVaR",
+        source_path="/fake/path.py",
+        metadata={"source_type": "python", "relative_path": "riskfolio/src/module.py"},
+    )
+
+    def _fake_llm_extract(*, content: str, source_type: str, model_name: str):
+        assert content
+        assert source_type == "python"
+        assert model_name == "gpt-4o-mini"
+        return {
+            "nodes": [
+                {"label": "PortfolioMethod", "name": "Hierarchical Risk Parity", "properties": {}},
+                {"label": "RiskMeasure", "name": "CVaR", "properties": {}},
+            ],
+            "edges": [
+                {
+                    "source_name": "Hierarchical Risk Parity",
+                    "source_label": "PortfolioMethod",
+                    "target_name": "CVaR",
+                    "target_label": "RiskMeasure",
+                    "relation_type": "SUPPORTS_RISK_MEASURE",
+                }
+            ],
+        }
+
+    nodes, edges = _extract_entities(doc, llm_extract=_fake_llm_extract, llm_model_name="gpt-4o-mini")
+    node_pairs = {(node.label, node.name) for node in nodes}
+    edge_keys = {(edge.source_label, edge.source_name, edge.relation_type, edge.target_label, edge.target_name) for edge in edges}
+
+    assert ("PortfolioMethod", "Hierarchical Risk Parity") in node_pairs
+    assert ("RiskMeasure", "CVaR") in node_pairs
+    assert (
+        "PortfolioMethod",
+        "Hierarchical Risk Parity",
+        "SUPPORTS_RISK_MEASURE",
+        "RiskMeasure",
+        "CVaR",
+    ) in edge_keys
+
+
+def test_extract_entities_filters_invalid_llm_output():
+    doc = _make_doc(content="some content")
+
+    def _fake_llm_extract(*, content: str, source_type: str, model_name: str):
+        _ = content, source_type, model_name
+        return {
+            "nodes": [
+                {"label": "UnknownLabel", "name": "Bad Node", "properties": {}},
+            ],
+            "edges": [
+                {
+                    "source_name": "x",
+                    "source_label": "Unknown",
+                    "target_name": "y",
+                    "target_label": "Concept",
+                    "relation_type": "UNKNOWN_REL",
+                }
+            ],
+        }
+
+    nodes, edges = _extract_entities(doc, llm_extract=_fake_llm_extract)
+    names = {node.name for node in nodes}
+    assert "Bad Node" not in names
+    assert all(edge.relation_type != "UNKNOWN_REL" for edge in edges)
+
+
+def test_extract_entities_with_llm_timeout_returns_empty(caplog):
+    doc = Document(
+        content="def foo(): pass",
+        source_path="/fake/path.py",
+        metadata={"source_type": "python"},
+    )
+
+    def _timeout_llm_extract(*, content: str, source_type: str, model_name: str):
+        _ = content, source_type, model_name
+        raise TimeoutError("The read operation timed out")
+
+    with caplog.at_level("WARNING"):
+        nodes, edges = _extract_entities_with_llm(
+            doc=doc,
+            source_name="riskfolio.src.module",
+            source_label="PythonModule",
+            chunk_id="AuxFunctions.py::chunk:3",
+            llm_extract=_timeout_llm_extract,
+            llm_model_name="gpt-4o-mini",
+        )
+
+    assert nodes == []
+    assert edges == []
+    assert "LLM extraction failed for chunk AuxFunctions.py::chunk:3" in caplog.text
+    assert "The read operation timed out" in caplog.text
+
+
 def test_graph_builder_build_stub(tmp_source_dir):
     """GraphBuilder.build should run without error in stub mode."""
     from riskfolio_graphrag_agent.ingestion.loader import load_directory
@@ -45,6 +141,92 @@ def test_graph_builder_build_stub(tmp_source_dir):
         neo4j_user="neo4j",
         neo4j_password="password",
     )
-    # Should not raise even with no real Neo4j connection (stub)
+    builder._ensure_driver = lambda: (_ for _ in ()).throw(OSError("offline test mode"))
+    # Should not raise when Neo4j is unavailable.
     builder.build(docs)
     builder.close()
+
+
+class _FakeResult(list):
+    def single(self):
+        return self[0] if self else None
+
+
+class _FakeSession:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        _ = exc_type, exc, tb
+        return False
+
+    def run(self, query: str, **params):
+        if "RETURN [n IN nodes" in query:
+            terms = params.get("terms", [])
+            if not terms:
+                return _FakeResult([])
+            return _FakeResult(
+                [
+                    {
+                        "nodes": [
+                            {
+                                "id": "n1",
+                                "name": "Hierarchical Risk Parity",
+                                "labels": ["PortfolioMethod"],
+                                "source_path": "docs/hrp.md",
+                            },
+                            {
+                                "id": "n2",
+                                "name": "CVaR",
+                                "labels": ["RiskMeasure"],
+                                "source_path": "docs/risk.md",
+                            },
+                        ]
+                    }
+                ]
+            )
+        if "MATCH (a)-[r]->(b)" in query:
+            return _FakeResult(
+                [
+                    {
+                        "source": "n1",
+                        "target": "n2",
+                        "type": "SUPPORTS_RISK_MEASURE",
+                    }
+                ]
+            )
+        return _FakeResult([])
+
+
+class _FakeDriver:
+    def session(self):
+        return _FakeSession()
+
+    def close(self):
+        return None
+
+
+def test_graph_builder_get_query_subgraph_returns_nodes_and_edges(monkeypatch):
+    builder = GraphBuilder(
+        neo4j_uri="bolt://localhost:7687",
+        neo4j_user="neo4j",
+        neo4j_password="password",
+    )
+    monkeypatch.setattr(builder, "_ensure_driver", lambda: _FakeDriver())
+
+    graph = builder.get_query_subgraph("What is HRP and CVaR?")
+    assert len(graph["nodes"]) == 2
+    assert len(graph["edges"]) == 1
+    assert graph["edges"][0]["type"] == "SUPPORTS_RISK_MEASURE"
+
+
+def test_graph_builder_get_query_subgraph_empty_for_blank_query(monkeypatch):
+    builder = GraphBuilder(
+        neo4j_uri="bolt://localhost:7687",
+        neo4j_user="neo4j",
+        neo4j_password="password",
+    )
+    monkeypatch.setattr(builder, "_ensure_driver", lambda: _FakeDriver())
+
+    graph = builder.get_query_subgraph("  ")
+    assert graph == {"nodes": [], "edges": []}

@@ -10,6 +10,9 @@ Example::
     print(cfg.neo4j_uri)
 """
 
+from typing import Literal
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +25,12 @@ class Settings(BaseSettings):
         neo4j_password: Neo4j password.
         openai_api_key: API key for the OpenAI-compatible LLM endpoint.
         openai_model: Model name to use for generation.
+        openai_base_url: Base URL for an OpenAI-compatible API.
+        openai_timeout_seconds: Timeout for LLM HTTP requests in seconds.
+        openai_retry_attempts: Number of retries for transient LLM network failures.
+        openai_retry_backoff_seconds: Base backoff in seconds between retries.
+        openai_enable_generation: Enables model-backed answer generation.
+        openai_enable_graph_extraction: Enables LLM-assisted graph extraction.
         embedding_model: Model name to use for text embeddings.
         embedding_dim: Dimensionality of embedding vectors.
         vector_store_backend: Which vector store to use ("chroma" | "qdrant").
@@ -44,13 +53,19 @@ class Settings(BaseSettings):
     # LLM
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_timeout_seconds: float = 30.0
+    openai_retry_attempts: int = 2
+    openai_retry_backoff_seconds: float = 1.5
+    openai_enable_generation: bool = True
+    openai_enable_graph_extraction: bool = True
 
     # Embeddings
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
 
     # Vector store
-    vector_store_backend: str = "chroma"
+    vector_store_backend: Literal["chroma", "qdrant"] = "chroma"
     chroma_persist_dir: str = ".chroma"
 
     # Logging
@@ -58,3 +73,19 @@ class Settings(BaseSettings):
 
     # Ingestion
     riskfolio_source_dir: str = "./data/riskfolio-lib"
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _normalize_log_level(cls, value: object) -> str:
+        if value is None:
+            return "INFO"
+        text = str(value).strip()
+        return text.upper() if text else "INFO"
+
+    @field_validator("vector_store_backend", mode="before")
+    @classmethod
+    def _normalize_vector_store_backend(cls, value: object) -> str:
+        if value is None:
+            return "chroma"
+        text = str(value).strip().lower()
+        return text if text else "chroma"

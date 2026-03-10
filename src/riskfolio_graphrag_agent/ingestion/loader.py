@@ -7,6 +7,7 @@ builds metadata-rich :class:`Document` chunks for graph extraction/retrieval.
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import logging
 import re
@@ -28,18 +29,26 @@ class Document:
         content: The raw text of this chunk.
         source_path: Absolute path of the originating file.
         chunk_index: Zero-based index of this chunk within the source file.
+        chunk_id: Canonical stable ID ``{relative_path}::chunk:{chunk_index}``.
+        content_hash: Deterministic hash of normalized chunk content and source metadata.
+        section: Human-readable section/symbol label for provenance.
+        line_start: 1-based start line for this chunk.
+        line_end: 1-based end line for this chunk.
         metadata: Arbitrary key/value pairs (e.g. module name, line range).
     """
 
     content: str
     source_path: str
     chunk_index: int = 0
+    chunk_id: str = ""
+    content_hash: str = ""
+    section: str = ""
+    line_start: int = 1
+    line_end: int = 1
     metadata: dict[str, str | int] = field(default_factory=dict)
 
 
-def load_directory(
-    source_dir: str | Path, chunk_size: int = 1000, overlap: int = 100
-) -> list[Document]:
+def load_directory(source_dir: str | Path, chunk_size: int = 1000, overlap: int = 100) -> list[Document]:
     """Walk *source_dir* and return a flat list of chunked :class:`Document` objects.
 
     Args:
@@ -255,9 +264,7 @@ def _chunk_tests(
 
     test_nodes: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name.startswith(
-            "test_"
-        ):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name.startswith("test_"):
             test_nodes.append(node)
 
     for node in sorted(test_nodes, key=lambda item: item.lineno):
@@ -291,9 +298,7 @@ def _chunk_example_notebook(
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
-        return _chunk_fallback(
-            text, file_path, base_metadata, "example_section", chunk_size, overlap
-        )
+        return _chunk_fallback(text, file_path, base_metadata, "example_section", chunk_size, overlap)
 
     cells = payload.get("cells", [])
     chunks: list[Document] = []
@@ -349,8 +354,11 @@ def _chunk_sections(
             overlap,
         )
 
-    heading_lines = [1] + [line for line in heading_lines if line > 1]
     heading_lines = sorted(set(heading_lines))
+    if heading_lines and heading_lines[0] > 1:
+        first_line = lines[0].strip() if lines else ""
+        if first_line and not _is_heading_adornment_line(first_line):
+            heading_lines = [1, *heading_lines]
     ranges: list[tuple[int, int]] = []
     for index, start in enumerate(heading_lines):
         end = heading_lines[index + 1] - 1 if index + 1 < len(heading_lines) else len(lines)
@@ -360,12 +368,13 @@ def _chunk_sections(
     chunks: list[Document] = []
     chunk_index = 0
     for start, end in ranges:
+        section = _resolve_section_name(lines, start, end, default="section")
         chunk_index = _emit_line_chunk(
             chunks,
             lines,
             file_path,
             chunk_index,
-            base_metadata,
+            {**base_metadata, "section": section},
             default_chunk_kind,
             start,
             end,
@@ -389,9 +398,32 @@ def _detect_heading_lines(lines: list[str], extension: str) -> list[int]:
         current = lines[index].strip()
         if not prev or not current:
             continue
-        if re.fullmatch(r"[=\-~^`:#\*]{3,}", current):
+        if _is_heading_adornment_line(current):
             results.append(index)
     return results
+
+
+def _is_heading_adornment_line(line: str) -> bool:
+    return bool(re.fullmatch(r"[=\-~^`:#\*]{3,}", line))
+
+
+def _resolve_section_name(
+    lines: list[str],
+    line_start: int,
+    line_end: int,
+    default: str,
+) -> str:
+    for line in lines[line_start - 1 : line_end]:
+        candidate = line.strip()
+        if not candidate:
+            continue
+        if _is_heading_adornment_line(candidate):
+            continue
+        if candidate.startswith("#"):
+            candidate = re.sub(r"^#{1,6}\s+", "", candidate).strip()
+        if candidate:
+            return candidate[:160]
+    return default
 
 
 def _chunk_fallback(
@@ -519,6 +551,8 @@ def _emit_text_chunk(
     line_start = int(metadata.get("line_start", 1))
     line_end = int(metadata.get("line_end", line_start))
     total_lines = max(1, line_end - line_start + 1)
+    relative_path = str(metadata.get("relative_path", file_path.name))
+    section = str(metadata.get("section") or metadata.get("symbol_name") or metadata.get("chunk_kind") or "section")
 
     while start < text_len:
         end = min(text_len, start + chunk_size)
@@ -533,12 +567,28 @@ def _emit_text_chunk(
                 **metadata,
                 "line_start": sub_line_start,
                 "line_end": min(line_end, sub_line_end),
+                "section": section,
+                "source_path": str(file_path),
             }
+            resolved_line_end = int(chunk_metadata["line_end"])
+            chunk_id = _build_chunk_id(relative_path=relative_path, chunk_index=chunk_index)
+            content_hash = _build_content_hash(
+                chunk_text=chunk_text,
+                relative_path=relative_path,
+                section=section,
+                line_start=sub_line_start,
+                line_end=resolved_line_end,
+            )
             chunks.append(
                 Document(
                     content=chunk_text,
                     source_path=str(file_path),
                     chunk_index=chunk_index,
+                    chunk_id=chunk_id,
+                    content_hash=content_hash,
+                    section=section,
+                    line_start=sub_line_start,
+                    line_end=resolved_line_end,
                     metadata=chunk_metadata,
                 )
             )
@@ -549,6 +599,33 @@ def _emit_text_chunk(
         start += step
 
     return chunk_index
+
+
+def _build_chunk_id(relative_path: str, chunk_index: int) -> str:
+    return f"{relative_path}::chunk:{chunk_index}"
+
+
+def _normalize_chunk_text(text: str) -> str:
+    return "\n".join(line.rstrip() for line in text.strip().splitlines())
+
+
+def _build_content_hash(
+    chunk_text: str,
+    relative_path: str,
+    section: str,
+    line_start: int,
+    line_end: int,
+) -> str:
+    payload = "|".join(
+        (
+            relative_path.strip(),
+            section.strip(),
+            str(line_start),
+            str(line_end),
+            _normalize_chunk_text(chunk_text),
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def summarize_documents(documents: list[Document]) -> dict[str, Any]:

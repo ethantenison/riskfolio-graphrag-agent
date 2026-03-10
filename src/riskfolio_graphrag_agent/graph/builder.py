@@ -5,8 +5,10 @@ from __future__ import annotations
 import keyword
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from itertools import combinations
+from typing import Any, Protocol
 
 from neo4j import Driver, GraphDatabase
 from neo4j.exceptions import Neo4jError
@@ -129,11 +131,7 @@ def _alias_pattern(alias: str) -> re.Pattern[str]:
 
 
 DOMAIN_PATTERNS: dict[str, list[tuple[str, re.Pattern[str]]]] = {
-    label: [
-        (canonical, _alias_pattern(alias))
-        for canonical, aliases in concepts.items()
-        for alias in aliases
-    ]
+    label: [(canonical, _alias_pattern(alias)) for canonical, aliases in concepts.items() for alias in aliases]
     for label, concepts in DOMAIN_ALIASES.items()
 }
 
@@ -159,13 +157,32 @@ class GraphEdge:
     properties: dict[str, str | int] = field(default_factory=dict)
 
 
+class LLMExtractProtocol(Protocol):
+    def __call__(
+        self,
+        *,
+        content: str,
+        source_type: str,
+        model_name: str,
+    ) -> dict[str, Any]: ...
+
+
 class GraphBuilder:
     """Coordinates Riskfolio-aware extraction and Neo4j writes."""
 
-    def __init__(self, neo4j_uri: str, neo4j_user: str, neo4j_password: str) -> None:
+    def __init__(
+        self,
+        neo4j_uri: str,
+        neo4j_user: str,
+        neo4j_password: str,
+        llm_extract: LLMExtractProtocol | None = None,
+        llm_model_name: str = "gpt-4o-mini",
+    ) -> None:
         self._uri = neo4j_uri
         self._user = neo4j_user
         self._password = neo4j_password
+        self._llm_extract = llm_extract
+        self._llm_model_name = llm_model_name
         self._driver: Driver | None = None
 
     def _ensure_driver(self) -> Driver:
@@ -193,10 +210,7 @@ class GraphBuilder:
                 )
                 session.run(cypher)
 
-            session.run(
-                "CREATE INDEX chunk_source_path IF NOT EXISTS "
-                "FOR (c:Chunk) ON (c.source_path, c.chunk_index)"
-            )
+            session.run("CREATE INDEX chunk_source_path IF NOT EXISTS FOR (c:Chunk) ON (c.source_path, c.chunk_index)")
 
     def build(
         self,
@@ -207,11 +221,38 @@ class GraphBuilder:
         """Extract entities from chunks and upsert a Riskfolio graph."""
         nodes: list[GraphNode] = []
         edges: list[GraphEdge] = []
+        started_at = time.perf_counter()
+        total_documents = len(documents)
 
-        for doc in documents:
-            doc_nodes, doc_edges = _extract_entities(doc)
+        logger.info(
+            "Graph build started. chunks=%d drop_existing=%s llm_extraction=%s",
+            total_documents,
+            drop_existing,
+            self._llm_extract is not None,
+        )
+
+        if total_documents == 0:
+            logger.info("No documents were provided to graph build.")
+
+        for index, doc in enumerate(documents, start=1):
+            doc_nodes, doc_edges = _extract_entities(
+                doc,
+                llm_extract=self._llm_extract,
+                llm_model_name=self._llm_model_name,
+            )
             nodes.extend(doc_nodes)
             edges.extend(doc_edges)
+
+            if index == 1 or index % 25 == 0 or index == total_documents:
+                elapsed_seconds = time.perf_counter() - started_at
+                progress_percent = (index / total_documents * 100.0) if total_documents else 100.0
+                logger.info(
+                    "Graph build progress: %d/%d chunks (%.1f%%) elapsed=%.1fs",
+                    index,
+                    total_documents,
+                    progress_percent,
+                    elapsed_seconds,
+                )
 
         unique_nodes = _dedupe_nodes(nodes)
         unique_edges = _dedupe_edges(edges)
@@ -238,9 +279,7 @@ class GraphBuilder:
             _upsert_nodes(session, unique_nodes)
             _upsert_edges(session, unique_edges)
 
-        logger.info(
-            "Graph write complete: %d nodes, %d edges.", len(unique_nodes), len(unique_edges)
-        )
+        logger.info("Graph write complete: %d nodes, %d edges.", len(unique_nodes), len(unique_edges))
 
     def get_stats(self) -> dict[str, int | dict[str, int]]:
         """Return graph counts by label and relationship type."""
@@ -249,35 +288,113 @@ class GraphBuilder:
             node_count = session.run("MATCH (n) RETURN count(n) AS count").single()
             relationship_count = session.run("MATCH ()-[r]->() RETURN count(r) AS count").single()
             label_rows = list(
-                session.run(
-                    "MATCH (n) UNWIND labels(n) AS label "
-                    "RETURN label, count(*) AS count ORDER BY count DESC"
-                )
+                session.run("MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS count ORDER BY count DESC")
             )
             relationship_rows = list(
-                session.run(
-                    "MATCH ()-[r]->() "
-                    "RETURN type(r) AS relationship_type, count(*) AS count "
-                    "ORDER BY count DESC"
-                )
+                session.run("MATCH ()-[r]->() RETURN type(r) AS relationship_type, count(*) AS count ORDER BY count DESC")
             )
 
         node_counts_by_label = {str(row["label"]): int(row["count"]) for row in label_rows}
-        relationship_counts_by_type = {
-            str(row["relationship_type"]): int(row["count"]) for row in relationship_rows
-        }
+        relationship_counts_by_type = {str(row["relationship_type"]): int(row["count"]) for row in relationship_rows}
 
         return {
             "nodes": int(node_count["count"]) if node_count is not None else 0,
-            "relationships": int(relationship_count["count"])
-            if relationship_count is not None
-            else 0,
+            "relationships": int(relationship_count["count"]) if relationship_count is not None else 0,
             "node_counts_by_label": node_counts_by_label,
             "relationship_counts_by_type": relationship_counts_by_type,
         }
 
+    def get_query_subgraph(
+        self,
+        query: str,
+        max_seed_nodes: int = 12,
+        max_nodes: int = 40,
+        max_edges: int = 80,
+    ) -> dict[str, list[dict[str, str | list[str]]]]:
+        """Return a bounded one-hop subgraph relevant to a text query.
 
-def _extract_entities(doc: Document) -> tuple[list[GraphNode], list[GraphEdge]]:
+        The method matches seed nodes by lexical overlap on common textual
+        properties, expands one hop, and returns node/edge dictionaries suitable
+        for UI visualisation.
+        """
+        terms = _query_terms(query)
+        if not terms:
+            return {"nodes": [], "edges": []}
+
+        driver = self._ensure_driver()
+        with driver.session() as session:
+            nodes_result = session.run(
+                (
+                    "MATCH (n) "
+                    "WHERE any(t IN $terms WHERE "
+                    "toLower(coalesce(n.name, '')) CONTAINS t OR "
+                    "toLower(coalesce(n.content, '')) CONTAINS t OR "
+                    "toLower(coalesce(n.relative_path, '')) CONTAINS t) "
+                    "WITH collect(DISTINCT n)[0..$max_seed_nodes] AS seeds "
+                    "UNWIND seeds AS seed "
+                    "OPTIONAL MATCH (seed)-[]-(nbr) "
+                    "WITH collect(DISTINCT seed) + collect(DISTINCT nbr) AS raw_nodes "
+                    "WITH [n IN raw_nodes WHERE n IS NOT NULL][0..$max_nodes] AS nodes "
+                    "RETURN [n IN nodes | {"
+                    "id: elementId(n), "
+                    "name: coalesce(n.name, ''), "
+                    "labels: labels(n), "
+                    "source_path: coalesce(n.source_path, coalesce(n.relative_path, ''))"
+                    "}] AS nodes"
+                ),
+                terms=terms,
+                max_seed_nodes=max(1, max_seed_nodes),
+                max_nodes=max(1, max_nodes),
+            ).single()
+
+            nodes = []
+            if nodes_result is not None:
+                raw_nodes = nodes_result.get("nodes", [])
+                if isinstance(raw_nodes, list):
+                    nodes = [
+                        {
+                            "id": str(node.get("id", "")),
+                            "name": str(node.get("name", "")),
+                            "labels": [str(label) for label in node.get("labels", [])],
+                            "source_path": str(node.get("source_path", "")),
+                        }
+                        for node in raw_nodes
+                        if isinstance(node, dict)
+                    ]
+
+            if not nodes:
+                return {"nodes": [], "edges": []}
+
+            node_ids = [str(node["id"]) for node in nodes if str(node.get("id", ""))]
+            edge_rows = list(
+                session.run(
+                    (
+                        "MATCH (a)-[r]->(b) "
+                        "WHERE elementId(a) IN $node_ids AND elementId(b) IN $node_ids "
+                        "RETURN elementId(a) AS source, elementId(b) AS target, type(r) AS type "
+                        "LIMIT $max_edges"
+                    ),
+                    node_ids=node_ids,
+                    max_edges=max(1, max_edges),
+                )
+            )
+
+        edges: list[dict[str, str | list[str]]] = [
+            {
+                "source": str(row["source"]),
+                "target": str(row["target"]),
+                "type": str(row["type"]),
+            }
+            for row in edge_rows
+        ]
+        return {"nodes": nodes, "edges": edges}
+
+
+def _extract_entities(
+    doc: Document,
+    llm_extract: LLMExtractProtocol | None = None,
+    llm_model_name: str = "gpt-4o-mini",
+) -> tuple[list[GraphNode], list[GraphEdge]]:
     """Extract Riskfolio-aware graph entities from one chunk."""
     metadata = doc.metadata
     source_type = str(metadata.get("source_type", "python"))
@@ -408,11 +525,7 @@ def _extract_entities(doc: Document) -> tuple[list[GraphNode], list[GraphEdge]]:
     for label, concept_name in _extract_domain_mentions(doc.content):
         nodes.append(GraphNode(label=label, name=concept_name))
         concept_node_name = _normalize_concept_name(concept_name)
-        nodes.append(
-            GraphNode(
-                label="Concept", name=concept_node_name, properties={"canonical": concept_name}
-            )
-        )
+        nodes.append(GraphNode(label="Concept", name=concept_node_name, properties={"canonical": concept_name}))
 
         mentioned_domain_nodes.append((label, concept_name))
 
@@ -446,9 +559,7 @@ def _extract_entities(doc: Document) -> tuple[list[GraphNode], list[GraphEdge]]:
             )
         )
 
-    for (left_label, left_name), (right_label, right_name) in combinations(
-        sorted(set(mentioned_domain_nodes)), 2
-    ):
+    for (left_label, left_name), (right_label, right_name) in combinations(sorted(set(mentioned_domain_nodes)), 2):
         edges.append(
             GraphEdge(
                 source_name=left_name,
@@ -458,6 +569,123 @@ def _extract_entities(doc: Document) -> tuple[list[GraphNode], list[GraphEdge]]:
                 target_label=right_label,
             )
         )
+
+    llm_nodes, llm_edges = _extract_entities_with_llm(
+        doc=doc,
+        source_name=source_name,
+        source_label=source_label,
+        chunk_id=chunk_id,
+        llm_extract=llm_extract,
+        llm_model_name=llm_model_name,
+    )
+    nodes.extend(llm_nodes)
+    edges.extend(llm_edges)
+
+    return nodes, edges
+
+
+def _extract_entities_with_llm(
+    doc: Document,
+    source_name: str,
+    source_label: str,
+    chunk_id: str,
+    llm_extract: LLMExtractProtocol | None,
+    llm_model_name: str,
+) -> tuple[list[GraphNode], list[GraphEdge]]:
+    if llm_extract is None:
+        return [], []
+
+    source_type = str(doc.metadata.get("source_type", "python"))
+    try:
+        payload = llm_extract(
+            content=doc.content,
+            source_type=source_type,
+            model_name=llm_model_name,
+        )
+    except Exception as exc:
+        logger.warning("LLM extraction failed for chunk %s: %s", chunk_id, exc)
+        return [], []
+
+    if not isinstance(payload, dict):
+        return [], []
+
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+    for item in payload.get("nodes", []):
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label", "")).strip()
+        name = str(item.get("name", "")).strip()
+        if not label or not name or label not in NODE_LABELS:
+            continue
+
+        properties: dict[str, str | int] = {}
+        raw_properties = item.get("properties", {})
+        if isinstance(raw_properties, dict):
+            for key, value in raw_properties.items():
+                if not isinstance(key, str):
+                    continue
+                if isinstance(value, str | int):
+                    properties[key] = value
+
+        nodes.append(GraphNode(label=label, name=name, properties=properties))
+        if label != "Chunk":
+            edges.append(
+                GraphEdge(
+                    source_name=chunk_id,
+                    target_name=name,
+                    relation_type="MENTIONS",
+                    source_label="Chunk",
+                    target_label=label,
+                    properties={"origin": "llm"},
+                )
+            )
+
+    for item in payload.get("edges", []):
+        if not isinstance(item, dict):
+            continue
+        relation_type = str(item.get("relation_type", "")).strip()
+        source_node_name = str(item.get("source_name", "")).strip()
+        target_node_name = str(item.get("target_name", "")).strip()
+        source_node_label = str(item.get("source_label", "")).strip() or "Concept"
+        target_node_label = str(item.get("target_label", "")).strip() or "Concept"
+
+        if (
+            not relation_type
+            or relation_type not in RELATIONSHIP_TYPES
+            or not source_node_name
+            or not target_node_name
+            or source_node_label not in NODE_LABELS
+            or target_node_label not in NODE_LABELS
+        ):
+            continue
+
+        edges.append(
+            GraphEdge(
+                source_name=source_node_name,
+                target_name=target_node_name,
+                relation_type=relation_type,
+                source_label=source_node_label,
+                target_label=target_node_label,
+                properties={"origin": "llm"},
+            )
+        )
+
+    if nodes:
+        anchored_nodes = [node for node in nodes if node.label in {"PythonModule", "DocPage", "ExampleNotebook", "TestCase"}]
+        for node in anchored_nodes:
+            if node.name == source_name and node.label == source_label:
+                continue
+            edges.append(
+                GraphEdge(
+                    source_name=source_name,
+                    target_name=node.name,
+                    relation_type="RELATED_TO",
+                    source_label=source_label,
+                    target_label=node.label,
+                    properties={"origin": "llm"},
+                )
+            )
 
     return nodes, edges
 
@@ -570,14 +798,24 @@ def _safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "", value) or "Entity"
 
 
+def _query_terms(query: str) -> list[str]:
+    terms = re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", query.lower())
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        if term in seen:
+            continue
+        seen.add(term)
+        deduped.append(term)
+    return deduped[:12]
+
+
 def _dedupe_nodes(nodes: list[GraphNode]) -> list[GraphNode]:
     deduped: dict[tuple[str, str], GraphNode] = {}
     for node in nodes:
         key = (node.label, node.name)
         if key not in deduped:
-            deduped[key] = GraphNode(
-                label=node.label, name=node.name, properties=dict(node.properties)
-            )
+            deduped[key] = GraphNode(label=node.label, name=node.name, properties=dict(node.properties))
             continue
         deduped[key].properties.update(node.properties)
     return list(deduped.values())
@@ -617,9 +855,7 @@ def _upsert_nodes(session, nodes: list[GraphNode]) -> None:
 
     for label, labeled_nodes in by_label.items():
         safe_label = _safe_name(label)
-        cypher = (
-            f"UNWIND $rows AS row MERGE (n:{safe_label} {{name: row.name}}) SET n += row.properties"
-        )
+        cypher = f"UNWIND $rows AS row MERGE (n:{safe_label} {{name: row.name}}) SET n += row.properties"
         rows = [{"name": n.name, "properties": n.properties} for n in labeled_nodes]
         session.run(cypher, rows=rows)
 

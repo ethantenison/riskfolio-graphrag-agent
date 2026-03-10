@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "riskfolio-graphrag-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Explainable GraphRAG and agentic AI demo over the Riskfolio-Lib codebase and documentation"
 authors = ["Ethan Tenison"]
 license = "MIT"
@@ -8,7 +8,7 @@ readme = "README.md"
 packages = [{ include = "riskfolio_graphrag_agent", from = "src" }]
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "3.13.12"
 typer = { version = "^0.15", extras = ["all"] }
 pydantic-settings = "^2.7"
 python-dotenv = "^1.0"
@@ -16,6 +16,16 @@ neo4j = "^5.26"
 rich = "^13.9"
 fastapi = "^0.135.1"
 uvicorn = "^0.41.0"
+chromadb = "^1.0.20"
+langgraph = "^0.6.7"
+gradio = "^5.0"
+certifi = "^2026.2.25"
+truststore = "^0.10.4"
+opentelemetry-api = "^1.24.0"
+opentelemetry-sdk = "^1.24.0"
+opentelemetry-instrumentation = "^0.46b0"
+langsmith = "^0.3.45"
+pre-commit = "4.5.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3"
@@ -27,28 +37,12 @@ httpx = "^0.28.1"
 riskfolio-agent = "riskfolio_graphrag_agent.cli:app"
 
 [tool.ruff]
+line-length = 130
 target-version = "py313"
-line-length = 100
-src = ["src", "tests"]
+src = ["src"]
 
 [tool.ruff.lint]
-select = [
-  "E",   # pycodestyle errors
-  "W",   # pycodestyle warnings
-  "F",   # pyflakes
-  "I",   # isort
-  "B",   # flake8-bugbear
-  "C4",  # flake8-comprehensions
-  "UP",  # pyupgrade
-]
-ignore = ["E501"]  # handled by formatter
-
-[tool.ruff.lint.isort]
-known-first-party = ["riskfolio_graphrag_agent"]
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
+extend-select = ["A", "E501", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

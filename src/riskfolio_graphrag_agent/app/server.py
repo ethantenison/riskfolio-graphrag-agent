@@ -2,16 +2,50 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+import ssl
+from urllib import request
+from urllib.error import HTTPError, URLError
 
 from fastapi import FastAPI, HTTPException
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from pydantic import BaseModel, Field
 
+from riskfolio_graphrag_agent.agent.workflow import AgentWorkflow
 from riskfolio_graphrag_agent.config.settings import Settings
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
+from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever, RetrievalResult
+from riskfolio_graphrag_agent.runtime_ssl import initialize_ssl_truststore_once
+
+try:
+    import certifi
+except Exception:  # pragma: no cover - optional dependency fallback
+    certifi = None
 
 logger = logging.getLogger(__name__)
+
+
+def _configure_tracing() -> None:
+    provider = trace.get_tracer_provider()
+    if isinstance(provider, TracerProvider):
+        return
+
+    trace.set_tracer_provider(TracerProvider())
+    otlp_exporter = OTLPSpanExporter(endpoint="localhost:4317", insecure=True)
+    trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(otlp_exporter))
+
+
+def _build_ssl_context() -> ssl.SSLContext | None:
+    if initialize_ssl_truststore_once():
+        return None
+    if certifi is None:
+        return None
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 class QueryRequest(BaseModel):
@@ -25,7 +59,7 @@ class QueryResponse(BaseModel):
     """Minimal query response payload."""
 
     answer: str
-    citations: list[dict[str, str | int | list[str]]]
+    citations: list[dict[str, str | int | float | list[str]]]
 
 
 def _extract_query_tokens(question: str) -> list[str]:
@@ -40,17 +74,110 @@ def _extract_query_tokens(question: str) -> list[str]:
     return deduped[:12]
 
 
+def _build_context_preview(context: list[RetrievalResult], max_items: int = 5) -> str:
+    lines: list[str] = []
+    for index, item in enumerate(context[:max_items], start=1):
+        section = str(item.metadata.get("section", "")).strip()
+        chunk_id = str(item.metadata.get("chunk_id", "")).strip()
+        label = section or chunk_id or item.source_path
+        snippet = " ".join(item.content.split())[:500]
+        lines.append(f"[{index}] source={item.source_path} section={label} evidence={snippet}")
+    return "\n".join(lines)
+
+
+def _extract_openai_message_text(payload: dict[str, object]) -> str:
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices:
+        first_choice = choices[0]
+        if isinstance(first_choice, dict):
+            message = first_choice.get("message")
+            if isinstance(message, dict):
+                content = message.get("content")
+                if isinstance(content, str):
+                    return content.strip()
+    return ""
+
+
+def _make_openai_llm_generate(settings: Settings):
+    def _generate(*, question: str, context: list[RetrievalResult], model_name: str) -> str:
+        prompt = (
+            "You are a GraphRAG assistant for Riskfolio-Lib. "
+            "Answer the question strictly using the provided evidence. "
+            "If evidence is insufficient, say that directly and do not invent facts.\n\n"
+            f"Question:\n{question}\n\n"
+            f"Evidence:\n{_build_context_preview(context)}\n\n"
+            "Return a concise answer with factual claims grounded in the evidence."
+        )
+
+        payload = {
+            "model": model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": ("You produce grounded technical answers and avoid unsupported claims."),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.1,
+        }
+        base_url = settings.openai_base_url.rstrip("/")
+        endpoint = f"{base_url}/chat/completions"
+        body = json.dumps(payload).encode("utf-8")
+        http_request = request.Request(
+            url=endpoint,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+        try:
+            with request.urlopen(
+                http_request,
+                timeout=settings.openai_timeout_seconds,
+                context=_build_ssl_context(),
+            ) as response:
+                raw = response.read().decode("utf-8")
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="ignore")
+            raise RuntimeError(f"LLM HTTP error {exc.code}: {detail}") from exc
+        except URLError as exc:
+            raise RuntimeError(f"LLM endpoint unreachable: {exc}") from exc
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("LLM returned non-JSON response") from exc
+
+        answer = _extract_openai_message_text(data)
+        if not answer:
+            raise RuntimeError("LLM response did not contain assistant content")
+        return answer
+
+    return _generate
+
+
 def create_app() -> FastAPI:
     """Create and return a configured FastAPI application instance.
 
     Returns:
         A configured ``FastAPI`` application object.
     """
+    _configure_tracing()
+    initialize_ssl_truststore_once()
     app = FastAPI(title="riskfolio-graphrag-agent", version="0.1.0")
 
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/trace")
+    def trace_info() -> dict[str, str]:
+        """Return a simple trace status for observability demo."""
+        tracer = trace.get_tracer("riskfolio-graphrag-agent")
+        return {"tracer": str(tracer), "provider": str(trace.get_tracer_provider())}
 
     @app.get("/graph/stats")
     def graph_stats() -> dict[str, int | dict[str, int]]:
@@ -75,41 +202,35 @@ def create_app() -> FastAPI:
         if not tokens:
             raise HTTPException(status_code=400, detail="Question must contain searchable text.")
 
-        builder = GraphBuilder(
+        retriever = HybridRetriever(
             neo4j_uri=settings.neo4j_uri,
             neo4j_user=settings.neo4j_user,
             neo4j_password=settings.neo4j_password,
+            top_k=payload.top_k,
+            vector_store_backend=settings.vector_store_backend,
+            chroma_persist_dir=settings.chroma_persist_dir,
+            embedding_dim=settings.embedding_dim,
         )
 
-        cypher = (
-            "MATCH (s)-[:HAS_CHUNK]->(c:Chunk)-[:MENTIONS]->(e) "
-            "WHERE any(token IN $tokens WHERE toLower(e.name) CONTAINS token) "
-            "WITH s, c, collect(DISTINCT e.name)[0..10] AS matched_entities, count(*) AS score "
-            "ORDER BY score DESC LIMIT $top_k "
-            "RETURN s.name AS document, c.source_path AS source_path, "
-            "c.chunk_index AS chunk_index, matched_entities, score"
+        llm_generate = None
+        if settings.openai_enable_generation and settings.openai_api_key.strip():
+            llm_generate = _make_openai_llm_generate(settings)
+
+        workflow = AgentWorkflow(
+            retriever=retriever,
+            model_name=settings.openai_model,
+            llm_generate=llm_generate,
         )
 
         try:
-            driver = builder._ensure_driver()
-            with driver.session() as session:
-                rows = list(session.run(cypher, tokens=tokens, top_k=payload.top_k))
+            state = workflow.run(payload.question)
         except Exception as exc:
             logger.exception("Failed to execute query endpoint")
             raise HTTPException(status_code=503, detail=f"Neo4j unavailable: {exc}") from exc
         finally:
-            builder.close()
+            retriever.close()
 
-        citations: list[dict[str, str | int | list[str]]] = [
-            {
-                "document": str(row["document"]),
-                "source_path": str(row["source_path"]),
-                "chunk_index": int(row["chunk_index"]),
-                "matched_entities": list(row["matched_entities"]),
-                "score": int(row["score"]),
-            }
-            for row in rows
-        ]
+        citations = state.citations
 
         if not citations:
             return QueryResponse(
@@ -117,11 +238,6 @@ def create_app() -> FastAPI:
                 citations=[],
             )
 
-        entity_preview = ", ".join(citations[0]["matched_entities"][:5])
-        answer = (
-            f"I found {len(citations)} matching graph chunks for '{payload.question}'. "
-            f"Top matched entities include: {entity_preview}."
-        )
-        return QueryResponse(answer=answer, citations=citations)
+        return QueryResponse(answer=state.answer, citations=citations)
 
     return app

@@ -54,6 +54,58 @@ This is a **portfolio project** that demonstrates:
               └─────────────┘
 ```
 
+
+### Observability & Tracing
+
+This project is instrumented with OpenTelemetry and LangSmith for full agent workflow tracing and evaluation:
+
+- Agent workflow, retrieval, and graph operations are traced with OpenTelemetry spans.
+- LangSmith tracing decorates agentic workflow for step-level inspection.
+- FastAPI exposes `/trace` endpoint for trace status and demo.
+- Evaluation suite includes faithfulness, grounding, precision/recall, and multi-hop metrics.
+- All code is modular and production-ready for enterprise KG/RAG/agentic AI deployment.
+
+#### OpenTelemetry + Jaeger Setup
+
+To view traces in Jaeger:
+
+1. Start Jaeger with OTLP enabled:
+       ```bash
+       docker run -d --name jaeger \
+         -e COLLECTOR_OTLP_ENABLED=true \
+         -p 4317:4317 \
+         -p 16686:16686 \
+         jaegertracing/all-in-one:latest
+       ```
+       - Port 4317 is for OTLP gRPC (traces from FastAPI).
+       - Port 16686 is for the Jaeger web UI (http://localhost:16686).
+
+2. Restart your FastAPI app:
+       ```bash
+       poetry run riskfolio-agent serve --host 127.0.0.1 --port 8000
+       ```
+
+3. Submit queries (e.g. with curl):
+       ```bash
+       curl -X POST http://127.0.0.1:8000/query -H "Content-Type: application/json" -d '{"question":"HRP in Riskfolio?","top_k":3}'
+       ```
+
+4. Open Jaeger UI at http://localhost:16686 and search for traces from "riskfolio-graphrag-agent".
+
+You’ll see spans for each request, including agent workflow steps (plan, retrieve, reason, verify).
+
+#### LangSmith Tracing
+
+To use LangSmith, set your API key:
+```bash
+export LANGCHAIN_TRACING_V2=true
+export LANGCHAIN_API_KEY=your-key-here
+export LANGCHAIN_PROJECT=RiskfolioGraphRAG
+```
+Restart your app and view traces in your LangSmith dashboard.
+
+This demonstrates advanced governance, explainability, and observability—matching enterprise requirements for roles like Dell’s Knowledge Graph / RAG Agentic AI Expert.
+
 ### Module Map
 
 | Package | Responsibility |
@@ -87,7 +139,7 @@ poetry install
 ### 2 – Configure environment
 
 ```bash
-cp .env.example .env
+#cp .env.example .env
 # Edit .env and fill in OPENAI_API_KEY and RISKFOLIO_SOURCE_DIR
 ```
 
@@ -116,13 +168,23 @@ poetry run riskfolio-agent build-graph
 
 # After changes
 poetry run riskfolio-agent build-graph --drop-existing
+
+# Mini build for fast troubleshooting (first 2 chunks only)
+poetry run riskfolio-agent build-graph --drop-existing --max-chunks 2
+
+# Target a specific window of chunks (skip first 100, then process 2)
+poetry run riskfolio-agent build-graph --drop-existing --chunk-offset 100 --max-chunks 2
 ```
 
-### 6 – Ask a question (planned)
+### 6 – Ask a question
 
 ```bash
+# FastAPI API
 poetry run riskfolio-agent serve --host 127.0.0.1 --port 8000
-# curl -X POST http://127.0.0.1:8000/query -H "Content-Type: application/json" -d '{"question":"Hierarchical Risk Parity (HRP) in Riskfolio?","top_k":3}'
+# curl -X POST http://127.0.0.1:8000/query -H "Content-Type: application/json" -d '{"question":"HRP in Riskfolio?","top_k":3}'
+
+# Gradio chat interface + graph visualisation
+poetry run riskfolio-agent gradio --host 127.0.0.1 --port 7860
 ```
 
 ### API Docs
@@ -143,6 +205,9 @@ Current endpoints:
 
 ```bash
 poetry run riskfolio-agent eval --output eval_results.json
+
+# Legacy deterministic profile (for comparison)
+poetry run riskfolio-agent eval --metric-profile heuristic --output eval_results.json
 ```
 
 ---
@@ -167,17 +232,17 @@ poetry run ruff format src tests
 - [x] Project scaffold (Poetry, src layout, CLI, Docker Compose, CI)
 - [x] Ingestion: AST-based Python chunker with docstring/signature extraction
 - [x] Ingestion: RST/Markdown section splitter
-- [ ] Graph: LLM-driven entity & relationship extraction (spaCy + GPT-4o)
+- [x] Graph: LLM-assisted entity & relationship extraction (OpenAI-compatible JSON + heuristic fallback)
 - [x] Graph: Ontology design for Riskfolio concepts (Portfolio, Asset, Metric, Method)
-- [ ] Retrieval: ChromaDB vector store integration
+- [x] Retrieval: ChromaDB vector store integration
 - [x] Retrieval: Neo4j graph traversal queries (Cypher)
-- [ ] Retrieval: Hybrid re-ranking
-- [ ] Agent: LangGraph workflow with tool use and self-correction
+- [x] Retrieval: Hybrid re-ranking
+- [x] Agent: LangGraph workflow with tool use, model-backed generation, and self-correction
 - [x] App: FastAPI endpoints + OpenAPI docs
-- [ ] App: Gradio chat interface with graph visualisation
-- [ ] Eval: RAGAS-style metrics
-- [ ] Eval: CI evaluation regression gate
-- [ ] Observability: LangSmith / OpenTelemetry tracing
+- [x] App: Gradio chat interface with graph visualisation
+- [x] Eval: RAGAS-style metrics
+- [x] Eval: CI evaluation regression gate
+- [x] Observability: LangSmith / OpenTelemetry tracing
 
 ---
 

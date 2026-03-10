@@ -44,3 +44,57 @@ def test_document_metadata(tmp_source_dir):
     for doc in docs:
         assert "extension" in doc.metadata
         assert "filename" in doc.metadata
+
+
+def test_document_identity_and_provenance_metadata(tmp_source_dir):
+    """Documents should include stable chunk identity and source provenance fields."""
+    docs = load_directory(tmp_source_dir)
+    assert docs
+
+    for doc in docs:
+        relative_path = str(doc.metadata["relative_path"])
+        assert doc.chunk_id == f"{relative_path}::chunk:{doc.chunk_index}"
+        assert len(doc.content_hash) == 64
+        assert doc.section
+        assert doc.line_start >= 1
+        assert doc.line_end >= doc.line_start
+
+        assert doc.metadata["source_path"] == doc.source_path
+        assert doc.metadata["section"] == doc.section
+        assert doc.metadata["line_start"] == doc.line_start
+        assert doc.metadata["line_end"] == doc.line_end
+
+
+def test_load_directory_is_deterministic_and_idempotent(tmp_source_dir):
+    """Repeated loads of same corpus should produce identical chunk identity/metadata."""
+    docs_first = load_directory(tmp_source_dir)
+    docs_second = load_directory(tmp_source_dir)
+
+    def _snapshot(docs: list[Document]) -> list[tuple[str, str, str, int, int, str]]:
+        return [
+            (
+                doc.chunk_id,
+                doc.content_hash,
+                doc.section,
+                doc.line_start,
+                doc.line_end,
+                doc.source_path,
+            )
+            for doc in docs
+        ]
+
+    assert _snapshot(docs_first) == _snapshot(docs_second)
+
+
+def test_rst_section_titles_are_human_readable(tmp_path):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    rst_file = docs_dir / "risk.rst"
+    rst_file.write_text("##############\nRisk Measures\n##############\n\nThe risk module includes CVaR and EVaR.\n")
+
+    docs = load_directory(docs_dir)
+    assert docs
+
+    section_titles = [doc.section for doc in docs]
+    assert "Risk Measures" in section_titles
+    assert not any(title and set(title) <= set("#=-~^`:*") for title in section_titles)
