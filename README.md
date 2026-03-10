@@ -242,7 +242,7 @@ poetry run ruff format src tests
 - [x] App: Gradio chat interface with graph visualisation
 - [x] Eval: RAGAS-style metrics
 - [x] Eval: CI evaluation regression gate
-- [ ] Observability: LangSmith / OpenTelemetry tracing
+- [x] Observability: LangSmith / OpenTelemetry tracing
 
 ---
 
