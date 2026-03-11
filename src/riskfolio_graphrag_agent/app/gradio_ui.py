@@ -394,16 +394,27 @@ _MODE_COLOURS: dict[str, str] = {
 }
 
 _EMPTY_ROUTING_HTML = (
-    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>Submit a query to see adaptive tool-selection routing decisions.</p>"
+    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
+    "Ask a question above to see how the AI decides which search tool to use for each part of your query."
+    "</p>"
 )
 _EMPTY_GROUNDING_HTML = (
-    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>Submit a query to see grounding and faithfulness metrics.</p>"
+    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
+    "Ask a question above to see how well the answer is backed by evidence "
+    "(versus the AI guessing)."
+    "</p>"
 )
 _EMPTY_GRAPH_EVIDENCE_HTML = (
-    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>Submit a query to see graph entities and neighbourhood evidence.</p>"
+    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
+    "Ask a question above to see which concepts and relationships from the knowledge graph "
+    "were used to construct the answer."
+    "</p>"
 )
 _EMPTY_GOVERNANCE_HTML = (
-    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>Submit a query to see governance metrics and cost estimates.</p>"
+    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
+    "Ask a question above to see which AI model was used, what safety guardrails were active, "
+    "and how much the query cost in tokens."
+    "</p>"
 )
 
 
@@ -584,41 +595,118 @@ def _render_governance_html(insights: dict[str, Any]) -> str:
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+_LOADING_HTML = "<p style='color:#6B7280;font-size:13px;padding:8px'>⏳ Searching knowledge graph…</p>"
+
+
+def _format_answer_markdown(answer: str, citations: list) -> str:
+    """Bold entity names from citations when the answer is plain prose."""
+    if not answer:
+        return answer
+    # If already markdown-formatted, trust it as-is
+    if any(c in answer for c in ("**", "##", "\n- ", "\n* ", "\n1.")):
+        return answer
+    entities: set[str] = set()
+    for c in citations:
+        for e in c.get("matched_entities") or []:
+            e_str = str(e).strip()
+            if len(e_str) > 3:
+                entities.add(e_str)
+    formatted = answer
+    for entity in sorted(entities, key=len, reverse=True):
+        if entity in formatted:
+            formatted = formatted.replace(entity, f"**{entity}**", 1)
+    return formatted
+
+
+def _render_summary_card(insights: dict, citations: list) -> str:
+    """One-line 'what just happened' strip shown below the chatbot."""
+    grounding = insights.get("grounding", {})
+    graph_ev = insights.get("graph_evidence", {})
+    gov = insights.get("governance", {})
+    n_sources = grounding.get("citation_count", 0)
+    avg_score = grounding.get("avg_score", 0.0)
+    verified = grounding.get("verified", False)
+    subgraph_nodes = graph_ev.get("subgraph_nodes", 0)
+    cost = gov.get("estimated_cost_usd", 0.0)
+    v_icon = "\u2714 Verified" if verified else "\u2718 Not verified"
+    v_colour = "#10B981" if verified else "#EF4444"
+    return (
+        "<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;"
+        "padding:8px 16px;font-size:12px;color:#475569;display:flex;gap:20px;"
+        "flex-wrap:wrap;margin-top:4px'>"
+        f"<span>\U0001f4da <strong>{n_sources}</strong> sources retrieved</span>"
+        f"<span>\U0001f578 <strong>{subgraph_nodes}</strong> graph nodes</span>"
+        f"<span>\U0001f4ca avg score <strong>{avg_score:.3f}</strong></span>"
+        f"<span style='color:{v_colour}'><strong>{v_icon}</strong></span>"
+        f"<span>\U0001f4b0 est. cost <strong>${cost:.6f}</strong></span>"
+        "</div>"
+    )
+
 
 def create_gradio_app(
     top_k_default: int = 5,
     graph_max_nodes: int = 40,
     graph_max_edges: int = 80,
 ):
-
     def _handle_submit(
         question: str,
         history: list[dict[str, str]] | None,
         top_k: int,
     ):
+        """Generator: first yield shows loading state, second yield shows results."""
+        normalized = question.strip()
+        if not normalized:
+            return
+
+        # ── Loading state – show immediately ──────────────────────────────
+        loading_history = list(history or []) + [
+            {"role": "user", "content": normalized},
+            {"role": "assistant", "content": "⏳ Searching the knowledge graph…"},
+        ]
+        yield (
+            gr.update(),
+            loading_history,
+            _LOADING_HTML,
+            _LOADING_HTML,
+            [],
+            _LOADING_HTML,
+            _render_graph_svg({"nodes": [], "edges": []}),
+            _LOADING_HTML,
+            gr.update(open=False),
+            "",
+            gr.update(),
+        )
+
+        # ── Run the full pipeline ─────────────────────────────────────────
         answer, citations, graph, insights = run_query_with_graph(
-            question,
+            normalized,
             top_k=top_k,
             graph_max_nodes=graph_max_nodes,
             graph_max_edges=graph_max_edges,
         )
-        updated_history = list(history or [])
-        if question.strip():
-            updated_history.append({"role": "user", "content": question})
-            updated_history.append({"role": "assistant", "content": answer})
-        return (
+        formatted_answer = _format_answer_markdown(answer, citations)
+        final_history = list(history or []) + [
+            {"role": "user", "content": normalized},
+            {"role": "assistant", "content": formatted_answer},
+        ]
+        has_graph = bool(graph.get("nodes"))
+        tab_update = gr.update(selected=2) if has_graph else gr.update(selected=0)
+        yield (
             "",
-            updated_history,
+            final_history,
             _render_routing_html(insights),
             _render_grounding_html(insights),
             citations,
             _render_graph_evidence_html(insights),
             _render_graph_svg(graph),
             _render_governance_html(insights),
+            gr.update(open=True),
+            _render_summary_card(insights, citations),
+            tab_update,
         )
 
     with gr.Blocks(
-        title="Riskfolio GraphRAG",
+        title="Portfolio AI Assistant — Knowledge Graph + RAG",
         theme=gr.themes.Soft(),
         css="footer {display:none !important}",
     ) as demo:
@@ -626,13 +714,44 @@ def create_gradio_app(
         gr.HTML(
             "<div style='padding:14px 0 6px'>"
             "<h1 style='margin:0;font-size:22px;font-weight:700;color:#1E293B'>"
-            "Riskfolio GraphRAG</h1>"
-            "<p style='margin:5px 0 0;font-size:13px;color:#64748B'>"
-            "Agentic GraphRAG over Riskfolio-Lib &mdash; "
-            "adaptive tool routing &middot; knowledge-graph retrieval &middot; "
-            "grounded LLM answers &middot; governed, cited, explainable."
+            "Portfolio AI Assistant</h1>"
+            "<p style='margin:6px 0 0;font-size:14px;color:#334155;line-height:1.6'>"
+            "Ask plain-English questions about"
+            " <strong>investment portfolio construction</strong> &mdash;"
+            " how to balance risk and return, which strategies to use,"
+            " and how parameters interact."
+            " Answers are grounded in a <strong>knowledge graph</strong>"
+            " built from the Riskfolio-Lib library."
+            "</p>"
+            "<p style='margin:4px 0 0;font-size:12px;color:#94A3B8'>"
+            "\u26a0\ufe0f Demo only &mdash; not financial advice. "
+            "Source library: "
+            "<a href='https://riskfolio-lib.readthedocs.io/' target='_blank'"
+            " style='color:#3B82F6'>Riskfolio-Lib docs</a>."
             "</p></div>"
         )
+
+        # ── What is portfolio optimization? (collapsible explainer) ───────
+        with gr.Accordion("💡  New here? What is portfolio optimization?", open=False):
+            gr.Markdown(
+                """
+**Portfolio optimization** decides *how to split money across investments*
+to get the best return for a given level of risk (or least risk for a desired return).
+Think of it like packing a suitcase: maximum value, within a weight limit.
+
+**Key terms:**
+| Term | Plain-English meaning |
+|---|---|
+| **MVO (Mean-Variance Optimization)** | Classic: find the "perfect" mix using returns and how assets co-move |
+| **HRP (Hierarchical Risk Parity)** | Modern: groups similar assets, spreads risk evenly — robust to noisy data |
+| **CVaR / Conditional Value at Risk** | "Worst-case loss" measure — how bad can things get in a bad market? |
+| **Covariance / Correlation** | How much two assets move together — low correlation = better diversification |
+| **Efficient Frontier** | All best possible portfolios — each trades off risk vs return |
+| **Rebalancing** | Resetting to target weights as prices drift over time |
+
+**This demo** uses an AI knowledge graph to answer questions — not just guessing.
+                """
+            )
 
         # ── Primary: full-width chat ───────────────────────────────────────
         chatbot = gr.Chatbot(
@@ -642,11 +761,12 @@ def create_gradio_app(
             show_label=False,
             bubble_full_width=False,
         )
+        summary_card = gr.HTML(value="")
 
         # ── Input bar ─────────────────────────────────────────────────────
         with gr.Row(equal_height=True):
             question_box = gr.Textbox(
-                placeholder="Ask a Riskfolio question — e.g. 'How does HRP compare to MVO?'",
+                placeholder="Ask anything — e.g. 'How does HRP compare to MVO?'",
                 lines=2,
                 scale=5,
                 show_label=False,
@@ -658,30 +778,105 @@ def create_gradio_app(
                     maximum=20,
                     value=max(1, int(top_k_default)),
                     step=1,
-                    label="Top-k results",
+                    label="Sources to retrieve",
                 )
                 ask_button = gr.Button("Ask  \u21b5", variant="primary")
 
-        # ── Interview Signals (Tabs) ───────────────────────────────────────
-        with gr.Accordion("\U0001f50d  Interview Signals", open=True):
+        # ── Example questions (defined after question_box so it can be referenced) ──
+        with gr.Accordion("📋  Example questions — click any to load", open=True):
+            gr.Markdown("_Click a question to load it into the box above, then press **Ask**._")
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("**Beginner — no prior knowledge needed**")
+                    gr.Examples(
+                        examples=[
+                            ["What is portfolio optimization and why does it matter?"],
+                            ["How do I reduce risk in an investment portfolio?"],
+                            ["What is diversification and how does it work in practice?"],
+                        ],
+                        inputs=[question_box],
+                        label=None,
+                    )
+                with gr.Column():
+                    gr.Markdown("**Intermediate — comparing strategies**")
+                    gr.Examples(
+                        examples=[
+                            ["How does HRP compare to classical MVO?"],
+                            ["When should I use CVaR instead of variance?"],
+                            ["What constraints can I add to an optimization problem?"],
+                        ],
+                        inputs=[question_box],
+                        label=None,
+                    )
+                with gr.Column():
+                    gr.Markdown("**Advanced — implementation details**")
+                    gr.Examples(
+                        examples=[
+                            ["Which functions in Riskfolio-Lib implement HRP?"],
+                            ["What parameters does the rp_optimization function accept?"],
+                            ["What factor models are available for covariance estimation?"],
+                        ],
+                        inputs=[question_box],
+                        label=None,
+                    )
+
+        # ── Under the Hood: AI Capabilities ───────────────────────────────
+        under_hood_accordion = gr.Accordion("\U0001f50d  Under the Hood: How the AI Works", open=False)
+        with under_hood_accordion:
             gr.Markdown(
-                "_Per-query signals: adaptive tool-selection routing, RAG faithfulness grounding, "
-                "knowledge-graph entity evidence, and production governance controls — "
-                "aligned with the Dell KG / RAG Agentic AI Expert role._"
+                """
+Each query goes through a multi-step agentic workflow.
+The tabs below show what happened when answering your question:
+
+- **Query Routing** — decides *which tool* to use per sub-question
+  (vector search, graph traversal, or hybrid)
+- **Answer Grounding** — verifies the answer is backed by evidence,
+  not hallucinated
+- **Knowledge Graph** — shows which entities and relationships were used
+- **Governance & Cost** — model, guardrails, and token cost
+                """
             )
-            with gr.Tabs():
-                with gr.Tab("\U0001f9ed  Routing"):
+            with gr.Tabs() as inner_tabs:
+                with gr.Tab("\U0001f9ed  Query Routing"):
+                    gr.HTML(
+                        "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                        "The agent breaks your question into sub-questions and "
+                        "routes each to the best tool. "
+                        "<em>Dense</em> = vector search"
+                        " &nbsp;|&nbsp; <em>Graph</em> = KG traversal"
+                        " &nbsp;|&nbsp; <em>Hybrid</em> = both + reranking."
+                        "</p>"
+                    )
                     routing_panel = gr.HTML(value=_EMPTY_ROUTING_HTML)
 
-                with gr.Tab("\u2705  Grounding"):
+                with gr.Tab("\u2705  Answer Grounding"):
+                    gr.HTML(
+                        "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                        "Grounding checks that the answer is supported by retrieved"
+                        " documents — not made up. Higher scores = stronger evidence."
+                        "</p>"
+                    )
                     grounding_panel = gr.HTML(value=_EMPTY_GROUNDING_HTML)
-                    citations_json = gr.JSON(label="Raw citations", value=[])
+                    citations_json = gr.JSON(label="Raw citation records", value=[])
 
-                with gr.Tab("\U0001f578  Graph Evidence"):
+                with gr.Tab("\U0001f578  Knowledge Graph"):
+                    gr.HTML(
+                        "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                        "The knowledge graph stores concepts, functions, and parameters"
+                        " extracted from Riskfolio-Lib source and docs."
+                        " Nodes are colored by type; edges show relationships."
+                        "</p>"
+                    )
                     graph_evidence_panel = gr.HTML(value=_EMPTY_GRAPH_EVIDENCE_HTML)
                     graph_panel = gr.HTML(value=_render_graph_svg({"nodes": [], "edges": []}))
 
                 with gr.Tab("\U0001f6e1  Governance"):
+                    gr.HTML(
+                        "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                        "LLM used, safety guardrails (NL\u2192Cypher injection prevention),"
+                        " adaptive routing status, and estimated cost per query."
+                        "</p>"
+                    )
                     governance_panel = gr.HTML(value=_EMPTY_GOVERNANCE_HTML)
 
         _outputs = [
@@ -693,9 +888,13 @@ def create_gradio_app(
             graph_evidence_panel,
             graph_panel,
             governance_panel,
+            under_hood_accordion,
+            summary_card,
+            inner_tabs,
         ]
-        question_box.submit(_handle_submit, inputs=[question_box, chatbot, top_k_slider], outputs=_outputs)
-        ask_button.click(_handle_submit, inputs=[question_box, chatbot, top_k_slider], outputs=_outputs)
+        _inputs = [question_box, chatbot, top_k_slider]
+        question_box.submit(_handle_submit, inputs=_inputs, outputs=_outputs)
+        ask_button.click(_handle_submit, inputs=_inputs, outputs=_outputs)
 
     return demo
 
