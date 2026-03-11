@@ -77,11 +77,7 @@ def run_query_with_graph(
         neo4j_password=settings.neo4j_password,
     )
     try:
-        graph = graph_builder.get_query_subgraph(
-            normalized_question,
-            max_nodes=max(1, int(graph_max_nodes)),
-            max_edges=max(1, int(graph_max_edges)),
-        )
+        graph = graph_builder.get_query_subgraph(normalized_question)
     except Exception:
         graph = {"nodes": [], "edges": []}
     finally:
@@ -233,6 +229,9 @@ def _render_graph_visjs(graph: dict[str, list[dict[str, Any]]], height: int = 52
         )
 
     vis_nodes: list[dict] = []
+    present_types: list[str] = []
+    seen_types: set[str] = set()
+
     for node in nodes:
         nid = str(node.get("id", ""))
         name = str(node.get("name", "")).strip() or "Unnamed"
@@ -240,14 +239,17 @@ def _render_graph_visjs(graph: dict[str, list[dict[str, Any]]], height: int = 52
         primary = str(labels[0]) if labels else "Concept"
         colour = _NODE_COLOURS.get(primary, _DEFAULT_NODE_COLOUR)
         source = str(node.get("source_path", ""))
-        tooltip = f"<b>{html.escape(name)}</b><br/>Type: {html.escape(primary)}" + (
-            f"<br/>{html.escape(source)}" if source else ""
+        tooltip_html = f"<b>{html.escape(name)}</b><br/>Type: {html.escape(primary)}" + (
+            f"<br/><small style='color:#94A3B8'>{html.escape(source)}</small>" if source else ""
         )
+        if primary not in seen_types:
+            seen_types.add(primary)
+            present_types.append(primary)
         vis_nodes.append(
             {
                 "id": nid,
                 "label": name[:26] + ("\u2026" if len(name) > 26 else ""),
-                "title": tooltip,
+                "_tooltip": tooltip_html,
                 "color": {
                     "background": colour,
                     "border": "#ffffff",
@@ -294,35 +296,58 @@ def _render_graph_visjs(graph: dict[str, list[dict[str, Any]]], height: int = 52
     nodes_json = json.dumps(vis_nodes)
     edges_json = json.dumps(vis_edges)
 
+    # ── Legend ───────────────────────────────────────────────────────────────
+    legend_rows = "".join(
+        "<div style='display:flex;align-items:center;gap:5px;margin:2px 0'>"
+        f"<span style='width:10px;height:10px;border-radius:50%;flex-shrink:0;"
+        f"background:{_NODE_COLOURS.get(pt, _DEFAULT_NODE_COLOUR)};display:inline-block'>"
+        f"</span><span style='font-size:10px;color:#334155'>{html.escape(pt)}</span></div>"
+        for pt in sorted(present_types)
+    )
+    legend_html = (
+        "<div style='position:absolute;bottom:8px;left:8px;"
+        "background:rgba(248,250,252,0.92);border:1px solid #E2E8F0;"
+        "border-radius:6px;padding:8px 12px;max-height:180px;overflow-y:auto;z-index:10'>"
+        "<div style='font-size:9px;font-weight:700;color:#64748B;"
+        f"text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px'>Node Types</div>"
+        f"{legend_rows}</div>"
+    )
+
     inner_html = (
-        "<!DOCTYPE html>"
-        '<html><head><meta charset="utf-8"/>'
-        '<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js">'
-        "</script>"
-        "<style>"
-        f"body{{margin:0;padding:0;background:#F8FAFC;overflow:hidden;}}"
-        f"#g{{width:100%;height:{height}px;}}"
-        ".vis-tooltip{font-family:system-ui,sans-serif;font-size:12px;padding:6px 10px;"
-        "background:#1E293B;color:#F8FAFC;border:none;border-radius:6px;max-width:240px;}"
-        "</style>"
-        "</head>"
-        '<body><div id="g"></div>'
-        "<script>"
+        "<!DOCTYPE html><html><head><meta charset='utf-8'/>"
+        "<script src='https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js'>"
+        "</script><style>"
+        "body{margin:0;padding:0;background:#F8FAFC;overflow:hidden;position:relative}"
+        f"#g{{width:100%;height:{height}px}}"
+        "#tt{position:absolute;pointer-events:none;display:none;background:#1E293B;"
+        "color:#F8FAFC;font-size:12px;padding:6px 10px;border-radius:6px;max-width:240px;"
+        "z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.3);line-height:1.5;"
+        "font-family:system-ui,sans-serif}"
+        f"</style></head><body><div id='g'></div>{legend_html}"
+        "<div id='tt'></div><script>"
         f"var nodes=new vis.DataSet({nodes_json});"
         f"var edges=new vis.DataSet({edges_json});"
-        "var options={"
-        "physics:{enabled:true,"
-        "barnesHut:{gravitationalConstant:-7000,centralGravity:0.25,"
-        "springLength:130,springConstant:0.04},"
+        "var opt={physics:{enabled:true,barnesHut:{gravitationalConstant:-7000,"
+        "centralGravity:0.25,springLength:130,springConstant:0.04},"
         "stabilization:{iterations:200,fit:true}},"
-        "interaction:{hover:true,tooltipDelay:80,"
-        "zoomView:true,dragNodes:true,dragView:true},"
+        "interaction:{hover:true,zoomView:true,dragNodes:true,dragView:true},"
         "nodes:{shape:'dot',borderWidth:2,borderWidthSelected:3},"
-        "edges:{selectionWidth:3},"
-        "layout:{improvedLayout:true}};"
-        "new vis.Network(document.getElementById('g'),{nodes:nodes,edges:edges},options);"
-        "</script>"
-        "</body></html>"
+        "edges:{selectionWidth:3},layout:{improvedLayout:true}};"
+        "var net=new vis.Network(document.getElementById('g'),{nodes:nodes,edges:edges},opt);"
+        "var tt=document.getElementById('tt');"
+        "net.on('hoverNode',function(p){"
+        "var n=nodes.get(p.node);"
+        "if(n&&n._tooltip){tt.innerHTML=n._tooltip;tt.style.display='block';"
+        "tt.style.left=(p.pointer.DOM.x+12)+'px';tt.style.top=(p.pointer.DOM.y-10)+'px'}"
+        "});"
+        "net.on('blurNode',function(){tt.style.display='none'});"
+        "net.on('dragStart',function(){tt.style.display='none'});"
+        "net.on('zoom',function(){tt.style.display='none'});"
+        "net.once('stabilizationIterationsDone',function(){"
+        "net.fit({animation:false});"
+        "net.moveTo({scale:net.getScale()*1.4});"
+        "});"
+        "</script></body></html>"
     )
 
     srcdoc = html.escape(inner_html, quote=True)
@@ -600,9 +625,9 @@ def create_gradio_app(
     def _handle_submit(
         question: str,
         history: list[dict[str, str]] | None,
-        top_k: int,
     ):
         """Generator: first yield shows loading state, second yield shows results."""
+        top_k = 15
         normalized = question.strip()
         if not normalized:
             return
@@ -621,8 +646,6 @@ def create_gradio_app(
             _LOADING_HTML,
             _render_graph_visjs({"nodes": [], "edges": []}),
             _LOADING_HTML,
-            gr.update(open=False),
-            "",
             gr.update(),
         )
 
@@ -647,42 +670,43 @@ def create_gradio_app(
             _render_graph_evidence_html(insights),
             _render_graph_visjs(graph),
             _render_governance_html(insights),
-            gr.update(open=True),
-            _render_summary_card(insights, citations, top_k),
             gr.update(selected=0),
         )
 
     with gr.Blocks(
         title="Portfolio AI Assistant — Knowledge Graph + RAG",
         theme=gr.themes.Soft(),
-        css="footer {display:none !important}",
+        css=(
+            "@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');"
+            "* { font-family: 'Roboto', sans-serif !important; }"
+            "footer {display:none !important}"
+        ),
     ) as demo:
         # ── Header ────────────────────────────────────────────────────────
         gr.HTML(
-            "<div style='padding:14px 0 6px'>"
-            "<h1 style='margin:0;font-size:22px;font-weight:700;color:#1E293B'>"
-            "Portfolio AI Assistant</h1>"
-            "<p style='margin:6px 0 0;font-size:14px;color:#334155;line-height:1.6'>"
-            "Ask plain-English questions about"
-            " <strong>investment portfolio construction</strong> &mdash;"
-            " how to balance risk and return, which strategies to use,"
-            " and how parameters interact."
-            " Answers are grounded in a <strong>knowledge graph</strong>"
-            " built from the Riskfolio-Lib library."
+            "<div style='padding:14px 0 10px;border-bottom:1px solid #E2E8F0;margin-bottom:12px'>"
+            "<h1 style='margin:0;font-size:24px;font-weight:700;color:#1E293B'>"
+            "Riskfolio-Lib &mdash; GraphRAG + Agentic AI Demo</h1>"
+            "<p style='margin:8px 0 6px;font-size:14px;color:#334155;line-height:1.7'>"
+            "A <strong>production-style knowledge graph RAG system</strong> built over the"
+            " <a href='https://riskfolio-lib.readthedocs.io/' target='_blank'"
+            " style='color:#3B82F6;text-decoration:none'>Riskfolio-Lib</a>"
+            " portfolio optimisation library."
+            " Entities (functions, classes, parameters, concepts) are extracted from"
+            " source code and documentation and stored in <strong>Neo4j</strong>."
+            " Each query runs a <strong>LangGraph agentic workflow</strong>"
+            " &mdash; plan, retrieve, reason, verify &mdash; combining"
+            " <strong>vector similarity search</strong> with"
+            " <strong>graph-neighbourhood traversal</strong> for hybrid retrieval."
             "</p>"
-            "<p style='margin:4px 0 0;font-size:12px;color:#94A3B8'>"
-            "\u26a0\ufe0f Demo only &mdash; not financial advice. "
-            "Source library: "
-            "<a href='https://riskfolio-lib.readthedocs.io/' target='_blank'"
-            " style='color:#3B82F6'>Riskfolio-Lib docs</a>."
-            "</p></div>"
+            "</div>"
         )
 
-        # ── Example questions (3 quick-start, click to load below) ──────────
-        # question_box is created here with render=False so gr.Examples can
-        # reference it; it renders visually in the input row below.
+        # ── Example questions ───────────────────────────────────────────────────
+        # question_box created with render=False so gr.Examples can
+        # reference it before it's placed in the input row below.
         question_box = gr.Textbox(
-            placeholder="Ask anything — e.g. 'How does HRP compare to MVO?'",
+            placeholder="Ask anything — e.g. 'What is a Risk Parity Portfolio?'",
             lines=2,
             scale=5,
             show_label=False,
@@ -699,20 +723,12 @@ def create_gradio_app(
             label="📋 Example questions — click any to load it below, then press Ask",
         )
 
-        # ── Input bar ────────────────────────────────────────────────────────
+        # ── Input bar ─────────────────────────────────────────────────────────────
         with gr.Row(equal_height=True):
             question_box.render()
-            with gr.Column(scale=1, min_width=160):
-                top_k_slider = gr.Slider(
-                    minimum=1,
-                    maximum=20,
-                    value=max(1, int(top_k_default)),
-                    step=1,
-                    label="Sources to retrieve",
-                )
-                ask_button = gr.Button("Ask  ↵", variant="primary")
+            ask_button = gr.Button("Ask  ↵", variant="primary", scale=0, min_width=100)
 
-        # ── Chat + summary card ───────────────────────────────────────────────
+        # ── Chat history ────────────────────────────────────────────────────────────
         chatbot = gr.Chatbot(
             label="",
             height=520,
@@ -720,66 +736,64 @@ def create_gradio_app(
             show_label=False,
             bubble_full_width=False,
         )
-        summary_card = gr.HTML(value="")
+        gr.HTML(
+            "<p style='margin:4px 0 8px;font-size:12px;color:#94A3B8'>"
+            "\u26a0\ufe0f Demo only &mdash; not financial advice. "
+            "Source library: "
+            "<a href='https://riskfolio-lib.readthedocs.io/' target='_blank'"
+            " style='color:#3B82F6'>Riskfolio-Lib docs</a>."
+            "</p>"
+        )
 
-        # ── Under the Hood (auto-opens after each query) ──────────────────────
-        under_hood_accordion = gr.Accordion("🔍  Under the Hood: How the AI Works", open=False)
-        with under_hood_accordion:
-            gr.Markdown(
-                """
-Each query goes through a multi-step agentic workflow.
-The tabs below show what happened when answering your question:
+        # ── Under the Hood ───────────────────────────────────────────────────────────
+        gr.Markdown(
+            "### 🔍 Under the Hood: How the AI Works\n\n"
+            "Each query goes through a multi-step agentic workflow. "
+            "The tabs below show what happened when answering your question."
+        )
+        with gr.Tabs() as inner_tabs:
+            with gr.Tab("🕸  Knowledge Graph"):
+                gr.HTML(
+                    "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                    "Concepts and relationships retrieved from the Riskfolio-Lib"
+                    " knowledge base for your query."
+                    "</p>"
+                )
+                graph_panel = gr.HTML(value=_render_graph_visjs({"nodes": [], "edges": []}))
+                graph_evidence_panel = gr.HTML(value=_EMPTY_GRAPH_EVIDENCE_HTML)
 
-- **Knowledge Graph** — concepts and relationships retrieved from the KG
-- **Query Routing** — decides *which tool* to use per sub-question
-  (vector search, graph traversal, or hybrid)
-- **Answer Grounding** — verifies the answer is backed by evidence, not hallucinated
-- **Governance & Cost** — model, guardrails, and token cost
-                """
-            )
-            with gr.Tabs() as inner_tabs:
-                with gr.Tab("🕸  Knowledge Graph"):
-                    gr.HTML(
-                        "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
-                        "Concepts and relationships retrieved from the Riskfolio-Lib"
-                        " knowledge base for your query."
-                        "</p>"
-                    )
-                    graph_panel = gr.HTML(value=_render_graph_visjs({"nodes": [], "edges": []}))
-                    graph_evidence_panel = gr.HTML(value=_EMPTY_GRAPH_EVIDENCE_HTML)
+            with gr.Tab("🧭  Query Routing"):
+                gr.HTML(
+                    "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                    "The agent breaks your question into sub-questions and"
+                    " routes each to the best tool."
+                    " <em>Dense</em> = vector search"
+                    " &nbsp;|&nbsp; <em>Graph</em> = KG traversal"
+                    " &nbsp;|&nbsp; <em>Hybrid</em> = both + reranking."
+                    "</p>"
+                )
+                routing_panel = gr.HTML(value=_EMPTY_ROUTING_HTML)
 
-                with gr.Tab("🧭  Query Routing"):
-                    gr.HTML(
-                        "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
-                        "The agent breaks your question into sub-questions and"
-                        " routes each to the best tool."
-                        " <em>Dense</em> = vector search"
-                        " &nbsp;|&nbsp; <em>Graph</em> = KG traversal"
-                        " &nbsp;|&nbsp; <em>Hybrid</em> = both + reranking."
-                        "</p>"
-                    )
-                    routing_panel = gr.HTML(value=_EMPTY_ROUTING_HTML)
+            with gr.Tab("✅  Answer Grounding"):
+                gr.HTML(
+                    "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                    "Grounding checks that the answer is supported by retrieved"
+                    " documents — not made up."
+                    " Higher scores = stronger evidence."
+                    "</p>"
+                )
+                grounding_panel = gr.HTML(value=_EMPTY_GROUNDING_HTML)
+                citations_json = gr.JSON(label="Raw citation records", value=[])
 
-                with gr.Tab("✅  Answer Grounding"):
-                    gr.HTML(
-                        "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
-                        "Grounding checks that the answer is supported by retrieved"
-                        " documents — not made up."
-                        " Higher scores = stronger evidence."
-                        "</p>"
-                    )
-                    grounding_panel = gr.HTML(value=_EMPTY_GROUNDING_HTML)
-                    citations_json = gr.JSON(label="Raw citation records", value=[])
-
-                with gr.Tab("🛡  Governance"):
-                    gr.HTML(
-                        "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
-                        "LLM used, safety guardrails"
-                        " (NL→Cypher injection prevention),"
-                        " adaptive routing, and estimated cost per query."
-                        "</p>"
-                    )
-                    governance_panel = gr.HTML(value=_EMPTY_GOVERNANCE_HTML)
+            with gr.Tab("🛡  Governance"):
+                gr.HTML(
+                    "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                    "LLM used, safety guardrails"
+                    " (NL→Cypher injection prevention),"
+                    " adaptive routing, and estimated cost per query."
+                    "</p>"
+                )
+                governance_panel = gr.HTML(value=_EMPTY_GOVERNANCE_HTML)
 
         _outputs = [
             question_box,
@@ -790,11 +804,9 @@ The tabs below show what happened when answering your question:
             graph_evidence_panel,
             graph_panel,
             governance_panel,
-            under_hood_accordion,
-            summary_card,
             inner_tabs,
         ]
-        _inputs = [question_box, chatbot, top_k_slider]
+        _inputs = [question_box, chatbot]
         question_box.submit(_handle_submit, inputs=_inputs, outputs=_outputs)
         ask_button.click(_handle_submit, inputs=_inputs, outputs=_outputs)
 
@@ -804,7 +816,7 @@ The tabs below show what happened when answering your question:
 def launch_gradio_app(
     host: str = "127.0.0.1",
     port: int = 7860,
-    top_k_default: int = 10,
+    top_k_default: int = 15,
     graph_max_nodes: int = 40,
     graph_max_edges: int = 80,
 ) -> None:
@@ -813,4 +825,4 @@ def launch_gradio_app(
         graph_max_nodes=graph_max_nodes,
         graph_max_edges=graph_max_edges,
     )
-    app.launch(server_name=host, server_port=port, show_api=False)
+    app.launch(server_name=host, server_port=port, show_api=False, share=True)
