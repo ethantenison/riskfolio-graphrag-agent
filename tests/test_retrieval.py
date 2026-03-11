@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 from riskfolio_graphrag_agent.ingestion.loader import Document
+from riskfolio_graphrag_agent.retrieval.embeddings import HashEmbeddingProvider
 from riskfolio_graphrag_agent.retrieval.retriever import (
     ChromaVectorStore,
     HybridRetriever,
@@ -114,7 +116,7 @@ def test_chroma_vector_store_upsert_and_query():
     store = ChromaVectorStore(
         persist_dir=".ignored",
         collection_name="test_chunks",
-        embedding_dim=64,
+        embedding_provider=HashEmbeddingProvider(dimension=64),
         client=client,
     )
 
@@ -159,18 +161,30 @@ def test_graph_expand_stub():
 
 def test_hybrid_retriever_retrieve_stub():
     """HybridRetriever.retrieve should return a list (empty in stub mode)."""
-    retriever = HybridRetriever(
-        neo4j_uri="bolt://localhost:7687",
-        neo4j_user="neo4j",
-        neo4j_password="password",
-        top_k=3,
-        vector_store=_FakeVectorStore(),
-    )
-    try:
-        results = retriever.retrieve("What is portfolio optimisation?")
-        assert isinstance(results, list)
-    finally:
-        retriever.close()
+    mock_session = MagicMock()
+    mock_session.__enter__ = MagicMock(return_value=mock_session)
+    mock_session.__exit__ = MagicMock(return_value=False)
+    mock_session.run.return_value = iter([])
+
+    mock_driver = MagicMock()
+    mock_driver.session.return_value = mock_session
+
+    with patch(
+        "riskfolio_graphrag_agent.retrieval.retriever.GraphDatabase.driver",
+        return_value=mock_driver,
+    ):
+        retriever = HybridRetriever(
+            neo4j_uri="bolt://localhost:7687",
+            neo4j_user="neo4j",
+            neo4j_password="password",
+            top_k=3,
+            vector_store=_FakeVectorStore(),
+        )
+        try:
+            results = retriever.retrieve("What is portfolio optimisation?")
+            assert isinstance(results, list)
+        finally:
+            retriever.close()
 
 
 def test_hash_embedding_is_deterministic():

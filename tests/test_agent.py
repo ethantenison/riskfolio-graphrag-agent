@@ -15,7 +15,11 @@ from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
 
 
 class _FakeRetriever:
-    def retrieve(self, query: str) -> list[RetrievalResult]:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str | None]] = []
+
+    def retrieve(self, query: str, mode_override: str | None = None) -> list[RetrievalResult]:
+        self.calls.append((query, mode_override))
         _ = query
         return [
             RetrievalResult(
@@ -101,3 +105,25 @@ def test_workflow_compiles_langgraph_when_available():
     workflow = AgentWorkflow(retriever=_FakeRetriever())
     if is_langgraph_enabled():
         assert workflow._graph is not None
+
+
+def test_retrieve_uses_query_router_mode_override():
+    class _FakeRouter:
+        def decide(self, query: str):
+            _ = query
+
+            class _Decision:
+                mode = "graph"
+                confidence = 0.92
+                reason = "graph_intent"
+
+            return _Decision()
+
+    retriever = _FakeRetriever()
+    state = AgentState(question="How are HRP and CVaR related?", sub_questions=["How are HRP and CVaR related?"])
+    state = _retrieve(state, retriever=retriever, query_router=_FakeRouter())
+
+    assert retriever.calls
+    assert retriever.calls[0][1] == "graph"
+    assert state.context
+    assert state.context[0].metadata["retrieval_mode"] == "graph"

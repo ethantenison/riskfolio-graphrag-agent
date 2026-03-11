@@ -61,12 +61,26 @@ class Settings(BaseSettings):
     openai_enable_graph_extraction: bool = True
 
     # Embeddings
+    embedding_provider: Literal["hash", "openai"] = "hash"
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
 
     # Vector store
-    vector_store_backend: Literal["chroma", "qdrant"] = "chroma"
+    vector_store_backend: Literal["chroma", "neo4j", "qdrant"] = "chroma"
     chroma_persist_dir: str = ".chroma"
+    retrieval_mode: Literal["dense", "sparse", "graph", "hybrid_rerank"] = "hybrid_rerank"
+    adaptive_tool_routing_enabled: bool = True
+    adaptive_tool_routing_min_confidence: float = 0.2
+
+    # Tracing and observability
+    tracing_enabled: bool = True
+    tracing_otlp_endpoint: str = "localhost:4317"
+    tracing_otlp_insecure: bool = True
+    default_tenant_id: str = "demo-tenant"
+    observability_sli_path: str = "artifacts/observability/sli_report.json"
+    observability_drift_threshold: float = 0.2
+    observability_freshness_hours: int = 24
+    cypher_audit_log_path: str = "artifacts/audit/nl2cypher_audit.jsonl"
 
     # Logging
     log_level: str = "INFO"
@@ -89,3 +103,19 @@ class Settings(BaseSettings):
             return "chroma"
         text = str(value).strip().lower()
         return text if text else "chroma"
+
+    @field_validator("embedding_provider", mode="before")
+    @classmethod
+    def _normalize_embedding_provider(cls, value: object) -> str:
+        if value is None:
+            return "hash"
+        text = str(value).strip().lower()
+        return text if text else "hash"
+
+    @field_validator("retrieval_mode", mode="before")
+    @classmethod
+    def _normalize_retrieval_mode(cls, value: object) -> str:
+        if value is None:
+            return "hybrid_rerank"
+        text = str(value).strip().lower()
+        return text if text else "hybrid_rerank"

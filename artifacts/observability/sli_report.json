@@ -1,0 +1,28 @@
+{
+  "status": "healthy",
+  "generated_at_utc": "2026-03-10T16:11:00.433617+00:00",
+  "sli": {
+    "answer_faithfulness": 0.4051,
+    "grounding": 0.421,
+    "avg_latency_ms": 112.3,
+    "estimated_cost_usd": 0.00093,
+    "drift_score": 0.08,
+    "data_freshness_hours": 6.0
+  },
+  "slo": {
+    "faithfulness_met": true,
+    "grounding_met": true,
+    "latency_met": true,
+    "cost_met": true,
+    "drift_met": true,
+    "freshness_met": true
+  },
+  "targets": {
+    "min_answer_faithfulness": 0.4,
+    "min_grounding": 0.4,
+    "max_avg_latency_ms": 3000.0,
+    "max_estimated_cost_usd": 0.02,
+    "drift_threshold": 0.2,
+    "freshness_budget_hours": 24
+  }
+}

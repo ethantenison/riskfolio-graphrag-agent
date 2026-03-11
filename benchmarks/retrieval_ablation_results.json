@@ -1,0 +1,26 @@
+{
+  "fixed_eval_set": "riskfolio_graphrag_agent.eval.evaluator.DEFAULT_EVAL_SAMPLES",
+  "winner": "sparse",
+  "results": [
+    {
+      "mode": "dense",
+      "context_recall": 0.24,
+      "context_precision": 0.075
+    },
+    {
+      "mode": "sparse",
+      "context_recall": 0.25,
+      "context_precision": 0.0757
+    },
+    {
+      "mode": "graph",
+      "context_recall": 0.23,
+      "context_precision": 0.0775
+    },
+    {
+      "mode": "hybrid_rerank",
+      "context_recall": 0.12,
+      "context_precision": 0.0518
+    }
+  ]
+}

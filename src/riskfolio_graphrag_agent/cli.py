@@ -28,10 +28,12 @@ import uvicorn
 from rich.console import Console
 
 from riskfolio_graphrag_agent.config.settings import Settings
+from riskfolio_graphrag_agent.er.pipeline import EntityRecord, run_er_pipeline
 from riskfolio_graphrag_agent.eval.evaluator import Evaluator, build_default_eval_samples
 from riskfolio_graphrag_agent.eval.regression_gate import run_regression_gate
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
 from riskfolio_graphrag_agent.ingestion.loader import Document, load_directory, summarize_documents
+from riskfolio_graphrag_agent.retrieval.embeddings import resolve_embedding_provider
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
 from riskfolio_graphrag_agent.runtime_ssl import initialize_ssl_truststore_once
 
@@ -58,6 +60,18 @@ def _configure_logging(log_level: str) -> None:
         level=level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         force=True,
+    )
+
+
+def _resolve_embedding(settings: Settings):
+    return resolve_embedding_provider(
+        provider_name=settings.embedding_provider,
+        embedding_dim=settings.embedding_dim,
+        openai_api_key=settings.openai_api_key,
+        openai_embedding_model=settings.embedding_model,
+        openai_base_url=settings.openai_base_url,
+        openai_timeout_seconds=settings.openai_timeout_seconds,
+        ssl_context=_build_ssl_context(),
     )
 
 
@@ -276,6 +290,7 @@ def ingest(
         source_dir: Optional path override for the source directory.
     """
     settings = Settings()
+    provider_resolution = _resolve_embedding(settings)
     source_dirs = _resolve_focus_directories(source_dir, settings)
     documents = _load_from_directories(source_dirs)
     summary = summarize_documents(documents)
@@ -286,7 +301,8 @@ def ingest(
         neo4j_password=settings.neo4j_password,
         vector_store_backend=settings.vector_store_backend,
         chroma_persist_dir=settings.chroma_persist_dir,
-        embedding_dim=settings.embedding_dim,
+        embedding_provider=provider_resolution.provider,
+        retrieval_mode=settings.retrieval_mode,
     )
     try:
         upserted = retriever.upsert_documents(documents)
@@ -297,9 +313,12 @@ def ingest(
         "[bold cyan]ingest[/]",
         f"files={summary['files']} chunks={summary['chunks']}",
         f"vector_upserted={upserted}",
+        f"embedding_provider={provider_resolution.selected_provider}",
         "from",
         ", ".join(str(path) for path in source_dirs),
     )
+    if provider_resolution.fallback_reason:
+        console.print(f"  - embedding_fallback_reason: {provider_resolution.fallback_reason}")
     by_source_type = summary.get("by_source_type", {})
     if isinstance(by_source_type, dict):
         for source_type, count in sorted(by_source_type.items()):
@@ -430,12 +449,27 @@ def eval_command(
         output_file: Path where the JSON results will be written.
     """
     settings = Settings()
+    provider_resolution = _resolve_embedding(settings)
     samples = build_default_eval_samples()
+    er_entities = [
+        EntityRecord(entity_id="e1", name="Hierarchical Risk Parity", source="docs"),
+        EntityRecord(entity_id="e2", name="hierarchical-risk-parity", source="code"),
+        EntityRecord(entity_id="e3", name="CVaR", source="docs"),
+    ]
+    er_result = run_er_pipeline(
+        er_entities,
+        gold_pairs={("e1", "e2")},
+        audit_dir="artifacts/er",
+    )
     retriever = HybridRetriever(
         neo4j_uri=settings.neo4j_uri,
         neo4j_user=settings.neo4j_user,
         neo4j_password=settings.neo4j_password,
         top_k=5,
+        vector_store_backend=settings.vector_store_backend,
+        chroma_persist_dir=settings.chroma_persist_dir,
+        embedding_provider=provider_resolution.provider,
+        retrieval_mode=settings.retrieval_mode,
     )
 
     try:
@@ -447,6 +481,15 @@ def eval_command(
             samples=samples,
             retriever=retriever,
             metric_profile=normalized_profile,
+            runtime_config={
+                "retrieval_mode": settings.retrieval_mode,
+                "embedding_provider": provider_resolution.selected_provider,
+            },
+            er_metrics={
+                "precision": er_result.metrics.precision if er_result.metrics else 0.0,
+                "recall": er_result.metrics.recall if er_result.metrics else 0.0,
+                "f1": er_result.metrics.f1 if er_result.metrics else 0.0,
+            },
         )
         report = evaluator.run()
         evaluator.save(output_file)
@@ -460,10 +503,43 @@ def eval_command(
             f"precision={report.context_precision:.3f} "
             f"faithfulness={report.answer_faithfulness:.3f} "
             f"relevance={report.answer_relevance:.3f} "
+            f"grounding={report.grounding:.3f} "
+            f"multi_hop={report.multi_hop_accuracy:.3f} "
+            f"latency_ms={report.avg_latency_ms:.1f} "
+            f"cost=${report.estimated_cost_usd:.6f} "
             f"profile={report.metric_profile}"
         ),
     )
     console.print(f"saved report to {output_file}")
+
+
+@app.command(name="er-eval")
+def er_eval(
+    output_dir: str = typer.Option("artifacts/er", "--output-dir", help="Directory for ER audit output."),
+) -> None:
+    """Run entity-resolution evaluation and write audit artifacts."""
+    entities = [
+        EntityRecord(entity_id="e1", name="Hierarchical Risk Parity", source="docs"),
+        EntityRecord(entity_id="e2", name="hierarchical-risk-parity", source="code"),
+        EntityRecord(entity_id="e3", name="CVaR", source="docs"),
+        EntityRecord(entity_id="e4", name="conditional value at risk", source="docs"),
+    ]
+
+    result = run_er_pipeline(
+        entities,
+        gold_pairs={("e1", "e2"), ("e3", "e4")},
+        audit_dir=output_dir,
+    )
+
+    metrics = result.metrics
+    console.print(
+        "[bold cyan]er-eval[/]",
+        f"canonical_entities={len(result.canonical_entities)}",
+        f"precision={metrics.precision if metrics else 0.0:.3f}",
+        f"recall={metrics.recall if metrics else 0.0:.3f}",
+        f"f1={metrics.f1 if metrics else 0.0:.3f}",
+        f"audit={Path(output_dir) / 'er_audit.json'}",
+    )
 
 
 @app.command(name="eval-gate")

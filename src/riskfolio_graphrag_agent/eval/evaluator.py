@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -35,6 +36,18 @@ class EvalReport:
     context_precision: float = 0.0
     answer_faithfulness: float = 0.0
     answer_relevance: float = 0.0
+    grounding: float = 0.0
+    multi_hop_accuracy: float = 0.0
+    er_precision: float = 0.0
+    er_recall: float = 0.0
+    er_f1: float = 0.0
+    link_prediction_mrr: float = 0.0
+    link_prediction_hits_at_3: float = 0.0
+    link_prediction_hits_at_10: float = 0.0
+    avg_latency_ms: float = 0.0
+    estimated_cost_usd: float = 0.0
+    retrieval_mode: str = "hybrid_rerank"
+    embedding_provider: str = "hash"
     metric_profile: str = "ragas-style"
     per_sample: list[dict[str, str | float | int]] = field(default_factory=list)
 
@@ -47,10 +60,14 @@ class Evaluator:
         samples: list[EvalSample],
         retriever: HybridRetriever | None = None,
         metric_profile: Literal["ragas-style", "heuristic"] = "ragas-style",
+        runtime_config: dict[str, str] | None = None,
+        er_metrics: dict[str, float] | None = None,
     ) -> None:
         self._samples = samples
         self._retriever = retriever
         self._metric_profile = metric_profile
+        self._runtime_config = runtime_config or {}
+        self._er_metrics = er_metrics or {}
 
     def run(self) -> EvalReport:
         logger.info("Running evaluation over %d samples.", len(self._samples))
@@ -59,10 +76,19 @@ class Evaluator:
         precision_scores: list[float] = []
         faithfulness_scores: list[float] = []
         relevance_scores: list[float] = []
+        grounding_scores: list[float] = []
+        multihop_scores: list[float] = []
+        link_mrr_scores: list[float] = []
+        link_hits_3_scores: list[float] = []
+        link_hits_10_scores: list[float] = []
+        latency_ms_scores: list[float] = []
+        estimated_cost_scores: list[float] = []
         per_sample: list[dict[str, str | float | int]] = []
 
         for sample in self._samples:
+            started_at = time.perf_counter()
             results = self._retrieve(sample.question)
+            latency_ms = (time.perf_counter() - started_at) * 1000.0
             sample.retrieved_contexts = [result.content for result in results]
             sample.retrieved_sources = [result.source_path for result in results]
             sample.generated_answer = _synthesize_answer(sample.question, results)
@@ -86,10 +112,22 @@ class Evaluator:
                 )
                 relevance = _ragas_style_answer_relevance(sample.question, sample.generated_answer)
 
+            grounding = _answer_faithfulness(sample.generated_answer, sample.retrieved_contexts)
+            multi_hop = _multi_hop_accuracy(results)
+            link_prediction = _link_prediction_proxy(expected_terms, sample.retrieved_contexts)
+            estimated_cost = _estimated_cost_usd(sample.question, sample.generated_answer, sample.retrieved_contexts)
+
             recall_scores.append(recall)
             precision_scores.append(precision)
             faithfulness_scores.append(faithfulness)
             relevance_scores.append(relevance)
+            grounding_scores.append(grounding)
+            multihop_scores.append(multi_hop)
+            link_mrr_scores.append(link_prediction["mrr"])
+            link_hits_3_scores.append(link_prediction["hits_at_3"])
+            link_hits_10_scores.append(link_prediction["hits_at_10"])
+            latency_ms_scores.append(latency_ms)
+            estimated_cost_scores.append(estimated_cost)
 
             per_sample.append(
                 {
@@ -98,6 +136,10 @@ class Evaluator:
                     "context_precision": round(precision, 4),
                     "answer_faithfulness": round(faithfulness, 4),
                     "answer_relevance": round(relevance, 4),
+                    "grounding": round(grounding, 4),
+                    "multi_hop_accuracy": round(multi_hop, 4),
+                    "latency_ms": round(latency_ms, 2),
+                    "estimated_cost_usd": round(estimated_cost, 6),
                     "retrieved_contexts": len(sample.retrieved_contexts),
                 }
             )
@@ -108,6 +150,18 @@ class Evaluator:
             context_precision=_mean(precision_scores),
             answer_faithfulness=_mean(faithfulness_scores),
             answer_relevance=_mean(relevance_scores),
+            grounding=_mean(grounding_scores),
+            multi_hop_accuracy=_mean(multihop_scores),
+            er_precision=float(self._er_metrics.get("precision", 0.0)),
+            er_recall=float(self._er_metrics.get("recall", 0.0)),
+            er_f1=float(self._er_metrics.get("f1", 0.0)),
+            link_prediction_mrr=_mean(link_mrr_scores),
+            link_prediction_hits_at_3=_mean(link_hits_3_scores),
+            link_prediction_hits_at_10=_mean(link_hits_10_scores),
+            avg_latency_ms=_mean(latency_ms_scores),
+            estimated_cost_usd=_mean(estimated_cost_scores),
+            retrieval_mode=str(self._runtime_config.get("retrieval_mode", "hybrid_rerank")),
+            embedding_provider=str(self._runtime_config.get("embedding_provider", "hash")),
             metric_profile=self._metric_profile,
             per_sample=per_sample,
         )
@@ -305,3 +359,37 @@ def _jaccard(left: set[str], right: set[str]) -> float:
     if not union:
         return 0.0
     return len(left & right) / len(union)
+
+
+def _multi_hop_accuracy(results: list[RetrievalResult]) -> float:
+    if not results:
+        return 0.0
+    supporting = sum(1 for result in results if len(result.graph_neighbours) >= 2 or len(result.related_entities) >= 2)
+    return supporting / len(results)
+
+
+def _link_prediction_proxy(expected_terms: list[str], contexts: list[str]) -> dict[str, float]:
+    if not contexts:
+        return {"mrr": 0.0, "hits_at_3": 0.0, "hits_at_10": 0.0}
+
+    expected_lower = [term.lower() for term in expected_terms]
+    first_hit_rank = 0
+    for idx, context in enumerate(contexts, start=1):
+        lowered = context.lower()
+        if any(term in lowered for term in expected_lower):
+            first_hit_rank = idx
+            break
+
+    if first_hit_rank == 0:
+        return {"mrr": 0.0, "hits_at_3": 0.0, "hits_at_10": 0.0}
+
+    return {
+        "mrr": round(1.0 / first_hit_rank, 4),
+        "hits_at_3": 1.0 if first_hit_rank <= 3 else 0.0,
+        "hits_at_10": 1.0 if first_hit_rank <= 10 else 0.0,
+    }
+
+
+def _estimated_cost_usd(question: str, answer: str, contexts: list[str]) -> float:
+    token_estimate = len(_tokens(question)) + len(_tokens(answer)) + sum(len(_tokens(context)) for context in contexts)
+    return round(token_estimate * 0.0000005, 6)

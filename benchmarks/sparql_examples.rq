@@ -1,0 +1,16 @@
+# Example 1: sample entities
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?name WHERE {
+  ?s rdfs:label ?name .
+}
+LIMIT 10
+
+# Example 2: mention relations
+PREFIX rf: <https://example.com/riskfolio/kg#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?source ?target WHERE {
+  ?s rf:MENTIONS ?t .
+  ?s rdfs:label ?source .
+  ?t rdfs:label ?target .
+}
+LIMIT 10

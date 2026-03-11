@@ -32,5 +32,11 @@ jobs:
       - name: Run tests with coverage
         run: poetry run pytest --cov=riskfolio_graphrag_agent --cov-report=term-missing
 
+      - name: Retrieval ablation benchmark
+        run: poetry run python scripts/benchmark_retrieval_ablation.py
+
       - name: Eval regression gate
         run: poetry run riskfolio-agent eval-gate --report eval_results.json --min-faithfulness 0.35 --min-relevance 0.8 --min-context-recall 0.45
+
+      - name: Observability report
+        run: poetry run python scripts/report_observability.py
