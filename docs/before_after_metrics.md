@@ -8,9 +8,9 @@ Measured against the live Neo4j graph (3,590 nodes, 9,478 edges) using the deter
 |---|---:|
 | Context recall | 0.55 |
 | Context precision | 0.1564 |
-| Answer faithfulness | 0.10 |
-| Answer relevance | 0.699 |
-| Grounding | 0.4051 |
+| Answer faithfulness | 1.0000 |
+| Answer relevance | 0.8525 |
+| Grounding | 0.7734 |
 | Multi-hop accuracy | 1.0000 |
 
 ## Knowledge Graph Integrity
