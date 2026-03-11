@@ -9,6 +9,44 @@ from itertools import combinations
 from pathlib import Path
 from typing import Callable
 
+from riskfolio_graphrag_agent.graph.builder import DOMAIN_ALIASES
+
+
+def _build_alias_lookup() -> dict[str, str]:
+    """Build a reverse map from normalised alias text → normalised canonical key."""
+    lookup: dict[str, str] = {}
+    for _, concepts in DOMAIN_ALIASES.items():
+        for canonical_name, aliases in concepts.items():
+            canon_key = _canonical_key_raw(canonical_name)
+            # The canonical name itself maps to its own key.
+            lookup[canon_key] = canon_key
+            for alias in aliases:
+                lookup[_canonical_key_raw(alias)] = canon_key
+    return lookup
+
+
+def _canonical_key_raw(name: str) -> str:
+    """Normalise a name to a sortable key without alias substitution."""
+    normalised = re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+    return normalised.replace(" ", "_") or "unknown"
+
+
+# Module-level reverse-alias lookup built once at import time.
+_ALIAS_LOOKUP: dict[str, str] = _build_alias_lookup()
+
+
+def _jaccard_tokens(name: str) -> frozenset[str]:
+    return frozenset(re.findall(r"[a-z0-9]+", name.lower()))
+
+
+def _jaccard_similarity(a: str, b: str) -> float:
+    ta = _jaccard_tokens(a)
+    tb = _jaccard_tokens(b)
+    union = len(ta | tb)
+    if not union:
+        return 0.0
+    return len(ta & tb) / union
+
 
 @dataclass
 class EntityRecord:
@@ -51,6 +89,8 @@ def run_er_pipeline(
     for entity in entities:
         key = _canonical_key(entity.name)
         grouped.setdefault(key, []).append(entity)
+
+    grouped = _apply_jaccard_merge(grouped)
 
     if model_assist is not None:
         grouped = _apply_model_assist(grouped, model_assist)
@@ -106,10 +146,46 @@ def evaluate_er(*, predicted_pairs: set[tuple[str, str]], gold_pairs: set[tuple[
 
 
 def _canonical_key(name: str) -> str:
-    normalized = re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
-    normalized = normalized.replace("risk parity", "riskparity")
-    normalized = normalized.replace("value at risk", "var")
-    return normalized.replace(" ", "_") or "unknown"
+    """Normalise *name* to a canonical bucket key.
+
+    Lookup order:
+    1. Check ``_ALIAS_LOOKUP`` built from ``DOMAIN_ALIASES`` — e.g. both
+       ``"CVaR"`` and ``"conditional value at risk"`` resolve to the same key.
+    2. Apply legacy hard-coded substitutions for backward compatibility.
+    """
+    raw_key = _canonical_key_raw(name)
+    # DOMAIN_ALIASES lookup: if the normalised form (or any known alias) is
+    # already indexed, return the canonical key directly.
+    if raw_key in _ALIAS_LOOKUP:
+        return _ALIAS_LOOKUP[raw_key]
+    # Legacy substitutions kept for backward compatibility.
+    normalised = re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+    normalised = normalised.replace("risk parity", "riskparity")
+    normalised = normalised.replace("value at risk", "var")
+    return normalised.replace(" ", "_") or "unknown"
+
+
+def _apply_jaccard_merge(
+    grouped: dict[str, list[EntityRecord]],
+    threshold: float = 0.70,
+) -> dict[str, list[EntityRecord]]:
+    """Merge groups whose representative names share Jaccard similarity ≥ *threshold*."""
+    keys = sorted(grouped.keys())
+    merged = dict(grouped)
+
+    for i, left_key in enumerate(keys):
+        if left_key not in merged:
+            continue
+        rep_left = sorted(merged[left_key], key=lambda r: (len(r.name), r.name))[0]
+        for right_key in keys[i + 1 :]:
+            if right_key not in merged:
+                continue
+            rep_right = sorted(merged[right_key], key=lambda r: (len(r.name), r.name))[0]
+            if _jaccard_similarity(rep_left.name, rep_right.name) >= threshold:
+                merged[left_key] = merged[left_key] + merged[right_key]
+                del merged[right_key]
+
+    return merged
 
 
 def _apply_model_assist(

@@ -34,6 +34,12 @@ NODE_LABELS: tuple[str, ...] = (
     "PlotType",
     "Solver",
     "Concept",
+    "AssetClass",
+    "FactorModel",
+    "MarketRegime",
+    "BenchmarkIndex",
+    "BacktestScenario",
+    "OptimizationProblem",
 )
 
 RELATIONSHIP_TYPES: tuple[str, ...] = (
@@ -51,6 +57,15 @@ RELATIONSHIP_TYPES: tuple[str, ...] = (
     "USES_ESTIMATOR",
     "PRODUCES_REPORT",
     "RELATED_TO",
+    "IS_SUBTYPE_OF",
+    "ALTERNATIVE_TO",
+    "REQUIRES",
+    "PARAMETERIZED_BY",
+    "BENCHMARKED_ON",
+    "CALIBRATED_ON",
+    "PRECEDES",
+    "HAS_CONSTRAINT",
+    "VALIDATED_AGAINST",
 )
 
 DOMAIN_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
@@ -66,9 +81,23 @@ DOMAIN_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
         "Kelly Criterion": ("kelly criterion",),
     },
     "RiskMeasure": {
-        "CVaR": ("cvar", "conditional value at risk"),
-        "VaR": ("value at risk", "var"),
-        "Semi Deviation": ("semi deviation", "semi standard deviation", "semi-std"),
+        "CVaR": (
+            "cvar",
+            "conditional value at risk",
+            "conditional var",
+            "expected shortfall",
+            "es",
+            "cvar95",
+            "cvar99",
+        ),
+        "VaR": ("value at risk", "var", "value-at-risk", "var95", "var99"),
+        "Semi Deviation": (
+            "semi deviation",
+            "semi standard deviation",
+            "semi-std",
+            "semidev",
+            "downside deviation",
+        ),
         "Semi Variance": ("semi variance", "semivariance"),
         "MAD": ("mean absolute deviation", "mad"),
         "Ulcer Index": ("ulcer index",),
@@ -77,6 +106,29 @@ DOMAIN_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
         "RLVaR": ("relativistic value at risk", "rlvar"),
         "RLDaR": ("relativistic drawdown at risk", "rldar"),
         "Tail Gini": ("tail gini",),
+    },
+    "FactorModel": {
+        "Fama-French 3 Factor": ("fama french 3", "fama-french 3", "ff3"),
+        "Fama-French 5 Factor": ("fama french 5", "fama-french 5", "ff5"),
+        "Carhart 4 Factor": (
+            "carhart",
+            "carhart 4",
+        ),
+        "Macroeconomic Factor Model": ("macroeconomic factor", "macro factor"),
+        "Statistical PCA Factor": ("statistical pca", "pca factor model"),
+    },
+    "AssetClass": {
+        "Equity": ("equity", "equities", "stocks"),
+        "Fixed Income": ("fixed income", "bonds", "debt"),
+        "Commodity": ("commodity", "commodities"),
+        "Alternatives": ("alternatives", "alternative investments", "alts"),
+        "Cash": ("cash", "money market"),
+    },
+    "MarketRegime": {
+        "Bull Market": ("bull market", "bull", "uptrend"),
+        "Bear Market": ("bear market", "bear", "downtrend"),
+        "High Volatility": ("high volatility", "high vol", "volatility regime"),
+        "Low Correlation": ("low correlation", "decorrelated", "diversification regime"),
     },
     "ConstraintType": {
         "Budget Constraint": ("budget constraint",),
@@ -134,6 +186,59 @@ DOMAIN_PATTERNS: dict[str, list[tuple[str, re.Pattern[str]]]] = {
     label: [(canonical, _alias_pattern(alias)) for canonical, aliases in concepts.items() for alias in aliases]
     for label, concepts in DOMAIN_ALIASES.items()
 }
+
+# Explicit sibling-pair edges for ALTERNATIVE_TO (both directions are emitted)
+_ALTERNATIVE_PAIRS: tuple[tuple[str, str, str], ...] = (
+    ("CVaR", "VaR", "RiskMeasure"),
+    ("EVaR", "CVaR", "RiskMeasure"),
+    ("EDaR", "RLDaR", "RiskMeasure"),
+    ("Hierarchical Risk Parity", "Hierarchical Equal Risk Contribution", "PortfolioMethod"),
+    ("Mean-Variance Optimization", "Minimum Variance", "PortfolioMethod"),
+    ("Mean-Variance Optimization", "Maximum Sharpe", "PortfolioMethod"),
+)
+
+
+def emit_taxonomy_edges() -> tuple[list["GraphNode"], list["GraphEdge"]]:
+    """Emit IS_SUBTYPE_OF edges for DOMAIN_ALIASES entries and ALTERNATIVE_TO sibling pairs."""
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+
+    for category_label, concepts in DOMAIN_ALIASES.items():
+        # Category class node (e.g. RiskMeasure → RiskMeasure node)
+        nodes.append(GraphNode(label=category_label, name=category_label))
+        for canonical_name in concepts:
+            nodes.append(GraphNode(label=category_label, name=canonical_name))
+            edges.append(
+                GraphEdge(
+                    source_name=canonical_name,
+                    target_name=category_label,
+                    relation_type="IS_SUBTYPE_OF",
+                    source_label=category_label,
+                    target_label=category_label,
+                )
+            )
+
+    for left_name, right_name, label in _ALTERNATIVE_PAIRS:
+        edges.append(
+            GraphEdge(
+                source_name=left_name,
+                target_name=right_name,
+                relation_type="ALTERNATIVE_TO",
+                source_label=label,
+                target_label=label,
+            )
+        )
+        edges.append(
+            GraphEdge(
+                source_name=right_name,
+                target_name=left_name,
+                relation_type="ALTERNATIVE_TO",
+                source_label=label,
+                target_label=label,
+            )
+        )
+
+    return nodes, edges
 
 
 @dataclass
@@ -254,6 +359,11 @@ class GraphBuilder:
                     elapsed_seconds,
                 )
 
+        # Augment with taxonomy (IS_SUBTYPE_OF / ALTERNATIVE_TO) edges.
+        taxonomy_nodes, taxonomy_edges = emit_taxonomy_edges()
+        nodes.extend(taxonomy_nodes)
+        edges.extend(taxonomy_edges)
+
         unique_nodes = _dedupe_nodes(nodes)
         unique_edges = _dedupe_edges(edges)
 
@@ -271,15 +381,23 @@ class GraphBuilder:
             logger.warning("Neo4j unavailable; skipping graph writes: %s", exc)
             return
 
+        known_node_names: frozenset[str] = frozenset(node.name for node in unique_nodes)
         with driver.session() as session:
             if drop_existing:
                 logger.warning("drop_existing=True – wiping graph.")
                 session.run("MATCH (n) DETACH DELETE n")
             self.ensure_schema(apply_constraints=apply_schema)
             _upsert_nodes(session, unique_nodes)
-            _upsert_edges(session, unique_edges)
+            skipped = _upsert_edges(session, unique_edges, known_node_names=known_node_names)
 
-        logger.info("Graph write complete: %d nodes, %d edges.", len(unique_nodes), len(unique_edges))
+        ci_threshold = max(1, int(0.05 * len(unique_edges)))
+        if skipped > ci_threshold:
+            raise RuntimeError(
+                f"Edge endpoint integrity failure: {skipped}/{len(unique_edges)} edges skipped "
+                f"(exceeds 5% threshold of {ci_threshold})."
+            )
+
+        logger.info("Graph write complete: %d nodes, %d edges (%d skipped).", len(unique_nodes), len(unique_edges), skipped)
 
     def get_stats(self) -> dict[str, int | dict[str, int]]:
         """Return graph counts by label and relationship type."""
@@ -860,11 +978,28 @@ def _upsert_nodes(session, nodes: list[GraphNode]) -> None:
         session.run(cypher, rows=rows)
 
 
-def _upsert_edges(session, edges: list[GraphEdge]) -> None:
+def _upsert_edges(
+    session,
+    edges: list[GraphEdge],
+    known_node_names: frozenset[str] | None = None,
+) -> int:
+    """Upsert edges into Neo4j. Returns the count of skipped (bad-endpoint) edges."""
     if not edges:
-        return
+        return 0
 
+    skipped = 0
     for edge in edges:
+        if known_node_names is not None:
+            if edge.source_name not in known_node_names or edge.target_name not in known_node_names:
+                logger.warning(
+                    "Skipping edge (%s)-[%s]->(%s): one or both endpoints absent from node set.",
+                    edge.source_name,
+                    edge.relation_type,
+                    edge.target_name,
+                )
+                skipped += 1
+                continue
+
         safe_source_label = _safe_name(edge.source_label)
         safe_target_label = _safe_name(edge.target_label)
         safe_relation = _safe_name(edge.relation_type)
@@ -880,3 +1015,4 @@ def _upsert_edges(session, edges: list[GraphEdge]) -> None:
             target_name=edge.target_name,
             properties=edge.properties,
         )
+    return skipped

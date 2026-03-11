@@ -8,6 +8,7 @@ from riskfolio_graphrag_agent.graph.builder import (
     GraphNode,
     _extract_entities,
     _extract_entities_with_llm,
+    emit_taxonomy_edges,
 )
 from riskfolio_graphrag_agent.ingestion.loader import Document
 
@@ -196,6 +197,37 @@ class _FakeSession:
                 ]
             )
         return _FakeResult([])
+
+
+def test_emit_taxonomy_edges_is_subtype_of_cvar():
+    """emit_taxonomy_edges should yield IS_SUBTYPE_OF edge from CVaR → RiskMeasure."""
+    nodes, edges = emit_taxonomy_edges()
+
+    node_names = {(n.label, n.name) for n in nodes}
+    assert ("RiskMeasure", "CVaR") in node_names, "CVaR node with label RiskMeasure should be emitted"
+    assert ("RiskMeasure", "RiskMeasure") in node_names, "RiskMeasure category node should be emitted"
+
+    subtype_edges = {(e.source_name, e.target_name) for e in edges if e.relation_type == "IS_SUBTYPE_OF"}
+    assert ("CVaR", "RiskMeasure") in subtype_edges, (
+        f"IS_SUBTYPE_OF edge CVaR → RiskMeasure not found. Present IS_SUBTYPE_OF edges: {sorted(subtype_edges)[:10]}"
+    )
+
+
+def test_emit_taxonomy_edges_is_subtype_of_hrp():
+    """emit_taxonomy_edges should yield IS_SUBTYPE_OF edge from HRP → PortfolioMethod."""
+    _, edges = emit_taxonomy_edges()
+    subtype_edges = {(e.source_name, e.target_name) for e in edges if e.relation_type == "IS_SUBTYPE_OF"}
+    assert ("Hierarchical Risk Parity", "PortfolioMethod") in subtype_edges, (
+        "IS_SUBTYPE_OF edge 'Hierarchical Risk Parity' → PortfolioMethod not found."
+    )
+
+
+def test_emit_taxonomy_edges_alternative_to():
+    """emit_taxonomy_edges should yield bidirectional ALTERNATIVE_TO edges for CVaR ↔ VaR."""
+    _, edges = emit_taxonomy_edges()
+    alt_edges = {(e.source_name, e.target_name) for e in edges if e.relation_type == "ALTERNATIVE_TO"}
+    assert ("CVaR", "VaR") in alt_edges
+    assert ("VaR", "CVaR") in alt_edges
 
 
 class _FakeDriver:

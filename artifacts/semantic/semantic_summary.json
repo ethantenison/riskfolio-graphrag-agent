@@ -1,48 +1,134 @@
 {
   "export": {
     "output_path": "artifacts/semantic/graph_export.ttl",
-    "triples": 1260,
+    "triples": 1545,
     "nodes": 300,
     "edges": 600
   },
   "sparql": {
     "sample_nodes": [
       {
-        "name": "Concept"
+        "name": "ALTERNATIVE_TO"
       },
       {
-        "name": "ConstraintType"
+        "name": "Allocation Report"
       },
       {
-        "name": "DECLARES"
+        "name": "Allocation Report"
       },
       {
-        "name": "DEMONSTRATES"
+        "name": "Alternatives"
       },
       {
-        "name": "DESCRIBES"
+        "name": "Alternatives"
       }
     ],
-    "sample_mentions": []
+    "sample_mentions": [
+      {
+        "child": "Allocation Report",
+        "parent": "ReportType"
+      },
+      {
+        "child": "Performance Report",
+        "parent": "ReportType"
+      },
+      {
+        "child": "Portfolio Report",
+        "parent": "ReportType"
+      },
+      {
+        "child": "Risk Report",
+        "parent": "ReportType"
+      },
+      {
+        "child": "Alternatives",
+        "parent": "AssetClass"
+      },
+      {
+        "child": "Cash",
+        "parent": "AssetClass"
+      },
+      {
+        "child": "Commodity",
+        "parent": "AssetClass"
+      },
+      {
+        "child": "Equity",
+        "parent": "AssetClass"
+      },
+      {
+        "child": "Fixed Income",
+        "parent": "AssetClass"
+      },
+      {
+        "child": "Bar Chart",
+        "parent": "PlotType"
+      }
+    ],
+    "sample_subclass": [
+      {
+        "child": "Allocation Report",
+        "parent": "ReportType"
+      },
+      {
+        "child": "Performance Report",
+        "parent": "ReportType"
+      },
+      {
+        "child": "Portfolio Report",
+        "parent": "ReportType"
+      },
+      {
+        "child": "Risk Report",
+        "parent": "ReportType"
+      },
+      {
+        "child": "Alternatives",
+        "parent": "AssetClass"
+      },
+      {
+        "child": "Cash",
+        "parent": "AssetClass"
+      },
+      {
+        "child": "Commodity",
+        "parent": "AssetClass"
+      },
+      {
+        "child": "Equity",
+        "parent": "AssetClass"
+      },
+      {
+        "child": "Fixed Income",
+        "parent": "AssetClass"
+      },
+      {
+        "child": "Bar Chart",
+        "parent": "PlotType"
+      }
+    ],
+    "sample_alternative_to": [],
+    "sample_supports_risk_measure": [],
+    "sample_uses_estimator": []
   },
   "validation": {
-    "status": "fail",
+    "status": "pass",
     "checks": {
       "node_has_name": {
-        "pass": 300,
+        "pass": 3590,
         "fail": 0
       },
       "allowed_relation_type": {
-        "pass": 600,
+        "pass": 9478,
         "fail": 0
       },
       "edge_endpoints_exist": {
-        "pass": 290,
-        "fail": 310
+        "pass": 9478,
+        "fail": 0
       }
     },
-    "pass_count": 1190,
-    "fail_count": 310,
-    "pass_rate": 0.7933
+    "pass_count": 22546,
+    "fail_count": 0,
+    "pass_rate": 1.0
   }
 }

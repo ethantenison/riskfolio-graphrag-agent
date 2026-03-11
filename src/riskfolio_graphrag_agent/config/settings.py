@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = "https://api.openai.com/v1"
-    openai_timeout_seconds: float = 30.0
+    openai_timeout_seconds: float = 45.0
     openai_retry_attempts: int = 2
     openai_retry_backoff_seconds: float = 1.5
     openai_enable_generation: bool = True

@@ -1,20 +1,20 @@
 {
-  "status": "fail",
+  "status": "pass",
   "checks": {
     "node_has_name": {
-      "pass": 300,
+      "pass": 3590,
       "fail": 0
     },
     "allowed_relation_type": {
-      "pass": 600,
+      "pass": 9478,
       "fail": 0
     },
     "edge_endpoints_exist": {
-      "pass": 290,
-      "fail": 310
+      "pass": 9478,
+      "fail": 0
     }
   },
-  "pass_count": 1190,
-  "fail_count": 310,
-  "pass_rate": 0.7933
+  "pass_count": 22546,
+  "fail_count": 0,
+  "pass_rate": 1.0
 }

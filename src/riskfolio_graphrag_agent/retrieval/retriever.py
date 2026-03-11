@@ -10,6 +10,7 @@ from typing import Any, Literal, Protocol, cast
 
 from neo4j import Driver, GraphDatabase
 
+from riskfolio_graphrag_agent.graph.builder import DOMAIN_ALIASES
 from riskfolio_graphrag_agent.ingestion.loader import Document as IngestDocument
 from riskfolio_graphrag_agent.retrieval.embeddings import EmbeddingProvider, HashEmbeddingProvider, hash_embedding
 
@@ -217,6 +218,10 @@ class HybridRetriever:
             hits = _sparse_query_hits(self._driver, query, top_k=self._top_k)
         elif retrieval_mode == "graph":
             hits = _graph_seed_hits(self._driver, query, top_k=self._top_k)
+            # Domain-concept graph-hop expansion: traverse IS_SUBTYPE_OF, ALTERNATIVE_TO, REQUIRES.
+            hop_hits = _graph_hop_expansion(self._driver, query, top_k=self._top_k)
+            if hop_hits:
+                hits = _merge_hits(hits, hop_hits, top_k=self._top_k * 2)[: self._top_k]
         else:
             dense_hits = self._vector_store.search(query, top_k=self._top_k)
             sparse_hits = _sparse_query_hits(self._driver, query, top_k=self._top_k)
@@ -408,6 +413,83 @@ def _graph_seed_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
 
     with driver.session() as session:
         rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
+
+    hits: list[VectorHit] = []
+    for row in rows:
+        hits.append(
+            VectorHit(
+                chunk_id=str(row["chunk_id"]),
+                content=str(row["content"]),
+                source_path=str(row["source_path"]),
+                score=float(row["score"]),
+                metadata={
+                    "relative_path": str(row["relative_path"]),
+                    "chunk_index": int(row["chunk_index"]),
+                    "chunk_kind": str(row["chunk_kind"]),
+                    "section": "",
+                    "line_start": int(row["line_start"] or 1),
+                    "line_end": int(row["line_end"] or 1),
+                    "content_hash": "",
+                },
+            )
+        )
+    return hits
+
+
+# ---------------------------------------------------------------------------
+# Build a flat set of known domain-concept names from DOMAIN_ALIASES for fast
+# membership checks (lowercased).
+# ---------------------------------------------------------------------------
+_DOMAIN_CONCEPT_NAMES: frozenset[str] = frozenset(name.lower() for concepts in DOMAIN_ALIASES.values() for name in concepts)
+
+
+def _find_domain_concepts(query: str) -> list[str]:
+    """Return canonical concept names from DOMAIN_ALIASES that appear in *query*."""
+    lowered = query.lower()
+    matched: list[str] = []
+    for concepts in DOMAIN_ALIASES.values():
+        for canonical_name in concepts:
+            if canonical_name.lower() in lowered:
+                matched.append(canonical_name)
+    return matched
+
+
+def _graph_hop_expansion(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
+    """Expand graph retrieval by traversing IS_SUBTYPE_OF, ALTERNATIVE_TO, and REQUIRES hops.
+
+    For each domain concept found in *query*, retrieve chunks linked to:
+    1. The concept's parent class (one hop up via IS_SUBTYPE_OF).
+    2. Alternative concepts (one hop across via ALTERNATIVE_TO).
+    3. Required prerequisites (one hop down via REQUIRES).
+    """
+    concepts = _find_domain_concepts(query)
+    if not concepts:
+        return []
+
+    cypher = (
+        "UNWIND $concepts AS concept_name "
+        "MATCH (e) WHERE toLower(e.name) = toLower(concept_name) "
+        "OPTIONAL MATCH (e)-[:IS_SUBTYPE_OF]->(parent) "
+        "OPTIONAL MATCH (e)-[:ALTERNATIVE_TO]-(alt) "
+        "OPTIONAL MATCH (e)-[:REQUIRES]->(req) "
+        "WITH collect(DISTINCT parent) + collect(DISTINCT alt) + collect(DISTINCT req) AS related_nodes "
+        "UNWIND related_nodes AS rn "
+        "WHERE rn IS NOT NULL "
+        "OPTIONAL MATCH (c:Chunk)-[:MENTIONS]->(rn) WHERE c.name IS NOT NULL "
+        "WITH c, max(1) AS score WHERE c IS NOT NULL "
+        "RETURN c.name AS chunk_id, c.content AS content, "
+        "c.source_path AS source_path, c.relative_path AS relative_path, "
+        "c.chunk_index AS chunk_index, c.chunk_kind AS chunk_kind, "
+        "c.line_start AS line_start, c.line_end AS line_end, score "
+        "ORDER BY score DESC LIMIT $top_k"
+    )
+
+    try:
+        with driver.session() as session:
+            rows = list(session.run(cypher, concepts=concepts, top_k=top_k))
+    except Exception as exc:
+        logger.debug("Graph-hop expansion query failed: %s", exc)
+        return []
 
     hits: list[VectorHit] = []
     for row in rows:

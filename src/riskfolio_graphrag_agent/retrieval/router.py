@@ -44,6 +44,8 @@ class QueryToolRouter:
                 "exact function name parameter signature",
                 "file path section line range",
                 "specific keyword search in code",
+                "riskfolio api parameter default value signature",
+                "python function class method module",
             ),
             "graph": (
                 "relationship between entities dependencies",
@@ -99,13 +101,23 @@ class QueryToolRouter:
         graph_patterns = (
             r"\b(relationship|related|connected|dependenc|neighbou?r|graph|mention)\w*\b",
             r"\bbetween\b.*\band\b",
+            r"\b(which|what uses|how does .+ relate|dependencies of|connected to)\b",
         )
         sparse_patterns = (
             r"\b(line|lines|path|file|section|exact|regex|keyword|parameter|signature)\b",
             r"\b(test_|def\s+|class\s+)\b",
+            # API / code-heavy patterns specific to the Riskfolio corpus
+            r"rp\.",
+            r"rf\.",
+            r"\b(rp\.Portfolio|Portfolio\(\)|optimize|to_pandas|plot_|show_)\b",
+            r"\b(docstring|__init__|args:|returns:|attributes:)\b",
+            r"\b[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)",  # function-call pattern
         )
         dense_patterns = (r"\b(define|definition|what is|meaning|overview|explain)\b",)
-        hybrid_patterns = (r"\b(compare|trade[- ]?off|versus|vs\.?|multi[- ]?hop|end[- ]?to[- ]?end)\b",)
+        hybrid_patterns = (
+            r"\b(compare|trade[- ]?off|versus|vs\.?|multi[- ]?hop|end[- ]?to[- ]?end)\b",
+            r"\b(difference between|pros and cons|better than|worse than)\b",
+        )
 
         if any(re.search(pattern, lowered) for pattern in graph_patterns):
             return "graph", 1.0, "rule_graph_intent"
@@ -115,7 +127,8 @@ class QueryToolRouter:
             return "hybrid_rerank", 0.9, "rule_hybrid_intent"
         if any(re.search(pattern, lowered) for pattern in dense_patterns):
             return "dense", 0.85, "rule_dense_intent"
-        return "hybrid_rerank", 0.6, "rule_default"
+        # Default: bias toward sparse for the code-heavy Riskfolio corpus.
+        return "sparse", 0.55, "rule_default"
 
 
 def _mean_vector(vectors: list[list[float]]) -> list[float]:
