@@ -392,6 +392,68 @@ _EMPTY_GOVERNANCE_HTML = (
 )
 
 
+def _render_graph_svg(graph: dict[str, list[dict[str, Any]]], width: int = 800, height: int = 400) -> str:
+    """Render a simple SVG representation of the knowledge graph."""
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+
+    if not nodes:
+        return (
+            f"<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}'>"
+            f"<text x='{width // 2}' y='{height // 2}' text-anchor='middle' "
+            "fill='#9CA3AF' font-size='14' font-family='sans-serif'>"
+            "No graph data available"
+            "</text></svg>"
+        )
+
+    import math
+
+    node_positions: dict[str, tuple[float, float]] = {}
+    n = len(nodes)
+    cx, cy, r = width / 2, height / 2, min(width, height) * 0.35
+    for i, node in enumerate(nodes):
+        angle = 2 * math.pi * i / n
+        node_positions[str(node.get("id", i))] = (
+            cx + r * math.cos(angle),
+            cy + r * math.sin(angle),
+        )
+
+    parts = [f"<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}'>"]
+
+    for edge in edges:
+        src = str(edge.get("source", ""))
+        tgt = str(edge.get("target", ""))
+        etype = html.escape(str(edge.get("type", "")))
+        if src in node_positions and tgt in node_positions:
+            x1, y1 = node_positions[src]
+            x2, y2 = node_positions[tgt]
+            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+            parts.append(f"<line x1='{x1:.1f}' y1='{y1:.1f}' x2='{x2:.1f}' y2='{y2:.1f}' stroke='#94A3B8' stroke-width='1.5'/>")
+            if etype:
+                parts.append(
+                    f"<text x='{mx:.1f}' y='{my:.1f}' text-anchor='middle' "
+                    "fill='#64748B' font-size='10' font-family='sans-serif'>"
+                    f"{etype}</text>"
+                )
+
+    for node in nodes:
+        nid = str(node.get("id", ""))
+        name = html.escape(str(node.get("name", "")).strip() or "Unnamed")
+        labels = node.get("labels", [])
+        primary = str(labels[0]) if labels else "Concept"
+        colour = _NODE_COLOURS.get(primary, _DEFAULT_NODE_COLOUR)
+        if nid in node_positions:
+            x, y = node_positions[nid]
+            parts.append(f"<circle cx='{x:.1f}' cy='{y:.1f}' r='20' fill='{colour}' stroke='white' stroke-width='2'/>")
+            parts.append(
+                f"<text x='{x:.1f}' y='{y + 32:.1f}' text-anchor='middle' "
+                f"fill='#1E293B' font-size='11' font-family='sans-serif'>{name}</text>"
+            )
+
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 def _badge(text: str, colour: str) -> str:
     safe = html.escape(str(text))
     return (
