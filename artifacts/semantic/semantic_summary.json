@@ -1,0 +1,48 @@
+{
+  "export": {
+    "output_path": "artifacts/semantic/graph_export.ttl",
+    "triples": 1260,
+    "nodes": 300,
+    "edges": 600
+  },
+  "sparql": {
+    "sample_nodes": [
+      {
+        "name": "Concept"
+      },
+      {
+        "name": "ConstraintType"
+      },
+      {
+        "name": "DECLARES"
+      },
+      {
+        "name": "DEMONSTRATES"
+      },
+      {
+        "name": "DESCRIBES"
+      }
+    ],
+    "sample_mentions": []
+  },
+  "validation": {
+    "status": "fail",
+    "checks": {
+      "node_has_name": {
+        "pass": 300,
+        "fail": 0
+      },
+      "allowed_relation_type": {
+        "pass": 600,
+        "fail": 0
+      },
+      "edge_endpoints_exist": {
+        "pass": 290,
+        "fail": 310
+      }
+    },
+    "pass_count": 1190,
+    "fail_count": 310,
+    "pass_rate": 0.7933
+  }
+}

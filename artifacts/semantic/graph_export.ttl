@@ -1,0 +1,1594 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rf: <https://example.com/riskfolio/kg#> .
+
+rf:Concept a owl:Class ;
+    rdfs:label "Concept" .
+
+rf:ConstraintType a owl:Class ;
+    rdfs:label "ConstraintType" .
+
+rf:DECLARES a owl:ObjectProperty ;
+    rdfs:label "DECLARES" .
+
+rf:DEMONSTRATES a owl:ObjectProperty ;
+    rdfs:label "DEMONSTRATES" .
+
+rf:DESCRIBES a owl:ObjectProperty ;
+    rdfs:label "DESCRIBES" .
+
+rf:DocPage a owl:Class ;
+    rdfs:label "DocPage" .
+
+rf:Estimator a owl:Class ;
+    rdfs:label "Estimator" .
+
+rf:ExampleNotebook a owl:Class ;
+    rdfs:label "ExampleNotebook" .
+
+rf:HAS_CHUNK a owl:ObjectProperty ;
+    rdfs:label "HAS_CHUNK" .
+
+rf:HAS_PARAMETER a owl:ObjectProperty ;
+    rdfs:label "HAS_PARAMETER" .
+
+rf:IMPLEMENTS a owl:ObjectProperty ;
+    rdfs:label "IMPLEMENTS" .
+
+rf:MENTIONS a owl:ObjectProperty ;
+    rdfs:label "MENTIONS" .
+
+rf:PRODUCES_REPORT a owl:ObjectProperty ;
+    rdfs:label "PRODUCES_REPORT" .
+
+rf:Parameter a owl:Class ;
+    rdfs:label "Parameter" .
+
+rf:PlotType a owl:Class ;
+    rdfs:label "PlotType" .
+
+rf:PortfolioMethod a owl:Class ;
+    rdfs:label "PortfolioMethod" .
+
+rf:PythonClass a owl:Class ;
+    rdfs:label "PythonClass" .
+
+rf:PythonFunction a owl:Class ;
+    rdfs:label "PythonFunction" .
+
+rf:RELATED_TO a owl:ObjectProperty ;
+    rdfs:label "RELATED_TO" .
+
+rf:ReportType a owl:Class ;
+    rdfs:label "ReportType" .
+
+rf:RiskMeasure a owl:Class ;
+    rdfs:label "RiskMeasure" .
+
+rf:SUPPORTS_CONSTRAINT a owl:ObjectProperty ;
+    rdfs:label "SUPPORTS_CONSTRAINT" .
+
+rf:SUPPORTS_RISK_MEASURE a owl:ObjectProperty ;
+    rdfs:label "SUPPORTS_RISK_MEASURE" .
+
+rf:Solver a owl:Class ;
+    rdfs:label "Solver" .
+
+rf:TestCase a owl:Class ;
+    rdfs:label "TestCase" .
+
+rf:USES a owl:ObjectProperty ;
+    rdfs:label "USES" .
+
+rf:USES_ESTIMATOR a owl:ObjectProperty ;
+    rdfs:label "USES_ESTIMATOR" .
+
+rf:VALIDATES a owl:ObjectProperty ;
+    rdfs:label "VALIDATES" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions> a rf:PythonModule ;
+    rdfs:label "AuxFunctions" ;
+    rf:DECLARES <https://example.com/riskfolio/kg#node/block_vec_pq>,
+        <https://example.com/riskfolio/kg#node/codep_dist>,
+        <https://example.com/riskfolio/kg#node/color_list>,
+        <https://example.com/riskfolio/kg#node/corr2cov>,
+        <https://example.com/riskfolio/kg#node/cov2corr>,
+        <https://example.com/riskfolio/kg#node/cov_fix>,
+        <https://example.com/riskfolio/kg#node/cov_returns>,
+        <https://example.com/riskfolio/kg#node/dcorr>,
+        <https://example.com/riskfolio/kg#node/dcorr_matrix>,
+        <https://example.com/riskfolio/kg#node/denoiseCov>,
+        <https://example.com/riskfolio/kg#node/denoisedCorr>,
+        <https://example.com/riskfolio/kg#node/errPDFs>,
+        <https://example.com/riskfolio/kg#node/findMaxEval>,
+        <https://example.com/riskfolio/kg#node/fitKDE>,
+        <https://example.com/riskfolio/kg#node/getPCA>,
+        <https://example.com/riskfolio/kg#node/is_pos_def>,
+        <https://example.com/riskfolio/kg#node/ltdi_matrix>,
+        <https://example.com/riskfolio/kg#node/mpPDF>,
+        <https://example.com/riskfolio/kg#node/mutual_info_matrix>,
+        <https://example.com/riskfolio/kg#node/numBins>,
+        <https://example.com/riskfolio/kg#node/round_values>,
+        <https://example.com/riskfolio/kg#node/shrinkCorr>,
+        <https://example.com/riskfolio/kg#node/std_silhouette_score>,
+        <https://example.com/riskfolio/kg#node/two_diff_gap_stat>,
+        <https://example.com/riskfolio/kg#node/var_info_matrix>,
+        <https://example.com/riskfolio/kg#node/weights_discretizetion> ;
+    rf:HAS_CHUNK <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:0>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:1>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:10>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:11>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:12>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:13>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:14>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:15>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:16>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:17>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:18>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:19>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:2>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:20>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:21>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:22>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:23>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:24>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:25>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:26>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:27>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:28>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:29>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:3>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:30>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:31>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:32>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:33>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:34>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:35>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:36>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:37>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:38>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:39>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:4>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:40>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:41>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:42>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:43>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:44>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:45>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:46>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:47>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:48>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:49>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:5>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:50>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:51>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:52>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:53>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:54>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:55>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:56>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:57>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:58>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:59>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:6>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:60>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:61>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:7>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:8>,
+        <https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:9> ;
+    rf:IMPLEMENTS <https://example.com/riskfolio/kg#node/Histogram> ;
+    rf:SUPPORTS_RISK_MEASURE <https://example.com/riskfolio/kg#node/VaR> ;
+    rf:USES_ESTIMATOR <https://example.com/riskfolio/kg#node/Shrinkage> .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions> a rf:PythonModule ;
+    rdfs:label "ConstraintsFunctions" ;
+    rf:DECLARES <https://example.com/riskfolio/kg#node/assets_clusters>,
+        <https://example.com/riskfolio/kg#node/assets_constraints>,
+        <https://example.com/riskfolio/kg#node/assets_views>,
+        <https://example.com/riskfolio/kg#node/average_centrality>,
+        <https://example.com/riskfolio/kg#node/centrality_vector>,
+        <https://example.com/riskfolio/kg#node/clusters_matrix>,
+        <https://example.com/riskfolio/kg#node/connected_assets>,
+        <https://example.com/riskfolio/kg#node/connection_matrix>,
+        <https://example.com/riskfolio/kg#node/factors_constraints>,
+        <https://example.com/riskfolio/kg#node/factors_views>,
+        <https://example.com/riskfolio/kg#node/hrp_constraints>,
+        <https://example.com/riskfolio/kg#node/integer_constraints>,
+        <https://example.com/riskfolio/kg#node/related_assets>,
+        <https://example.com/riskfolio/kg#node/risk_constraint> ;
+    rf:HAS_CHUNK <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:0>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:1>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:10>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:100>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:101>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:102>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:103>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:104>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:105>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:106>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:11>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:12>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:13>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:14>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:15>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:16>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:17>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:18>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:19>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:2>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:20>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:21>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:22>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:23>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:24>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:25>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:26>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:27>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:28>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:29>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:3>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:30>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:31>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:32>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:33>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:34>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:35>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:36>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:37>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:38>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:39>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:4>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:40>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:41>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:42>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:43>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:44>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:45>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:46>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:47>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:48>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:49>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:5>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:50>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:51>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:52>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:53>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:54>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:55>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:56>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:57>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:58>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:59>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:6>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:60>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:61>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:62>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:63>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:64>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:65>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:66>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:67>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:68>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:69>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:7>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:70>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:71>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:72>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:73>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:74>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:75>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:76>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:77>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:78>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:79>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:8>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:80>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:81>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:82>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:83>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:84>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:85>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:86>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:87>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:88>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:89>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:9>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:90>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:91>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:92>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:93>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:94>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:95>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:96>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:97>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:98>,
+        <https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:99> ;
+    rf:IMPLEMENTS <https://example.com/riskfolio/kg#node/Hierarchical_Risk_Parity>,
+        <https://example.com/riskfolio/kg#node/Network_Plot>,
+        <https://example.com/riskfolio/kg#node/Risk_Parity> ;
+    rf:SUPPORTS_CONSTRAINT <https://example.com/riskfolio/kg#node/Risk_Contribution_Constraint> .
+
+<https://example.com/riskfolio/kg#node/DBHT> a rf:PythonModule ;
+    rdfs:label "DBHT" ;
+    rf:DECLARES <https://example.com/riskfolio/kg#node/AdjCliq>,
+        <https://example.com/riskfolio/kg#node/BubbleCluster8s>,
+        <https://example.com/riskfolio/kg#node/BubbleHierarchy>,
+        <https://example.com/riskfolio/kg#node/BubbleMember>,
+        <https://example.com/riskfolio/kg#node/BuildHierarchy>,
+        <https://example.com/riskfolio/kg#node/CliqHierarchyTree2s>,
+        <https://example.com/riskfolio/kg#node/DBHTs>,
+        <https://example.com/riskfolio/kg#node/DendroConstruct>,
+        <https://example.com/riskfolio/kg#node/DirectHb>,
+        <https://example.com/riskfolio/kg#node/FindDisjoint>,
+        <https://example.com/riskfolio/kg#node/HierarchyConstruct4s>,
+        <https://example.com/riskfolio/kg#node/LinkageFunction>,
+        <https://example.com/riskfolio/kg#node/PMFG_T2s>,
+        <https://example.com/riskfolio/kg#node/breadth>,
+        <https://example.com/riskfolio/kg#node/clique3>,
+        <https://example.com/riskfolio/kg#node/distance_wei>,
+        <https://example.com/riskfolio/kg#node/j_LoGo> ;
+    rf:HAS_CHUNK <https://example.com/riskfolio/kg#node/DBHT.py::chunk:0>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:1>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:10>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:11>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:12>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:13>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:14>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:15>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:16>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:17>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:18>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:19>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:2>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:20>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:21>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:22>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:23>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:24>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:25>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:26>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:27>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:28>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:29>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:3>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:30>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:31>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:32>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:33>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:34>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:35>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:36>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:37>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:38>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:39>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:4>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:40>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:41>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:42>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:43>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:44>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:5>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:6>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:7>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:8>,
+        <https://example.com/riskfolio/kg#node/DBHT.py::chunk:9> .
+
+<https://example.com/riskfolio/kg#node/GerberStatistic> a rf:PythonModule ;
+    rdfs:label "GerberStatistic" ;
+    rf:DECLARES <https://example.com/riskfolio/kg#node/gerber_cov_stat0>,
+        <https://example.com/riskfolio/kg#node/gerber_cov_stat1>,
+        <https://example.com/riskfolio/kg#node/gerber_cov_stat2> ;
+    rf:HAS_CHUNK <https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:0>,
+        <https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:1>,
+        <https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:2>,
+        <https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:3>,
+        <https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:4>,
+        <https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:5>,
+        <https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:6>,
+        <https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:7>,
+        <https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:8> .
+
+<https://example.com/riskfolio/kg#node/OwaWeights> a rf:PythonModule ;
+    rdfs:label "OwaWeights" ;
+    rf:DECLARES <https://example.com/riskfolio/kg#node/owa_cvar>,
+        <https://example.com/riskfolio/kg#node/owa_cvrg>,
+        <https://example.com/riskfolio/kg#node/owa_gmd>,
+        <https://example.com/riskfolio/kg#node/owa_l_moment>,
+        <https://example.com/riskfolio/kg#node/owa_l_moment_crm>,
+        <https://example.com/riskfolio/kg#node/owa_rg>,
+        <https://example.com/riskfolio/kg#node/owa_tg>,
+        <https://example.com/riskfolio/kg#node/owa_tgrg>,
+        <https://example.com/riskfolio/kg#node/owa_wcvar>,
+        <https://example.com/riskfolio/kg#node/owa_wcvrg>,
+        <https://example.com/riskfolio/kg#node/owa_wr> ;
+    rf:HAS_CHUNK <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:0>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:1>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:10>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:11>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:12>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:13>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:14>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:15>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:16>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:2>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:3>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:4>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:5>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:6>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:7>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:8>,
+        <https://example.com/riskfolio/kg#node/OwaWeights.py::chunk:9> ;
+    rf:SUPPORTS_RISK_MEASURE <https://example.com/riskfolio/kg#node/CVaR>,
+        <https://example.com/riskfolio/kg#node/Tail_Gini>,
+        <https://example.com/riskfolio/kg#node/VaR> ;
+    rf:USES <https://example.com/riskfolio/kg#node/CVXPY>,
+        <https://example.com/riskfolio/kg#node/Clarabel> .
+
+<https://example.com/riskfolio/kg#node/ParamsEstimation> a rf:PythonModule ;
+    rdfs:label "ParamsEstimation" ;
+    rf:DECLARES <https://example.com/riskfolio/kg#node/PCR>,
+        <https://example.com/riskfolio/kg#node/augmented_black_litterman>,
+        <https://example.com/riskfolio/kg#node/backward_regression>,
+        <https://example.com/riskfolio/kg#node/black_litterman>,
+        <https://example.com/riskfolio/kg#node/black_litterman_bayesian>,
+        <https://example.com/riskfolio/kg#node/bootstrapping>,
+        <https://example.com/riskfolio/kg#node/cokurt_matrix>,
+        <https://example.com/riskfolio/kg#node/covar_matrix>,
+        <https://example.com/riskfolio/kg#node/forward_regression>,
+        <https://example.com/riskfolio/kg#node/loadings_matrix>,
+        <https://example.com/riskfolio/kg#node/mean_vector>,
+        <https://example.com/riskfolio/kg#node/normal_simulation>,
+        <https://example.com/riskfolio/kg#node/risk_factors> ;
+    rf:HAS_CHUNK <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:0>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:1>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:10>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:11>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:12>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:13>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:14>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:15>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:16>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:17>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:18>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:19>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:2>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:20>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:21>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:22>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:23>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:24>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:25>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:26>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:27>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:28>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:29>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:3>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:30>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:31>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:32>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:33>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:34>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:35>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:36>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:37>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:38>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:39>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:4>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:40>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:41>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:42>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:43>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:44>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:45>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:46>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:47>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:48>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:49>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:5>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:50>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:51>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:52>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:53>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:54>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:55>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:56>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:57>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:58>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:59>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:6>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:60>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:61>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:62>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:63>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:64>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:65>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:66>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:67>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:68>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:69>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:7>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:70>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:71>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:72>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:73>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:74>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:75>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:76>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:77>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:78>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:79>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:8>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:80>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:81>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:82>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:83>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:84>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:85>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:86>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:87>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:88>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:89>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:9>,
+        <https://example.com/riskfolio/kg#node/ParamsEstimation.py::chunk:90> ;
+    rf:IMPLEMENTS <https://example.com/riskfolio/kg#node/Black_Litterman> ;
+    rf:SUPPORTS_RISK_MEASURE <https://example.com/riskfolio/kg#node/VaR> ;
+    rf:USES_ESTIMATOR <https://example.com/riskfolio/kg#node/EWMA>,
+        <https://example.com/riskfolio/kg#node/Historical_Estimator>,
+        <https://example.com/riskfolio/kg#node/OAS>,
+        <https://example.com/riskfolio/kg#node/Principal_Components>,
+        <https://example.com/riskfolio/kg#node/Shrinkage>,
+        <https://example.com/riskfolio/kg#node/Stepwise_Regression> .
+
+<https://example.com/riskfolio/kg#node/PlotFunctions> a rf:PythonModule ;
+    rdfs:label "PlotFunctions" ;
+    rf:HAS_CHUNK <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:180>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:181>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:182>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:183>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:184>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:185>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:186>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:187>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:188>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:189>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:190>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:191>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:192>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:193>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:194>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:195>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:196>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:197>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:198>,
+        <https://example.com/riskfolio/kg#node/PlotFunctions.py::chunk:31> .
+
+<https://example.com/riskfolio/kg#node/Portfolio> a rf:PythonModule ;
+    rdfs:label "Portfolio" .
+
+<https://example.com/riskfolio/kg#node/Reports> a rf:PythonModule ;
+    rdfs:label "Reports" .
+
+<https://example.com/riskfolio/kg#node/RiskFunctions> a rf:PythonModule ;
+    rdfs:label "RiskFunctions" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:0> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:0" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:1> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:1" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:10> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:10" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:11> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:11" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:12> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:12" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:13> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:13" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:14> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:14" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:15> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:15" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:16> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:16" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:17> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:17" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:18> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:18" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:19> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:19" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:2> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:2" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:20> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:20" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:21> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:21" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:22> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:22" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:23> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:23" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:24> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:24" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:25> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:25" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:26> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:26" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:27> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:27" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:28> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:28" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:29> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:29" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:3> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:3" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:30> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:30" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:31> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:31" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:32> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:32" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:33> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:33" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:34> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:34" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:35> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:35" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:36> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:36" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:37> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:37" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:38> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:38" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:39> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:39" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:4> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:4" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:40> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:40" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:41> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:41" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:42> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:42" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:43> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:43" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:44> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:44" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:45> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:45" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:46> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:46" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:47> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:47" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:48> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:48" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:49> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:49" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:5> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:5" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:50> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:50" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:51> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:51" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:52> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:52" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:53> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:53" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:54> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:54" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:55> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:55" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:56> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:56" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:57> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:57" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:58> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:58" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:59> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:59" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:6> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:6" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:60> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:60" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:61> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:61" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:7> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:7" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:8> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:8" .
+
+<https://example.com/riskfolio/kg#node/AuxFunctions.py::chunk:9> a rf:Chunk ;
+    rdfs:label "AuxFunctions.py::chunk:9" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:0> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:0" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:1> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:1" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:10> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:10" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:100> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:100" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:101> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:101" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:102> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:102" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:103> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:103" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:104> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:104" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:105> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:105" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:106> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:106" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:11> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:11" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:12> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:12" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:13> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:13" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:14> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:14" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:15> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:15" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:16> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:16" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:17> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:17" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:18> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:18" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:19> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:19" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:2> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:2" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:20> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:20" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:21> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:21" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:22> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:22" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:23> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:23" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:24> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:24" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:25> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:25" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:26> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:26" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:27> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:27" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:28> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:28" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:29> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:29" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:3> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:3" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:30> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:30" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:31> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:31" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:32> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:32" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:33> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:33" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:34> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:34" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:35> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:35" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:36> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:36" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:37> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:37" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:38> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:38" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:39> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:39" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:4> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:4" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:40> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:40" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:41> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:41" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:42> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:42" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:43> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:43" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:44> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:44" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:45> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:45" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:46> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:46" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:47> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:47" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:48> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:48" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:49> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:49" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:5> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:5" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:50> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:50" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:51> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:51" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:52> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:52" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:53> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:53" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:54> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:54" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:55> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:55" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:56> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:56" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:57> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:57" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:58> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:58" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:59> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:59" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:6> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:6" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:60> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:60" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:61> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:61" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:62> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:62" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:63> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:63" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:64> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:64" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:65> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:65" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:66> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:66" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:67> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:67" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:68> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:68" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:69> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:69" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:7> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:7" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:70> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:70" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:71> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:71" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:72> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:72" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:73> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:73" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:74> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:74" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:75> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:75" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:76> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:76" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:77> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:77" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:78> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:78" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:79> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:79" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:8> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:8" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:80> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:80" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:81> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:81" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:82> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:82" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:83> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:83" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:84> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:84" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:85> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:85" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:86> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:86" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:87> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:87" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:88> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:88" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:89> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:89" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:9> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:9" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:90> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:90" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:91> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:91" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:92> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:92" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:93> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:93" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:94> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:94" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:95> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:95" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:96> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:96" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:97> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:97" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:98> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:98" .
+
+<https://example.com/riskfolio/kg#node/ConstraintsFunctions.py::chunk:99> a rf:Chunk ;
+    rdfs:label "ConstraintsFunctions.py::chunk:99" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:0> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:0" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:1> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:1" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:10> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:10" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:11> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:11" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:12> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:12" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:13> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:13" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:14> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:14" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:15> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:15" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:16> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:16" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:17> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:17" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:18> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:18" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:19> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:19" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:2> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:2" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:20> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:20" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:21> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:21" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:22> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:22" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:23> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:23" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:24> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:24" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:25> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:25" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:26> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:26" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:27> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:27" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:28> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:28" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:29> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:29" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:3> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:3" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:30> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:30" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:31> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:31" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:32> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:32" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:33> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:33" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:34> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:34" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:35> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:35" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:36> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:36" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:37> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:37" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:38> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:38" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:39> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:39" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:4> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:4" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:40> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:40" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:41> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:41" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:42> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:42" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:43> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:43" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:44> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:44" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:5> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:5" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:6> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:6" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:7> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:7" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:8> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:8" .
+
+<https://example.com/riskfolio/kg#node/DBHT.py::chunk:9> a rf:Chunk ;
+    rdfs:label "DBHT.py::chunk:9" .
+
+<https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:0> a rf:Chunk ;
+    rdfs:label "GerberStatistic.py::chunk:0" .
+
+<https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:1> a rf:Chunk ;
+    rdfs:label "GerberStatistic.py::chunk:1" .
+
+<https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:2> a rf:Chunk ;
+    rdfs:label "GerberStatistic.py::chunk:2" .
+
+<https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:3> a rf:Chunk ;
+    rdfs:label "GerberStatistic.py::chunk:3" .
+
+<https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:4> a rf:Chunk ;
+    rdfs:label "GerberStatistic.py::chunk:4" .
+
+<https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:5> a rf:Chunk ;
+    rdfs:label "GerberStatistic.py::chunk:5" .
+
+<https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:6> a rf:Chunk ;
+    rdfs:label "GerberStatistic.py::chunk:6" .
+
+<https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:7> a rf:Chunk ;
+    rdfs:label "GerberStatistic.py::chunk:7" .
+
+<https://example.com/riskfolio/kg#node/GerberStatistic.py::chunk:8> a rf:Chunk ;
+    rdfs:label "GerberStatistic.py::chunk:8" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio> a rf:PythonModule ;
+    rdfs:label "HCPortfolio" ;
+    rf:DECLARES <https://example.com/riskfolio/kg#node/HCPortfolio>,
+        <https://example.com/riskfolio/kg#node/__init__>,
+        <https://example.com/riskfolio/kg#node/_hierarchical_clustering>,
+        <https://example.com/riskfolio/kg#node/_hierarchical_recursive_bisection>,
+        <https://example.com/riskfolio/kg#node/_inter_weights>,
+        <https://example.com/riskfolio/kg#node/_intra_weights>,
+        <https://example.com/riskfolio/kg#node/_naive_risk>,
+        <https://example.com/riskfolio/kg#node/_opt_w>,
+        <https://example.com/riskfolio/kg#node/_recursive_bisection>,
+        <https://example.com/riskfolio/kg#node/_seriation>,
+        <https://example.com/riskfolio/kg#node/assetslist>,
+        <https://example.com/riskfolio/kg#node/kappa>,
+        <https://example.com/riskfolio/kg#node/kappa_g>,
+        <https://example.com/riskfolio/kg#node/optimization>,
+        <https://example.com/riskfolio/kg#node/returns> ;
+    rf:HAS_CHUNK <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:0>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:1>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:10>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:100>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:101>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:102>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:103>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:104>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:105>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:106>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:11>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:12>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:13>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:14>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:15>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:16>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:17>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:18>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:19>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:2>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:20>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:21>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:22>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:23>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:24>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:25>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:26>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:27>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:28>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:29>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:3>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:30>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:31>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:32>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:33>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:34>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:35>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:36>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:37>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:38>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:39>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:4>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:40>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:41>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:42>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:43>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:44>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:45>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:46>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:47>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:48>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:49>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:5>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:50>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:51>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:52>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:53>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:54>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:55>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:56>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:57>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:58>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:59>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:6>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:60>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:61>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:62>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:63>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:64>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:65>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:66>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:67>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:68>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:69>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:7>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:70>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:71>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:72>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:73>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:74>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:75>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:76>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:77>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:78>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:79>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:8>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:80>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:81>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:82>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:83>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:84>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:85>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:86>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:87>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:88>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:89>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:9>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:90>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:91>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:92>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:93>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:94>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:95>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:96>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:97>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:98>,
+        <https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:99> ;
+    rf:IMPLEMENTS <https://example.com/riskfolio/kg#node/Hierarchical_Equal_Risk_Contribution>,
+        <https://example.com/riskfolio/kg#node/Hierarchical_Risk_Parity>,
+        <https://example.com/riskfolio/kg#node/Nested_Clustered_Optimization>,
+        <https://example.com/riskfolio/kg#node/Risk_Parity> ;
+    rf:SUPPORTS_RISK_MEASURE <https://example.com/riskfolio/kg#node/CVaR>,
+        <https://example.com/riskfolio/kg#node/EDaR>,
+        <https://example.com/riskfolio/kg#node/EVaR>,
+        <https://example.com/riskfolio/kg#node/MAD>,
+        <https://example.com/riskfolio/kg#node/RLDaR>,
+        <https://example.com/riskfolio/kg#node/RLVaR>,
+        <https://example.com/riskfolio/kg#node/Semi_Deviation>,
+        <https://example.com/riskfolio/kg#node/Tail_Gini>,
+        <https://example.com/riskfolio/kg#node/Ulcer_Index>,
+        <https://example.com/riskfolio/kg#node/VaR> ;
+    rf:USES <https://example.com/riskfolio/kg#node/CVXPY>,
+        <https://example.com/riskfolio/kg#node/Clarabel>,
+        <https://example.com/riskfolio/kg#node/ECOS>,
+        <https://example.com/riskfolio/kg#node/MOSEK>,
+        <https://example.com/riskfolio/kg#node/SCS> ;
+    rf:USES_ESTIMATOR <https://example.com/riskfolio/kg#node/EWMA>,
+        <https://example.com/riskfolio/kg#node/Historical_Estimator>,
+        <https://example.com/riskfolio/kg#node/OAS>,
+        <https://example.com/riskfolio/kg#node/Shrinkage> .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:0> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:0" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:1> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:1" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:10> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:10" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:11> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:11" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:12> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:12" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:13> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:13" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:14> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:14" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:15> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:15" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:16> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:16" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:17> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:17" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:18> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:18" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:19> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:19" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:2> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:2" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:20> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:20" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:21> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:21" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:22> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:22" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:23> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:23" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:24> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:24" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:25> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:25" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:26> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:26" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:27> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:27" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:28> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:28" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:29> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:29" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:3> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:3" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:30> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:30" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:31> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:31" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:32> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:32" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:33> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:33" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:34> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:34" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:35> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:35" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:36> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:36" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:37> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:37" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:38> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:38" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:39> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:39" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:4> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:4" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:40> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:40" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:41> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:41" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:42> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:42" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:43> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:43" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:44> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:44" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:45> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:45" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:46> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:46" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:47> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:47" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:48> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:48" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:49> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:49" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:5> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:5" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:50> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:50" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:51> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:51" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:52> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:52" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:53> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:53" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:54> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:54" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:55> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:55" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:56> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:56" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:57> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:57" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:58> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:58" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:59> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:59" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:6> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:6" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:60> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:60" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:61> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:61" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:62> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:62" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:63> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:63" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:64> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:64" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:7> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:7" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:8> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:8" .
+
+<https://example.com/riskfolio/kg#node/HCPortfolio.py::chunk:9> a rf:Chunk ;
+    rdfs:label "HCPortfolio.py::chunk:9" .
+
+<https://example.com/riskfolio/kg#node/__init__> a rf:PythonModule ;
+    rdfs:label "__init__" .
+
+rf:PythonModule a owl:Class ;
+    rdfs:label "PythonModule" .
+
+rf:Chunk a owl:Class ;
+    rdfs:label "Chunk" .
+
