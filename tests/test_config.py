@@ -14,7 +14,7 @@ def test_settings_defaults():
     assert settings.embedding_dim == 1536
     assert settings.vector_store_backend == "chroma"
     assert settings.openai_base_url == "https://api.openai.com/v1"
-    assert settings.openai_timeout_seconds == 30.0
+    assert settings.openai_timeout_seconds == 45.0
     assert settings.openai_retry_attempts == 2
     assert settings.openai_retry_backoff_seconds == 1.5
     assert settings.openai_enable_generation is True

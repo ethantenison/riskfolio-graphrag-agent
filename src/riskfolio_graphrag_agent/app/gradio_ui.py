@@ -165,76 +165,221 @@ def _compute_insights(
     }
 
 
-def _render_graph_svg(graph: dict[str, list[dict[str, Any]]], size: int = 480) -> str:
+# ── Per-node-type fill colours ───────────────────────────────────────────────
+_NODE_COLOURS: dict[str, str] = {
+    "PortfolioMethod": "#7C3AED",
+    "RiskMeasure": "#DC2626",
+    "ConstraintType": "#D97706",
+    "Estimator": "#059669",
+    "AssetClass": "#0891B2",
+    "FactorModel": "#2563EB",
+    "MarketRegime": "#EA580C",
+    "BenchmarkIndex": "#65A30D",
+    "BacktestScenario": "#0D9488",
+    "OptimizationProblem": "#7E22CE",
+    "Solver": "#DB2777",
+    "PlotType": "#E11D48",
+    "ReportType": "#C2410C",
+    "PythonFunction": "#0369A1",
+    "PythonModule": "#0284C7",
+    "PythonClass": "#4F46E5",
+    "Parameter": "#9333EA",
+    "Concept": "#6B7280",
+    "Chunk": "#94A3B8",
+    "DocPage": "#A1A1AA",
+    "ExampleNotebook": "#78716C",
+    "TestCase": "#64748B",
+}
+_DEFAULT_NODE_COLOUR = "#3B82F6"
+
+# ── Per-relationship-type stroke colours ─────────────────────────────────────
+_REL_COLOURS: dict[str, str] = {
+    "IS_SUBTYPE_OF": "#DC2626",
+    "ALTERNATIVE_TO": "#7C3AED",
+    "SUPPORTS_RISK_MEASURE": "#059669",
+    "USES_ESTIMATOR": "#0891B2",
+    "HAS_PARAMETER": "#D97706",
+    "HAS_CONSTRAINT": "#D97706",
+    "REQUIRES": "#EA580C",
+    "IMPLEMENTS": "#4F46E5",
+    "DESCRIBES": "#0284C7",
+    "DEMONSTRATES": "#0369A1",
+    "VALIDATES": "#65A30D",
+    "VALIDATED_AGAINST": "#65A30D",
+    "RELATED_TO": "#64748B",
+    "MENTIONS": "#94A3B8",
+    "HAS_CHUNK": "#CBD5E1",
+    "DECLARES": "#64748B",
+    "PARAMETERIZED_BY": "#9333EA",
+    "BENCHMARKED_ON": "#65A30D",
+    "CALIBRATED_ON": "#0891B2",
+    "PRECEDES": "#F59E0B",
+}
+_DEFAULT_REL_COLOUR = "#94A3B8"
+
+
+def _render_graph_svg(graph: dict[str, list[dict[str, Any]]], size: int = 680) -> str:
+    from collections import defaultdict
+
     nodes = graph.get("nodes", [])
     edges = graph.get("edges", [])
 
     if not nodes:
         return (
             "<div style='display:flex;align-items:center;justify-content:center;"
-            f"height:{size}px;background:#F8FAFC;border-radius:8px;color:#9CA3AF;font-size:13px;font-family:sans-serif'>"
+            f"height:{size}px;background:#F8FAFC;border-radius:8px;color:#9CA3AF;"
+            "font-size:13px;font-family:sans-serif'>"
             "No graph data available &mdash; submit a query to populate the knowledge graph view."
             "</div>"
         )
 
-    width = size
-    height = size
-    radius = max(220, int(size * 0.38))
-    center_x = width / 2
-    center_y = height / 2
+    W, H = 920, 860
+    CX, CY = W / 2, (H - 80) / 2  # leave 80 px at bottom for legend
 
-    positions: dict[str, tuple[float, float]] = {}
-    total = len(nodes)
-    for index, node in enumerate(nodes):
-        node_id = str(node.get("id", ""))
-        angle = (2 * math.pi * index) / max(total, 1)
-        x = center_x + radius * math.cos(angle)
-        y = center_y + radius * math.sin(angle)
-        positions[node_id] = (x, y)
-
-    edge_lines: list[str] = []
-    for edge in edges:
-        source = str(edge.get("source", ""))
-        target = str(edge.get("target", ""))
-        if source not in positions or target not in positions:
-            continue
-        x1, y1 = positions[source]
-        x2, y2 = positions[target]
-        edge_type = html.escape(str(edge.get("type", "")))
-        label_x = (x1 + x2) / 2
-        label_y = (y1 + y2) / 2
-        edge_lines.append(
-            f"<line x1='{x1:.1f}' y1='{y1:.1f}' x2='{x2:.1f}' y2='{y2:.1f}' "
-            "stroke='#8AA0B8' stroke-width='1.8' stroke-opacity='0.7' marker-end='url(#arrow)'/>"
-        )
-        edge_lines.append(f"<text x='{label_x:.1f}' y='{label_y:.1f}' font-size='10' fill='#5A6570'>{edge_type}</text>")
-
-    node_shapes: list[str] = []
+    # ── Group nodes by primary label ─────────────────────────────────────────
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for node in nodes:
-        node_id = str(node.get("id", ""))
-        x, y = positions[node_id]
-        name = str(node.get("name", "")) or "Unnamed"
         labels = node.get("labels", [])
-        primary_label = ""
-        if isinstance(labels, list) and labels:
-            primary_label = str(labels[0])
-        source_path = str(node.get("source_path", ""))
-        title = html.escape(f"{name} [{primary_label}]\\n{source_path}")
-        display_name = html.escape(name[:26] + ("…" if len(name) > 26 else ""))
-        label_text = html.escape(primary_label)
-        node_shapes.append(
+        primary = str(labels[0]) if labels else "Concept"
+        groups[primary].append(node)
+
+    group_keys = sorted(groups, key=lambda k: -len(groups[k]))
+    num_groups = len(group_keys)
+
+    # Arrange group centres in a circle; scale radius with group count
+    outer_r = min(330, max(140, num_groups * 38))
+    group_centers: dict[str, tuple[float, float]] = {}
+    for i, gk in enumerate(group_keys):
+        angle = 2 * math.pi * i / max(num_groups, 1) - math.pi / 2
+        group_centers[gk] = (CX + outer_r * math.cos(angle), CY + outer_r * math.sin(angle))
+
+    # Place individual nodes in a sub-circle within each group
+    NODE_R = 16
+    positions: dict[str, tuple[float, float]] = {}
+    for gk, gnodes in groups.items():
+        gx, gy = group_centers[gk]
+        n = len(gnodes)
+        sub_r = max(NODE_R + 4, min(55, (NODE_R + 6) * n / max(math.pi, 1)))
+        for j, node in enumerate(gnodes):
+            nid = str(node.get("id", ""))
+            if n == 1:
+                positions[nid] = (gx, gy)
+            else:
+                a = 2 * math.pi * j / n - math.pi / 2
+                positions[nid] = (gx + sub_r * math.cos(a), gy + sub_r * math.sin(a))
+
+    # ── Edges ────────────────────────────────────────────────────────────────
+    seen_colours: set[str] = set()
+    edge_svgs: list[str] = []
+    for edge in edges:
+        src = str(edge.get("source", ""))
+        tgt = str(edge.get("target", ""))
+        if src not in positions or tgt not in positions or src == tgt:
+            continue
+        x1, y1 = positions[src]
+        x2, y2 = positions[tgt]
+        rel = str(edge.get("type", ""))
+        colour = _REL_COLOURS.get(rel, _DEFAULT_REL_COLOUR)
+        seen_colours.add(colour)
+        marker_id = f"arr_{colour.lstrip('#')}"
+
+        # Perpendicular control point for a subtle curve
+        dx, dy = x2 - x1, y2 - y1
+        length = math.sqrt(dx * dx + dy * dy) or 1
+        nx, ny = -dy / length, dx / length
+        offset = min(22, max(8, length * 0.15))
+        qx = (x1 + x2) / 2 + nx * offset
+        qy = (y1 + y2) / 2 + ny * offset
+
+        # Trim start/end so path begins/ends at circle perimeter
+        d0x, d0y = qx - x1, qy - y1
+        d0len = math.sqrt(d0x**2 + d0y**2) or 1
+        sx = x1 + d0x / d0len * (NODE_R + 2)
+        sy = y1 + d0y / d0len * (NODE_R + 2)
+        d1x, d1y = x2 - qx, y2 - qy
+        d1len = math.sqrt(d1x**2 + d1y**2) or 1
+        ex = x2 - d1x / d1len * (NODE_R + 5)
+        ey = y2 - d1y / d1len * (NODE_R + 5)
+
+        # Label at t=0.5 on the bezier: 0.25*P0 + 0.5*Pctrl + 0.25*P2
+        lx = 0.25 * x1 + 0.5 * qx + 0.25 * x2
+        ly = 0.25 * y1 + 0.5 * qy + 0.25 * y2
+
+        safe_rel = html.escape(rel)
+        title = html.escape(f"{edge.get('source', '')} ─{rel}→ {edge.get('target', '')}")
+        edge_svgs.append(
             f"<g><title>{title}</title>"
-            f"<circle cx='{x:.1f}' cy='{y:.1f}' r='20' fill='#3B82F6' fill-opacity='0.9'/>"
-            f"<text x='{x:.1f}' y='{y + 36:.1f}' text-anchor='middle' font-size='10' fill='#1E293B'>{display_name}</text>"
-            f"<text x='{x:.1f}' y='{y + 49:.1f}' text-anchor='middle' font-size='9' fill='#64748B'>{label_text}</text>"
-            "</g>"
+            f"<path d='M {sx:.1f} {sy:.1f} Q {qx:.1f} {qy:.1f} {ex:.1f} {ey:.1f}' "
+            f"fill='none' stroke='{colour}' stroke-width='1.5' stroke-opacity='0.7' "
+            f"marker-end='url(#{marker_id})'/>"
+            f"<text x='{lx:.1f}' y='{ly:.1f}' text-anchor='middle' font-size='8.5' fill='{colour}' "
+            f"paint-order='stroke' stroke='white' stroke-width='2.5' stroke-linejoin='round'>"
+            f"{safe_rel}</text>"
+            f"</g>"
         )
+
+    # Arrow marker defs — one per unique edge colour
+    markers = "".join(
+        f"<marker id='arr_{c[1:]}' markerWidth='7' markerHeight='5' "
+        f"refX='6' refY='2.5' orient='auto'>"
+        f"<polygon points='0 0, 7 2.5, 0 5' fill='{c}'/></marker>"
+        for c in seen_colours
+    )
+
+    # ── Nodes ────────────────────────────────────────────────────────────────
+    node_svgs: list[str] = []
+    for node in nodes:
+        nid = str(node.get("id", ""))
+        if nid not in positions:
+            continue
+        x, y = positions[nid]
+        name = str(node.get("name", "")).strip() or "Unnamed"
+        labels = node.get("labels", [])
+        primary = str(labels[0]) if labels else "Concept"
+        fill = _NODE_COLOURS.get(primary, _DEFAULT_NODE_COLOUR)
+        source_path = str(node.get("source_path", ""))
+        tooltip = html.escape(f"{name}\nType: {primary}" + (f"\n{source_path}" if source_path else ""))
+        display = html.escape(name[:20] + ("…" if len(name) > 20 else ""))
+        node_svgs.append(
+            f"<g><title>{tooltip}</title>"
+            f"<circle cx='{x:.1f}' cy='{y:.1f}' r='{NODE_R}' fill='{fill}' "
+            f"stroke='white' stroke-width='2' fill-opacity='0.93'/>"
+            f"<text x='{x:.1f}' y='{y + NODE_R + 12:.1f}' text-anchor='middle' font-size='9' "
+            f"font-weight='600' fill='#1E293B' "
+            f"paint-order='stroke' stroke='white' stroke-width='2.5' stroke-linejoin='round'>"
+            f"{display}</text>"
+            f"</g>"
+        )
+
+    # ── Legend ───────────────────────────────────────────────────────────────
+    present = sorted({str(n.get("labels", ["Concept"])[0]) if n.get("labels") else "Concept" for n in nodes})
+    cols_per_row = 5
+    leg_row_h = 18
+    leg_top = H - 72
+    leg_items: list[str] = []
+    for idx, pt in enumerate(present):
+        col = idx % cols_per_row
+        row = idx // cols_per_row
+        lx = 16 + col * 178
+        ly = leg_top + row * leg_row_h + 10
+        c = _NODE_COLOURS.get(pt, _DEFAULT_NODE_COLOUR)
+        leg_items.append(
+            f"<circle cx='{lx + 6}' cy='{ly}' r='5' fill='{c}'/>"
+            f"<text x='{lx + 15}' y='{ly + 4}' font-size='10' fill='#334155'>{html.escape(pt)}</text>"
+        )
+
+    leg_rows = math.ceil(len(present) / cols_per_row)
+    leg_bg_h = leg_rows * leg_row_h + 12
+    legend = (
+        f"<rect x='8' y='{leg_top - 4}' width='{W - 16}' height='{leg_bg_h}' "
+        f"rx='5' fill='#F8FAFC' stroke='#E2E8F0' stroke-width='1'/>" + "".join(leg_items)
+    )
 
     svg = (
-        f"<svg viewBox='0 0 {width} {height}' width='100%' height='100%' xmlns='http://www.w3.org/2000/svg'>"
-        "<defs><marker id='arrow' markerWidth='10' markerHeight='7' refX='8' refY='3.5' orient='auto'>"
-        "<polygon points='0 0, 10 3.5, 0 7' fill='#8AA0B8'/></marker></defs>"
-        "<rect width='100%' height='100%' fill='white'/>" + "".join(edge_lines) + "".join(node_shapes) + "</svg>"
+        f"<svg viewBox='0 0 {W} {H}' width='100%' height='100%' "
+        f"xmlns='http://www.w3.org/2000/svg' font-family='system-ui,sans-serif'>"
+        f"<defs>{markers}</defs>"
+        "<rect width='100%' height='100%' fill='white'/>" + "".join(edge_svgs) + "".join(node_svgs) + legend + "</svg>"
     )
     return f"<div style='width:100%;height:{size}px;overflow:hidden;border-radius:8px;border:1px solid #E2E8F0'>{svg}</div>"
 

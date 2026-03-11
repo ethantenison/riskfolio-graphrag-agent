@@ -22,7 +22,7 @@ def _load_graph_snapshot(settings: Settings) -> tuple[list[dict[str, str | list[
         with driver.session() as session:
             nodes = [
                 {"name": str(row["name"]), "labels": [str(v) for v in row["labels"]]}
-                for row in session.run("MATCH (n) WHERE n.name IS NOT NULL RETURN n.name AS name, labels(n) AS labels LIMIT 300")
+                for row in session.run("MATCH (n) WHERE n.name IS NOT NULL RETURN n.name AS name, labels(n) AS labels")
             ]
             edges = [
                 {
@@ -34,7 +34,7 @@ def _load_graph_snapshot(settings: Settings) -> tuple[list[dict[str, str | list[
                     (
                         "MATCH (a)-[r]->(b) "
                         "WHERE a.name IS NOT NULL AND b.name IS NOT NULL "
-                        "RETURN a.name AS source, b.name AS target, type(r) AS relation LIMIT 600"
+                        "RETURN a.name AS source, b.name AS target, type(r) AS relation"
                     )
                 )
             ]

@@ -8,14 +8,22 @@ from pathlib import Path
 from typing import Any
 
 from neo4j import GraphDatabase
-from rdflib import Graph, Literal, Namespace
-from rdflib.namespace import OWL, RDF, RDFS
+from rdflib import Graph, Literal, Namespace, URIRef
+from rdflib.namespace import OWL, RDF, RDFS, XSD
 
-from riskfolio_graphrag_agent.graph.builder import NODE_LABELS, RELATIONSHIP_TYPES
+from riskfolio_graphrag_agent.graph.builder import DOMAIN_ALIASES, NODE_LABELS, RELATIONSHIP_TYPES
 
 logger = logging.getLogger(__name__)
 
-RF = Namespace("https://example.com/riskfolio/kg#")
+# Project-stable ontology namespace (v1)
+RF = Namespace("https://riskfolio-graphrag.io/ontology/v1#")
+
+# External ontology namespace prefixes
+FIBO_SEC = Namespace("https://spec.edmcouncil.org/fibo/ontology/SEC/")
+FIBO_FBC = Namespace("https://spec.edmcouncil.org/fibo/ontology/FBC/")
+STATO = Namespace("http://purl.obolibrary.org/obo/STATO_")
+QUDT = Namespace("http://qudt.org/schema/qudt/")
+PROV = Namespace("http://www.w3.org/ns/prov#")
 
 
 def export_rdf_owl_from_records(
@@ -86,15 +94,79 @@ def build_rdf_graph(*, nodes: list[dict[str, Any]], edges: list[dict[str, Any]])
     graph = Graph()
     graph.bind("rf", RF)
     graph.bind("owl", OWL)
+    graph.bind("rdfs", RDFS)
+    graph.bind("xsd", XSD)
+    graph.bind("fibo-sec", FIBO_SEC)
+    graph.bind("fibo-fbc", FIBO_FBC)
+    graph.bind("stato", STATO)
+    graph.bind("qudt", QUDT)
+    graph.bind("prov", PROV)
 
+    # --- OWL class declarations for every node label ---
     for label in NODE_LABELS:
         graph.add((RF[label], RDF.type, OWL.Class))
         graph.add((RF[label], RDFS.label, Literal(label)))
 
+    # --- OWL object-property declarations with domain / range axioms ---
+    _property_axioms: list[tuple[str, URIRef | None, URIRef | None]] = [
+        ("MENTIONS", OWL.Thing, OWL.Thing),
+        ("IS_SUBTYPE_OF", OWL.Thing, OWL.Thing),
+        ("ALTERNATIVE_TO", OWL.Thing, OWL.Thing),
+        ("REQUIRES", OWL.Thing, OWL.Thing),
+        ("PARAMETERIZED_BY", OWL.Thing, OWL.Thing),
+        ("SUPPORTS_RISK_MEASURE", RF["PortfolioMethod"], RF["RiskMeasure"]),
+        ("USES_ESTIMATOR", RF["PortfolioMethod"], RF["Estimator"]),
+        ("HAS_PARAMETER", OWL.Thing, RF["Parameter"]),
+        ("BENCHMARKED_ON", RF["BacktestScenario"], RF["BenchmarkIndex"]),
+        ("CALIBRATED_ON", RF["Estimator"], RF["AssetClass"]),
+        ("PRECEDES", OWL.Thing, OWL.Thing),
+        ("HAS_CONSTRAINT", RF["PortfolioMethod"], RF["ConstraintType"]),
+        ("VALIDATED_AGAINST", OWL.Thing, OWL.Thing),
+        ("RELATED_TO", OWL.Thing, OWL.Thing),
+        ("DESCRIBES", OWL.Thing, OWL.Thing),
+        ("DEMONSTRATES", OWL.Thing, OWL.Thing),
+        ("VALIDATES", OWL.Thing, OWL.Thing),
+        ("IMPLEMENTS", OWL.Thing, OWL.Thing),
+    ]
     for relation in RELATIONSHIP_TYPES:
         graph.add((RF[relation], RDF.type, OWL.ObjectProperty))
         graph.add((RF[relation], RDFS.label, Literal(relation)))
+    for prop_name, domain_cls, range_cls in _property_axioms:
+        if domain_cls is not None:
+            graph.add((RF[prop_name], RDFS.domain, domain_cls))
+        if range_cls is not None:
+            graph.add((RF[prop_name], RDFS.range, range_cls))
 
+    # --- OWL datatype properties ---
+    _datatype_props = (
+        "hasConfidenceLevel",
+        "hasTargetReturn",
+        "hasWeightUpperBound",
+        "hasWeightLowerBound",
+        "hasRiskBudgetFraction",
+    )
+    for dp_name in _datatype_props:
+        graph.add((RF[dp_name], RDF.type, OWL.DatatypeProperty))
+        graph.add((RF[dp_name], RDFS.label, Literal(dp_name)))
+        graph.add((RF[dp_name], RDFS.range, XSD.float))
+
+    # --- owl:equivalentClass alignments to FIBO / STATO ---
+    graph.add((RF["PortfolioMethod"], OWL.equivalentClass, FIBO_SEC["InvestmentStrategy"]))
+    graph.add((RF["RiskMeasure"], OWL.equivalentClass, FIBO_FBC["RiskMeasure"]))
+    graph.add((RF["Estimator"], OWL.equivalentClass, STATO["0000118"]))  # stato:StatisticalEstimator
+
+    # --- rdfs:subClassOf hierarchy from DOMAIN_ALIASES ---
+    for category_label, concepts in DOMAIN_ALIASES.items():
+        category_uri = RF[_slug(category_label)]
+        graph.add((category_uri, RDF.type, OWL.Class))
+        graph.add((category_uri, RDFS.label, Literal(category_label)))
+        for canonical_name in concepts:
+            concept_uri = RF[_slug(canonical_name)]
+            graph.add((concept_uri, RDF.type, OWL.Class))
+            graph.add((concept_uri, RDFS.label, Literal(canonical_name)))
+            graph.add((concept_uri, RDFS.subClassOf, category_uri))
+
+    # --- instance nodes ---
     for node in nodes:
         name = str(node.get("name", "")).strip()
         if not name:
@@ -105,6 +177,7 @@ def build_rdf_graph(*, nodes: list[dict[str, Any]], edges: list[dict[str, Any]])
         for label in labels:
             graph.add((subject, RDF.type, RF[label]))
 
+    # --- edges ---
     for edge in edges:
         source = str(edge.get("source", "")).strip()
         target = str(edge.get("target", "")).strip()
@@ -120,31 +193,76 @@ def run_basic_sparql_queries(rdf_path: str | Path) -> dict[str, list[dict[str, s
     graph = Graph()
     graph.parse(str(rdf_path), format="turtle")
 
-    node_count_query = """
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    SELECT ?name WHERE {
+    _RF_PREFIX = "PREFIX rf: <https://riskfolio-graphrag.io/ontology/v1#>"
+    _RDFS_PREFIX = "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>"
+
+    node_count_query = f"""
+    {_RDFS_PREFIX}
+    SELECT ?name WHERE {{
       ?s rdfs:label ?name .
-    }
+    }}
     LIMIT 5
     """
 
-    rel_query = """
-    PREFIX rf: <https://example.com/riskfolio/kg#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    SELECT ?source ?target WHERE {
-      ?s rf:MENTIONS ?t .
+    subclass_query = f"""
+    {_RF_PREFIX}
+    {_RDFS_PREFIX}
+    SELECT ?child ?parent WHERE {{
+      ?s rdfs:subClassOf ?p .
+      ?s rdfs:label ?child .
+      ?p rdfs:label ?parent .
+    }}
+    LIMIT 10
+    """
+
+    alternative_query = f"""
+    {_RF_PREFIX}
+    {_RDFS_PREFIX}
+    SELECT ?source ?target WHERE {{
+      ?s rf:ALTERNATIVE_TO ?t .
       ?s rdfs:label ?source .
       ?t rdfs:label ?target .
-    }
-    LIMIT 5
+    }}
+    LIMIT 10
+    """
+
+    supports_risk_query = f"""
+    {_RF_PREFIX}
+    {_RDFS_PREFIX}
+    SELECT ?method ?measure WHERE {{
+      ?m rf:SUPPORTS_RISK_MEASURE ?r .
+      ?m rdfs:label ?method .
+      ?r rdfs:label ?measure .
+    }}
+    LIMIT 10
+    """
+
+    uses_estimator_query = f"""
+    {_RF_PREFIX}
+    {_RDFS_PREFIX}
+    SELECT ?method ?estimator WHERE {{
+      ?m rf:USES_ESTIMATOR ?e .
+      ?m rdfs:label ?method .
+      ?e rdfs:label ?estimator .
+    }}
+    LIMIT 10
     """
 
     sample_nodes = [{"name": str(row["name"])} for row in graph.query(node_count_query)]
-    sample_mentions = [{"source": str(row["source"]), "target": str(row["target"])} for row in graph.query(rel_query)]
+    sample_subclass = [{"child": str(row["child"]), "parent": str(row["parent"])} for row in graph.query(subclass_query)]
+    sample_alternative = [{"source": str(row["source"]), "target": str(row["target"])} for row in graph.query(alternative_query)]
+    sample_supports = [{"method": str(row["method"]), "measure": str(row["measure"])} for row in graph.query(supports_risk_query)]
+    sample_estimator = [
+        {"method": str(row["method"]), "estimator": str(row["estimator"])} for row in graph.query(uses_estimator_query)
+    ]
 
     return {
         "sample_nodes": sample_nodes,
-        "sample_mentions": sample_mentions,
+        "sample_mentions": sample_subclass,  # kept for backward-compat key name
+        "sample_subclass": sample_subclass,
+        "sample_alternative_to": sample_alternative,
+        "sample_supports_risk_measure": sample_supports,
+        "sample_uses_estimator": sample_estimator,
     }
 
 
@@ -195,6 +313,13 @@ def shacl_like_validate(
         target.write_text(json.dumps(report, indent=2))
 
     return report
+
+
+def _slug(name: str) -> str:
+    """Convert a human-readable name to a URI-safe slug (spaces/hyphens → underscores)."""
+    import re as _re
+
+    return _re.sub(r"[^A-Za-z0-9_]", "_", name.strip())
 
 
 def _node_uri(name: str):
