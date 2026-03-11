@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import html
-import math
+import json
 from typing import Any
 
 import gradio as gr
@@ -18,7 +18,7 @@ from riskfolio_graphrag_agent.retrieval.router import QueryToolRouter
 
 def run_query_with_graph(
     question: str,
-    top_k: int = 5,
+    top_k: int = 10,
     graph_max_nodes: int = 40,
     graph_max_edges: int = 80,
 ) -> tuple[str, list[dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, Any]]:
@@ -77,11 +77,7 @@ def run_query_with_graph(
         neo4j_password=settings.neo4j_password,
     )
     try:
-        graph = graph_builder.get_query_subgraph(
-            normalized_question,
-            max_nodes=max(1, int(graph_max_nodes)),
-            max_edges=max(1, int(graph_max_edges)),
-        )
+        graph = graph_builder.get_query_subgraph(normalized_question)
     except Exception:
         graph = {"nodes": [], "edges": []}
     finally:
@@ -218,170 +214,148 @@ _REL_COLOURS: dict[str, str] = {
 _DEFAULT_REL_COLOUR = "#94A3B8"
 
 
-def _render_graph_svg(graph: dict[str, list[dict[str, Any]]], size: int = 680) -> str:
-    from collections import defaultdict
-
+def _render_graph_visjs(graph: dict[str, list[dict[str, Any]]], height: int = 520) -> str:
+    """Render an interactive vis.js network: drag nodes, scroll to zoom, pan."""
     nodes = graph.get("nodes", [])
     edges = graph.get("edges", [])
 
     if not nodes:
         return (
             "<div style='display:flex;align-items:center;justify-content:center;"
-            f"height:{size}px;background:#F8FAFC;border-radius:8px;color:#9CA3AF;"
+            f"height:{height}px;background:#F8FAFC;border-radius:8px;color:#9CA3AF;"
             "font-size:13px;font-family:sans-serif'>"
-            "No graph data available &mdash; submit a query to populate the knowledge graph view."
+            "Ask a question to populate the knowledge graph."
             "</div>"
         )
 
-    W, H = 920, 860
-    CX, CY = W / 2, (H - 80) / 2  # leave 80 px at bottom for legend
+    vis_nodes: list[dict] = []
+    present_types: list[str] = []
+    seen_types: set[str] = set()
 
-    # ── Group nodes by primary label ─────────────────────────────────────────
-    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for node in nodes:
-        labels = node.get("labels", [])
-        primary = str(labels[0]) if labels else "Concept"
-        groups[primary].append(node)
-
-    group_keys = sorted(groups, key=lambda k: -len(groups[k]))
-    num_groups = len(group_keys)
-
-    # Arrange group centres in a circle; scale radius with group count
-    outer_r = min(330, max(140, num_groups * 38))
-    group_centers: dict[str, tuple[float, float]] = {}
-    for i, gk in enumerate(group_keys):
-        angle = 2 * math.pi * i / max(num_groups, 1) - math.pi / 2
-        group_centers[gk] = (CX + outer_r * math.cos(angle), CY + outer_r * math.sin(angle))
-
-    # Place individual nodes in a sub-circle within each group
-    NODE_R = 16
-    positions: dict[str, tuple[float, float]] = {}
-    for gk, gnodes in groups.items():
-        gx, gy = group_centers[gk]
-        n = len(gnodes)
-        sub_r = max(NODE_R + 4, min(55, (NODE_R + 6) * n / max(math.pi, 1)))
-        for j, node in enumerate(gnodes):
-            nid = str(node.get("id", ""))
-            if n == 1:
-                positions[nid] = (gx, gy)
-            else:
-                a = 2 * math.pi * j / n - math.pi / 2
-                positions[nid] = (gx + sub_r * math.cos(a), gy + sub_r * math.sin(a))
-
-    # ── Edges ────────────────────────────────────────────────────────────────
-    seen_colours: set[str] = set()
-    edge_svgs: list[str] = []
-    for edge in edges:
-        src = str(edge.get("source", ""))
-        tgt = str(edge.get("target", ""))
-        if src not in positions or tgt not in positions or src == tgt:
-            continue
-        x1, y1 = positions[src]
-        x2, y2 = positions[tgt]
-        rel = str(edge.get("type", ""))
-        colour = _REL_COLOURS.get(rel, _DEFAULT_REL_COLOUR)
-        seen_colours.add(colour)
-        marker_id = f"arr_{colour.lstrip('#')}"
-
-        # Perpendicular control point for a subtle curve
-        dx, dy = x2 - x1, y2 - y1
-        length = math.sqrt(dx * dx + dy * dy) or 1
-        nx, ny = -dy / length, dx / length
-        offset = min(22, max(8, length * 0.15))
-        qx = (x1 + x2) / 2 + nx * offset
-        qy = (y1 + y2) / 2 + ny * offset
-
-        # Trim start/end so path begins/ends at circle perimeter
-        d0x, d0y = qx - x1, qy - y1
-        d0len = math.sqrt(d0x**2 + d0y**2) or 1
-        sx = x1 + d0x / d0len * (NODE_R + 2)
-        sy = y1 + d0y / d0len * (NODE_R + 2)
-        d1x, d1y = x2 - qx, y2 - qy
-        d1len = math.sqrt(d1x**2 + d1y**2) or 1
-        ex = x2 - d1x / d1len * (NODE_R + 5)
-        ey = y2 - d1y / d1len * (NODE_R + 5)
-
-        # Label at t=0.5 on the bezier: 0.25*P0 + 0.5*Pctrl + 0.25*P2
-        lx = 0.25 * x1 + 0.5 * qx + 0.25 * x2
-        ly = 0.25 * y1 + 0.5 * qy + 0.25 * y2
-
-        safe_rel = html.escape(rel)
-        title = html.escape(f"{edge.get('source', '')} ─{rel}→ {edge.get('target', '')}")
-        edge_svgs.append(
-            f"<g><title>{title}</title>"
-            f"<path d='M {sx:.1f} {sy:.1f} Q {qx:.1f} {qy:.1f} {ex:.1f} {ey:.1f}' "
-            f"fill='none' stroke='{colour}' stroke-width='1.5' stroke-opacity='0.7' "
-            f"marker-end='url(#{marker_id})'/>"
-            f"<text x='{lx:.1f}' y='{ly:.1f}' text-anchor='middle' font-size='8.5' fill='{colour}' "
-            f"paint-order='stroke' stroke='white' stroke-width='2.5' stroke-linejoin='round'>"
-            f"{safe_rel}</text>"
-            f"</g>"
-        )
-
-    # Arrow marker defs — one per unique edge colour
-    markers = "".join(
-        f"<marker id='arr_{c[1:]}' markerWidth='7' markerHeight='5' "
-        f"refX='6' refY='2.5' orient='auto'>"
-        f"<polygon points='0 0, 7 2.5, 0 5' fill='{c}'/></marker>"
-        for c in seen_colours
-    )
-
-    # ── Nodes ────────────────────────────────────────────────────────────────
-    node_svgs: list[str] = []
     for node in nodes:
         nid = str(node.get("id", ""))
-        if nid not in positions:
-            continue
-        x, y = positions[nid]
         name = str(node.get("name", "")).strip() or "Unnamed"
         labels = node.get("labels", [])
         primary = str(labels[0]) if labels else "Concept"
-        fill = _NODE_COLOURS.get(primary, _DEFAULT_NODE_COLOUR)
-        source_path = str(node.get("source_path", ""))
-        tooltip = html.escape(f"{name}\nType: {primary}" + (f"\n{source_path}" if source_path else ""))
-        display = html.escape(name[:20] + ("…" if len(name) > 20 else ""))
-        node_svgs.append(
-            f"<g><title>{tooltip}</title>"
-            f"<circle cx='{x:.1f}' cy='{y:.1f}' r='{NODE_R}' fill='{fill}' "
-            f"stroke='white' stroke-width='2' fill-opacity='0.93'/>"
-            f"<text x='{x:.1f}' y='{y + NODE_R + 12:.1f}' text-anchor='middle' font-size='9' "
-            f"font-weight='600' fill='#1E293B' "
-            f"paint-order='stroke' stroke='white' stroke-width='2.5' stroke-linejoin='round'>"
-            f"{display}</text>"
-            f"</g>"
+        colour = _NODE_COLOURS.get(primary, _DEFAULT_NODE_COLOUR)
+        source = str(node.get("source_path", ""))
+        tooltip_html = f"<b>{html.escape(name)}</b><br/>Type: {html.escape(primary)}" + (
+            f"<br/><small style='color:#94A3B8'>{html.escape(source)}</small>" if source else ""
         )
+        if primary not in seen_types:
+            seen_types.add(primary)
+            present_types.append(primary)
+        vis_nodes.append(
+            {
+                "id": nid,
+                "label": name[:26] + ("\u2026" if len(name) > 26 else ""),
+                "_tooltip": tooltip_html,
+                "color": {
+                    "background": colour,
+                    "border": "#ffffff",
+                    "highlight": {"background": colour, "border": "#1E293B"},
+                    "hover": {"background": colour, "border": "#1E293B"},
+                },
+                "font": {
+                    "size": 11,
+                    "color": "#1E293B",
+                    "strokeWidth": 3,
+                    "strokeColor": "#fff",
+                },
+                "size": 18,
+            }
+        )
+
+    vis_edges: list[dict] = []
+    for i, edge in enumerate(edges):
+        src = str(edge.get("source", ""))
+        tgt = str(edge.get("target", ""))
+        if src == tgt:
+            continue
+        rel = str(edge.get("type", ""))
+        colour = _REL_COLOURS.get(rel, _DEFAULT_REL_COLOUR)
+        vis_edges.append(
+            {
+                "id": i,
+                "from": src,
+                "to": tgt,
+                "label": rel,
+                "color": {"color": colour, "highlight": colour, "hover": colour},
+                "font": {
+                    "size": 9,
+                    "color": colour,
+                    "strokeWidth": 2,
+                    "strokeColor": "#fff",
+                },
+                "arrows": "to",
+                "width": 1.5,
+                "smooth": {"type": "curvedCW", "roundness": 0.15},
+            }
+        )
+
+    nodes_json = json.dumps(vis_nodes)
+    edges_json = json.dumps(vis_edges)
 
     # ── Legend ───────────────────────────────────────────────────────────────
-    present = sorted({str(n.get("labels", ["Concept"])[0]) if n.get("labels") else "Concept" for n in nodes})
-    cols_per_row = 5
-    leg_row_h = 18
-    leg_top = H - 72
-    leg_items: list[str] = []
-    for idx, pt in enumerate(present):
-        col = idx % cols_per_row
-        row = idx // cols_per_row
-        lx = 16 + col * 178
-        ly = leg_top + row * leg_row_h + 10
-        c = _NODE_COLOURS.get(pt, _DEFAULT_NODE_COLOUR)
-        leg_items.append(
-            f"<circle cx='{lx + 6}' cy='{ly}' r='5' fill='{c}'/>"
-            f"<text x='{lx + 15}' y='{ly + 4}' font-size='10' fill='#334155'>{html.escape(pt)}</text>"
-        )
-
-    leg_rows = math.ceil(len(present) / cols_per_row)
-    leg_bg_h = leg_rows * leg_row_h + 12
-    legend = (
-        f"<rect x='8' y='{leg_top - 4}' width='{W - 16}' height='{leg_bg_h}' "
-        f"rx='5' fill='#F8FAFC' stroke='#E2E8F0' stroke-width='1'/>" + "".join(leg_items)
+    legend_rows = "".join(
+        "<div style='display:flex;align-items:center;gap:5px;margin:2px 0'>"
+        f"<span style='width:10px;height:10px;border-radius:50%;flex-shrink:0;"
+        f"background:{_NODE_COLOURS.get(pt, _DEFAULT_NODE_COLOUR)};display:inline-block'>"
+        f"</span><span style='font-size:10px;color:#334155'>{html.escape(pt)}</span></div>"
+        for pt in sorted(present_types)
+    )
+    legend_html = (
+        "<div style='position:absolute;bottom:8px;left:8px;"
+        "background:rgba(248,250,252,0.92);border:1px solid #E2E8F0;"
+        "border-radius:6px;padding:8px 12px;max-height:180px;overflow-y:auto;z-index:10'>"
+        "<div style='font-size:9px;font-weight:700;color:#64748B;"
+        f"text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px'>Node Types</div>"
+        f"{legend_rows}</div>"
     )
 
-    svg = (
-        f"<svg viewBox='0 0 {W} {H}' width='100%' height='100%' "
-        f"xmlns='http://www.w3.org/2000/svg' font-family='system-ui,sans-serif'>"
-        f"<defs>{markers}</defs>"
-        "<rect width='100%' height='100%' fill='white'/>" + "".join(edge_svgs) + "".join(node_svgs) + legend + "</svg>"
+    inner_html = (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'/>"
+        "<script src='https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js'>"
+        "</script><style>"
+        "body{margin:0;padding:0;background:#F8FAFC;overflow:hidden;position:relative}"
+        f"#g{{width:100%;height:{height}px}}"
+        "#tt{position:absolute;pointer-events:none;display:none;background:#1E293B;"
+        "color:#F8FAFC;font-size:12px;padding:6px 10px;border-radius:6px;max-width:240px;"
+        "z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.3);line-height:1.5;"
+        "font-family:system-ui,sans-serif}"
+        f"</style></head><body><div id='g'></div>{legend_html}"
+        "<div id='tt'></div><script>"
+        f"var nodes=new vis.DataSet({nodes_json});"
+        f"var edges=new vis.DataSet({edges_json});"
+        "var opt={physics:{enabled:true,barnesHut:{gravitationalConstant:-7000,"
+        "centralGravity:0.25,springLength:130,springConstant:0.04},"
+        "stabilization:{iterations:200,fit:true}},"
+        "interaction:{hover:true,zoomView:true,dragNodes:true,dragView:true},"
+        "nodes:{shape:'dot',borderWidth:2,borderWidthSelected:3},"
+        "edges:{selectionWidth:3},layout:{improvedLayout:true}};"
+        "var net=new vis.Network(document.getElementById('g'),{nodes:nodes,edges:edges},opt);"
+        "var tt=document.getElementById('tt');"
+        "net.on('hoverNode',function(p){"
+        "var n=nodes.get(p.node);"
+        "if(n&&n._tooltip){tt.innerHTML=n._tooltip;tt.style.display='block';"
+        "tt.style.left=(p.pointer.DOM.x+12)+'px';tt.style.top=(p.pointer.DOM.y-10)+'px'}"
+        "});"
+        "net.on('blurNode',function(){tt.style.display='none'});"
+        "net.on('dragStart',function(){tt.style.display='none'});"
+        "net.on('zoom',function(){tt.style.display='none'});"
+        "net.once('stabilizationIterationsDone',function(){"
+        "net.fit({animation:false});"
+        "net.moveTo({scale:net.getScale()*1.4});"
+        "});"
+        "</script></body></html>"
     )
-    return f"<div style='width:100%;height:{size}px;overflow:hidden;border-radius:8px;border:1px solid #E2E8F0'>{svg}</div>"
+
+    srcdoc = html.escape(inner_html, quote=True)
+    return (
+        f'<iframe srcdoc="{srcdoc}" '
+        f'style="width:100%;height:{height}px;border:none;border-radius:8px;'
+        f'background:#F8FAFC" sandbox="allow-scripts"></iframe>'
+    )
 
 
 # ── Insight-panel rendering helpers ─────────────────────────────────────────
@@ -394,17 +368,90 @@ _MODE_COLOURS: dict[str, str] = {
 }
 
 _EMPTY_ROUTING_HTML = (
-    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>Submit a query to see adaptive tool-selection routing decisions.</p>"
+    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
+    "Ask a question above to see how the AI decides which search tool to use for each part of your query."
+    "</p>"
 )
 _EMPTY_GROUNDING_HTML = (
-    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>Submit a query to see grounding and faithfulness metrics.</p>"
+    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
+    "Ask a question above to see how well the answer is backed by evidence "
+    "(versus the AI guessing)."
+    "</p>"
 )
 _EMPTY_GRAPH_EVIDENCE_HTML = (
-    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>Submit a query to see graph entities and neighbourhood evidence.</p>"
+    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
+    "Ask a question above to see which concepts and relationships from the knowledge graph "
+    "were used to construct the answer."
+    "</p>"
 )
 _EMPTY_GOVERNANCE_HTML = (
-    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>Submit a query to see governance metrics and cost estimates.</p>"
+    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
+    "Ask a question above to see which AI model was used, what safety guardrails were active, "
+    "and how much the query cost in tokens."
+    "</p>"
 )
+
+
+def _render_graph_svg(graph: dict[str, list[dict[str, Any]]], width: int = 800, height: int = 400) -> str:
+    """Render a simple SVG representation of the knowledge graph."""
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+
+    if not nodes:
+        return (
+            f"<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}'>"
+            f"<text x='{width // 2}' y='{height // 2}' text-anchor='middle' "
+            "fill='#9CA3AF' font-size='14' font-family='sans-serif'>"
+            "No graph data available"
+            "</text></svg>"
+        )
+
+    import math
+
+    node_positions: dict[str, tuple[float, float]] = {}
+    n = len(nodes)
+    cx, cy, r = width / 2, height / 2, min(width, height) * 0.35
+    for i, node in enumerate(nodes):
+        angle = 2 * math.pi * i / n
+        node_positions[str(node.get("id", i))] = (
+            cx + r * math.cos(angle),
+            cy + r * math.sin(angle),
+        )
+
+    parts = [f"<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}'>"]
+
+    for edge in edges:
+        src = str(edge.get("source", ""))
+        tgt = str(edge.get("target", ""))
+        etype = html.escape(str(edge.get("type", "")))
+        if src in node_positions and tgt in node_positions:
+            x1, y1 = node_positions[src]
+            x2, y2 = node_positions[tgt]
+            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+            parts.append(f"<line x1='{x1:.1f}' y1='{y1:.1f}' x2='{x2:.1f}' y2='{y2:.1f}' stroke='#94A3B8' stroke-width='1.5'/>")
+            if etype:
+                parts.append(
+                    f"<text x='{mx:.1f}' y='{my:.1f}' text-anchor='middle' "
+                    "fill='#64748B' font-size='10' font-family='sans-serif'>"
+                    f"{etype}</text>"
+                )
+
+    for node in nodes:
+        nid = str(node.get("id", ""))
+        name = html.escape(str(node.get("name", "")).strip() or "Unnamed")
+        labels = node.get("labels", [])
+        primary = str(labels[0]) if labels else "Concept"
+        colour = _NODE_COLOURS.get(primary, _DEFAULT_NODE_COLOUR)
+        if nid in node_positions:
+            x, y = node_positions[nid]
+            parts.append(f"<circle cx='{x:.1f}' cy='{y:.1f}' r='20' fill='{colour}' stroke='white' stroke-width='2'/>")
+            parts.append(
+                f"<text x='{x:.1f}' y='{y + 32:.1f}' text-anchor='middle' "
+                f"fill='#1E293B' font-size='11' font-family='sans-serif'>{name}</text>"
+            )
+
+    parts.append("</svg>")
+    return "".join(parts)
 
 
 def _badge(text: str, colour: str) -> str:
@@ -584,105 +631,231 @@ def _render_governance_html(insights: dict[str, Any]) -> str:
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+_LOADING_HTML = "<p style='color:#6B7280;font-size:13px;padding:8px'>⏳ Searching knowledge graph…</p>"
+
+
+def _format_answer_markdown(answer: str, citations: list) -> str:
+    """Bold entity names from citations when the answer is plain prose."""
+    if not answer:
+        return answer
+    # If already markdown-formatted, trust it as-is
+    if any(c in answer for c in ("**", "##", "\n- ", "\n* ", "\n1.")):
+        return answer
+    entities: set[str] = set()
+    for c in citations:
+        for e in c.get("matched_entities") or []:
+            e_str = str(e).strip()
+            if len(e_str) > 3:
+                entities.add(e_str)
+    formatted = answer
+    for entity in sorted(entities, key=len, reverse=True):
+        if entity in formatted:
+            formatted = formatted.replace(entity, f"**{entity}**", 1)
+    return formatted
+
+
+def _render_summary_card(insights: dict, citations: list, top_k: int = 10) -> str:
+    """'What just happened' strip shown below the chatbot."""
+    grounding = insights.get("grounding", {})
+    graph_ev = insights.get("graph_evidence", {})
+    gov = insights.get("governance", {})
+    n_found = len(citations)
+    avg_score = grounding.get("avg_score", 0.0)
+    verified = grounding.get("verified", False)
+    subgraph_nodes = graph_ev.get("subgraph_nodes", 0)
+    cost = gov.get("estimated_cost_usd", 0.0)
+    v_icon = "\u2714 Verified" if verified else "\u2718 Not verified"
+    v_colour = "#10B981" if verified else "#EF4444"
+    return (
+        "<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;"
+        "padding:8px 16px;font-size:12px;color:#475569;display:flex;gap:20px;"
+        "flex-wrap:wrap;margin-top:4px'>"
+        f"<span>\U0001f4da <strong>{n_found}</strong> / {top_k} sources</span>"
+        f"<span>\U0001f578 <strong>{subgraph_nodes}</strong> graph nodes</span>"
+        f"<span>\U0001f4ca avg score <strong>{avg_score:.3f}</strong></span>"
+        f"<span style='color:{v_colour}'><strong>{v_icon}</strong></span>"
+        f"<span>\U0001f4b0 est. cost <strong>${cost:.6f}</strong></span>"
+        "</div>"
+    )
+
 
 def create_gradio_app(
-    top_k_default: int = 5,
+    top_k_default: int = 10,
     graph_max_nodes: int = 40,
     graph_max_edges: int = 80,
 ):
-
     def _handle_submit(
         question: str,
         history: list[dict[str, str]] | None,
-        top_k: int,
     ):
+        """Generator: first yield shows loading state, second yield shows results."""
+        top_k = 15
+        normalized = question.strip()
+        if not normalized:
+            return
+
+        # ── Loading state – show immediately ──────────────────────────────
+        loading_history = list(history or []) + [
+            {"role": "user", "content": normalized},
+            {"role": "assistant", "content": "⏳ Searching the knowledge graph…"},
+        ]
+        yield (
+            gr.update(),
+            loading_history,
+            _LOADING_HTML,
+            _LOADING_HTML,
+            [],
+            _LOADING_HTML,
+            _render_graph_visjs({"nodes": [], "edges": []}),
+            _LOADING_HTML,
+            gr.update(),
+        )
+
+        # ── Run the full pipeline ─────────────────────────────────────────
         answer, citations, graph, insights = run_query_with_graph(
-            question,
+            normalized,
             top_k=top_k,
             graph_max_nodes=graph_max_nodes,
             graph_max_edges=graph_max_edges,
         )
-        updated_history = list(history or [])
-        if question.strip():
-            updated_history.append({"role": "user", "content": question})
-            updated_history.append({"role": "assistant", "content": answer})
-        return (
+        formatted_answer = _format_answer_markdown(answer, citations)
+        final_history = list(history or []) + [
+            {"role": "user", "content": normalized},
+            {"role": "assistant", "content": formatted_answer},
+        ]
+        yield (
             "",
-            updated_history,
+            final_history,
             _render_routing_html(insights),
             _render_grounding_html(insights),
             citations,
             _render_graph_evidence_html(insights),
-            _render_graph_svg(graph),
+            _render_graph_visjs(graph),
             _render_governance_html(insights),
+            gr.update(selected=0),
         )
 
     with gr.Blocks(
-        title="Riskfolio GraphRAG",
+        title="Portfolio AI Assistant — Knowledge Graph + RAG",
         theme=gr.themes.Soft(),
-        css="footer {display:none !important}",
+        css=(
+            "@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');"
+            "* { font-family: 'Roboto', sans-serif !important; }"
+            "footer {display:none !important}"
+        ),
     ) as demo:
         # ── Header ────────────────────────────────────────────────────────
         gr.HTML(
-            "<div style='padding:14px 0 6px'>"
-            "<h1 style='margin:0;font-size:22px;font-weight:700;color:#1E293B'>"
-            "Riskfolio GraphRAG</h1>"
-            "<p style='margin:5px 0 0;font-size:13px;color:#64748B'>"
-            "Agentic GraphRAG over Riskfolio-Lib &mdash; "
-            "adaptive tool routing &middot; knowledge-graph retrieval &middot; "
-            "grounded LLM answers &middot; governed, cited, explainable."
-            "</p></div>"
+            "<div style='padding:14px 0 10px;border-bottom:1px solid #E2E8F0;margin-bottom:12px'>"
+            "<h1 style='margin:0;font-size:24px;font-weight:700;color:#1E293B'>"
+            "Riskfolio-Lib &mdash; GraphRAG + Agentic AI Demo</h1>"
+            "<p style='margin:8px 0 6px;font-size:14px;color:#334155;line-height:1.7'>"
+            "A <strong>production-style knowledge graph RAG system</strong> built over the"
+            " <a href='https://riskfolio-lib.readthedocs.io/' target='_blank'"
+            " style='color:#3B82F6;text-decoration:none'>Riskfolio-Lib</a>"
+            " portfolio optimisation library."
+            " Entities (functions, classes, parameters, concepts) are extracted from"
+            " source code and documentation and stored in <strong>Neo4j</strong>."
+            " Each query runs a <strong>LangGraph agentic workflow</strong>"
+            " &mdash; plan, retrieve, reason, verify &mdash; combining"
+            " <strong>vector similarity search</strong> with"
+            " <strong>graph-neighbourhood traversal</strong> for hybrid retrieval."
+            "</p>"
+            "</div>"
         )
 
-        # ── Primary: full-width chat ───────────────────────────────────────
+        # ── Example questions ───────────────────────────────────────────────────
+        # question_box created with render=False so gr.Examples can
+        # reference it before it's placed in the input row below.
+        question_box = gr.Textbox(
+            placeholder="Ask anything — e.g. 'What is a Risk Parity Portfolio?'",
+            lines=2,
+            scale=5,
+            show_label=False,
+            container=False,
+            render=False,
+        )
+        gr.Examples(
+            examples=[
+                ["What is portfolio optimization and why does it matter?"],
+                ["How do I reduce risk in an investment portfolio?"],
+                ["What constraints can I add to an optimization problem?"],
+            ],
+            inputs=[question_box],
+            label="📋 Example questions — click any to load it below, then press Ask",
+        )
+
+        # ── Input bar ─────────────────────────────────────────────────────────────
+        with gr.Row(equal_height=True):
+            question_box.render()
+            ask_button = gr.Button("Ask  ↵", variant="primary", scale=0, min_width=100)
+
+        # ── Chat history ────────────────────────────────────────────────────────────
         chatbot = gr.Chatbot(
             label="",
-            height=460,
+            height=520,
             type="messages",
             show_label=False,
             bubble_full_width=False,
         )
+        gr.HTML(
+            "<p style='margin:4px 0 8px;font-size:12px;color:#94A3B8'>"
+            "\u26a0\ufe0f Demo only &mdash; not financial advice. "
+            "Source library: "
+            "<a href='https://riskfolio-lib.readthedocs.io/' target='_blank'"
+            " style='color:#3B82F6'>Riskfolio-Lib docs</a>."
+            "</p>"
+        )
 
-        # ── Input bar ─────────────────────────────────────────────────────
-        with gr.Row(equal_height=True):
-            question_box = gr.Textbox(
-                placeholder="Ask a Riskfolio question — e.g. 'How does HRP compare to MVO?'",
-                lines=2,
-                scale=5,
-                show_label=False,
-                container=False,
-            )
-            with gr.Column(scale=1, min_width=160):
-                top_k_slider = gr.Slider(
-                    minimum=1,
-                    maximum=20,
-                    value=max(1, int(top_k_default)),
-                    step=1,
-                    label="Top-k results",
+        # ── Under the Hood ───────────────────────────────────────────────────────────
+        gr.Markdown(
+            "### 🔍 Under the Hood: How the AI Works\n\n"
+            "Each query goes through a multi-step agentic workflow. "
+            "The tabs below show what happened when answering your question."
+        )
+        with gr.Tabs() as inner_tabs:
+            with gr.Tab("🕸  Knowledge Graph"):
+                gr.HTML(
+                    "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                    "Concepts and relationships retrieved from the Riskfolio-Lib"
+                    " knowledge base for your query."
+                    "</p>"
                 )
-                ask_button = gr.Button("Ask  \u21b5", variant="primary")
+                graph_panel = gr.HTML(value=_render_graph_visjs({"nodes": [], "edges": []}))
+                graph_evidence_panel = gr.HTML(value=_EMPTY_GRAPH_EVIDENCE_HTML)
 
-        # ── Interview Signals (Tabs) ───────────────────────────────────────
-        with gr.Accordion("\U0001f50d  Interview Signals", open=True):
-            gr.Markdown(
-                "_Per-query signals: adaptive tool-selection routing, RAG faithfulness grounding, "
-                "knowledge-graph entity evidence, and production governance controls — "
-                "aligned with the Dell KG / RAG Agentic AI Expert role._"
-            )
-            with gr.Tabs():
-                with gr.Tab("\U0001f9ed  Routing"):
-                    routing_panel = gr.HTML(value=_EMPTY_ROUTING_HTML)
+            with gr.Tab("🧭  Query Routing"):
+                gr.HTML(
+                    "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                    "The agent breaks your question into sub-questions and"
+                    " routes each to the best tool."
+                    " <em>Dense</em> = vector search"
+                    " &nbsp;|&nbsp; <em>Graph</em> = KG traversal"
+                    " &nbsp;|&nbsp; <em>Hybrid</em> = both + reranking."
+                    "</p>"
+                )
+                routing_panel = gr.HTML(value=_EMPTY_ROUTING_HTML)
 
-                with gr.Tab("\u2705  Grounding"):
-                    grounding_panel = gr.HTML(value=_EMPTY_GROUNDING_HTML)
-                    citations_json = gr.JSON(label="Raw citations", value=[])
+            with gr.Tab("✅  Answer Grounding"):
+                gr.HTML(
+                    "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                    "Grounding checks that the answer is supported by retrieved"
+                    " documents — not made up."
+                    " Higher scores = stronger evidence."
+                    "</p>"
+                )
+                grounding_panel = gr.HTML(value=_EMPTY_GROUNDING_HTML)
+                citations_json = gr.JSON(label="Raw citation records", value=[])
 
-                with gr.Tab("\U0001f578  Graph Evidence"):
-                    graph_evidence_panel = gr.HTML(value=_EMPTY_GRAPH_EVIDENCE_HTML)
-                    graph_panel = gr.HTML(value=_render_graph_svg({"nodes": [], "edges": []}))
-
-                with gr.Tab("\U0001f6e1  Governance"):
-                    governance_panel = gr.HTML(value=_EMPTY_GOVERNANCE_HTML)
+            with gr.Tab("🛡  Governance"):
+                gr.HTML(
+                    "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                    "LLM used, safety guardrails"
+                    " (NL→Cypher injection prevention),"
+                    " adaptive routing, and estimated cost per query."
+                    "</p>"
+                )
+                governance_panel = gr.HTML(value=_EMPTY_GOVERNANCE_HTML)
 
         _outputs = [
             question_box,
@@ -693,9 +866,11 @@ def create_gradio_app(
             graph_evidence_panel,
             graph_panel,
             governance_panel,
+            inner_tabs,
         ]
-        question_box.submit(_handle_submit, inputs=[question_box, chatbot, top_k_slider], outputs=_outputs)
-        ask_button.click(_handle_submit, inputs=[question_box, chatbot, top_k_slider], outputs=_outputs)
+        _inputs = [question_box, chatbot]
+        question_box.submit(_handle_submit, inputs=_inputs, outputs=_outputs)
+        ask_button.click(_handle_submit, inputs=_inputs, outputs=_outputs)
 
     return demo
 
@@ -703,7 +878,7 @@ def create_gradio_app(
 def launch_gradio_app(
     host: str = "127.0.0.1",
     port: int = 7860,
-    top_k_default: int = 5,
+    top_k_default: int = 15,
     graph_max_nodes: int = 40,
     graph_max_edges: int = 80,
 ) -> None:
@@ -712,4 +887,4 @@ def launch_gradio_app(
         graph_max_nodes=graph_max_nodes,
         graph_max_edges=graph_max_edges,
     )
-    app.launch(server_name=host, server_port=port, show_api=False)
+    app.launch(server_name=host, server_port=port, show_api=False, share=True)

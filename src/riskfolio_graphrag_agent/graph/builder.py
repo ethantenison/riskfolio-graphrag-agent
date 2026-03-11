@@ -425,9 +425,8 @@ class GraphBuilder:
     def get_query_subgraph(
         self,
         query: str,
-        max_seed_nodes: int = 12,
-        max_nodes: int = 40,
-        max_edges: int = 80,
+        max_seed_nodes: int = 60,
+        max_nodes: int = 300,
     ) -> dict[str, list[dict[str, str | list[str]]]]:
         """Return a bounded one-hop subgraph relevant to a text query.
 
@@ -489,11 +488,9 @@ class GraphBuilder:
                     (
                         "MATCH (a)-[r]->(b) "
                         "WHERE elementId(a) IN $node_ids AND elementId(b) IN $node_ids "
-                        "RETURN elementId(a) AS source, elementId(b) AS target, type(r) AS type "
-                        "LIMIT $max_edges"
+                        "RETURN elementId(a) AS source, elementId(b) AS target, type(r) AS type"
                     ),
                     node_ids=node_ids,
-                    max_edges=max(1, max_edges),
                 )
             )
 

@@ -169,9 +169,6 @@ poetry run riskfolio-agent build-graph
 # After changes
 poetry run riskfolio-agent build-graph --drop-existing
 
-# Mini build for fast troubleshooting (first 2 chunks only)
-poetry run riskfolio-agent build-graph --drop-existing --max-chunks 2
-
 # Target a specific window of chunks (skip first 100, then process 2)
 poetry run riskfolio-agent build-graph --drop-existing --chunk-offset 100 --max-chunks 2
 ```

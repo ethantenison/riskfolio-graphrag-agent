@@ -581,7 +581,7 @@ def serve(
 def gradio_app(
     host: str = typer.Option("127.0.0.1", "--host", help="Bind host."),
     port: int = typer.Option(7860, "--port", "-p", help="Bind port."),
-    top_k: int = typer.Option(5, "--top-k", min=1, max=20, help="Top-k contexts per query."),
+    top_k: int = typer.Option(15, "--top-k", min=1, max=20, help="Top-k contexts per query."),
     graph_max_nodes: int = typer.Option(
         40,
         "--graph-max-nodes",
