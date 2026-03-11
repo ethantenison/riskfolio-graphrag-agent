@@ -214,6 +214,14 @@ _REL_COLOURS: dict[str, str] = {
 _DEFAULT_REL_COLOUR = "#94A3B8"
 
 
+def _load_visjs() -> str:
+    """Load vis-network JS from the bundled static file."""
+    import pathlib
+
+    static = pathlib.Path(__file__).parent / "static" / "vis-network.min.js"
+    return static.read_text(encoding="utf-8")
+
+
 def _render_graph_visjs(graph: dict[str, list[dict[str, Any]]], height: int = 520) -> str:
     """Render an interactive vis.js network: drag nodes, scroll to zoom, pan."""
     nodes = graph.get("nodes", [])
@@ -315,8 +323,7 @@ def _render_graph_visjs(graph: dict[str, list[dict[str, Any]]], height: int = 52
 
     inner_html = (
         "<!DOCTYPE html><html><head><meta charset='utf-8'/>"
-        "<script src='https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js'>"
-        "</script><style>"
+        f"<script>{_load_visjs()}</script><style>"
         "body{margin:0;padding:0;background:#F8FAFC;overflow:hidden;position:relative}"
         f"#g{{width:100%;height:{height}px}}"
         "#tt{position:absolute;pointer-events:none;display:none;background:#1E293B;"
@@ -753,7 +760,7 @@ def create_gradio_app(
             "A <strong>production-style knowledge graph RAG system</strong> built over the"
             " <a href='https://riskfolio-lib.readthedocs.io/' target='_blank'"
             " style='color:#3B82F6;text-decoration:none'>Riskfolio-Lib</a>"
-            " portfolio optimisation library."
+            " portfolio optimization library."
             " Entities (functions, classes, parameters, concepts) are extracted from"
             " source code and documentation and stored in <strong>Neo4j</strong>."
             " Each query runs a <strong>LangGraph agentic workflow</strong>"
