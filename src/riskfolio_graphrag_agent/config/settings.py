@@ -12,7 +12,7 @@ Example::
 
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # Neo4j
     neo4j_uri: str = "bolt://localhost:7687"
-    neo4j_user: str = "neo4j"
+    neo4j_user: str = Field("neo4j", validation_alias=AliasChoices("neo4j_user", "neo4j_username"))
     neo4j_password: str = "password"
 
     # LLM
