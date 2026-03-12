@@ -213,10 +213,14 @@ _REL_COLOURS: dict[str, str] = {
 _DEFAULT_REL_COLOUR = "#94A3B8"
 
 
-def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 500) -> Any:
+def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440) -> Any:
     """Render an interactive network graph using Plotly."""
     import networkx as nx
     import plotly.graph_objects as go
+
+    bg = "#FFFFFF"
+    fg = "#1E293B"
+    muted = "#64748B"
 
     nodes = graph.get("nodes", [])
     edges = graph.get("edges", [])
@@ -228,12 +232,12 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 500
             x=0.5,
             y=0.5,
             showarrow=False,
-            font={"size": 14, "color": "#64748B"},
+            font={"size": 14, "color": muted},
         )
         fig.update_layout(
             height=height,
-            paper_bgcolor="#0F172A",
-            plot_bgcolor="#0F172A",
+            paper_bgcolor=bg,
+            plot_bgcolor=bg,
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             xaxis={"visible": False},
             yaxis={"visible": False},
@@ -281,12 +285,12 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 500
             x=0.5,
             y=0.5,
             showarrow=False,
-            font={"size": 14, "color": "#94A3B8"},
+            font={"size": 14, "color": muted},
         )
         fig.update_layout(
             height=height,
-            paper_bgcolor="#0F172A",
-            plot_bgcolor="#0F172A",
+            paper_bgcolor=bg,
+            plot_bgcolor=bg,
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             xaxis={"visible": False},
             yaxis={"visible": False},
@@ -314,12 +318,12 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 500
             x=0.5,
             y=0.5,
             showarrow=False,
-            font={"size": 14, "color": "#94A3B8"},
+            font={"size": 14, "color": muted},
         )
         fig.update_layout(
             height=height,
-            paper_bgcolor="#0F172A",
-            plot_bgcolor="#0F172A",
+            paper_bgcolor=bg,
+            plot_bgcolor=bg,
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             xaxis={"visible": False},
             yaxis={"visible": False},
@@ -423,7 +427,7 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 500
         x=edge_x_lo,
         y=edge_y_lo,
         mode="lines",
-        line={"width": 0.9, "color": "rgba(100,116,139,0.32)", "shape": "spline", "smoothing": 0.25},
+        line={"width": 0.9, "color": "rgba(100,116,139,0.25)", "shape": "spline", "smoothing": 0.25},
         hoverinfo="skip",
         showlegend=False,
     )
@@ -432,7 +436,7 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 500
         x=edge_x_hi,
         y=edge_y_hi,
         mode="lines",
-        line={"width": 1.5, "color": "rgba(148,163,184,0.62)", "shape": "spline", "smoothing": 0.25},
+        line={"width": 1.5, "color": "rgba(71,85,105,0.55)", "shape": "spline", "smoothing": 0.25},
         hoverinfo="skip",
         showlegend=False,
     )
@@ -480,13 +484,13 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 500
                 mode="markers+text",
                 text=labels,
                 textposition="top center",
-                textfont={"size": 10, "color": "#E2E8F0"},
+                textfont={"size": 10, "color": fg},
                 hovertext=hover_text,
                 hoverinfo="text",
                 marker={
                     "size": sizes,
                     "color": _NODE_COLOURS.get(node_type, _DEFAULT_NODE_COLOUR),
-                    "line": {"width": 1.5, "color": "#0B1220"},
+                    "line": {"width": 1.5, "color": "#FFFFFF"},
                     "opacity": 0.95,
                 },
                 name=node_type,
@@ -496,17 +500,18 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 500
     fig = go.Figure(data=[edge_trace_lo, edge_trace_hi, edge_hover_trace, *node_traces])
     fig.update_layout(
         height=height,
-        paper_bgcolor="#0F172A",
-        plot_bgcolor="#0F172A",
+        paper_bgcolor=bg,
+        plot_bgcolor=bg,
         margin={"l": 8, "r": 8, "t": 8, "b": 8},
         xaxis={"visible": False},
         yaxis={"visible": False},
         showlegend=True,
+        font={"color": fg},
         legend={
-            "bgcolor": "rgba(15,23,42,0.85)",
-            "bordercolor": "#334155",
+            "bgcolor": "rgba(255,255,255,0.9)",
+            "bordercolor": "#CBD5E1",
             "borderwidth": 1,
-            "font": {"size": 10, "color": "#CBD5E1"},
+            "font": {"size": 10, "color": fg},
         },
         dragmode="pan",
     )
@@ -1053,15 +1058,37 @@ def create_gradio_app(
             "@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');"
             "* { font-family: 'Roboto', sans-serif !important; }"
             "footer {display:none !important}"
+            ":root { color-scheme: light !important; }"
+            "html, body, .gradio-container { background:#F8FAFC !important; color:#1E293B !important; }"
+            "@media (prefers-color-scheme: dark) {"
+            "  html, body, .gradio-container { background:#F8FAFC !important; color:#1E293B !important; }"
+            "}"
+            "#query-row { gap: 10px; }"
+            "#graph-panel { min-height: 300px; }"
+            "#insight-tabs [role='tablist'] button { white-space: normal !important;"
+            " line-height: 1.2 !important; }"
+            "@media (max-width: 768px) {"
+            "  #app-header h1 { font-size: 20px !important; line-height: 1.25; }"
+            "  #app-header p { font-size: 13px !important; line-height: 1.55; }"
+            "  #query-row { flex-direction: column !important; align-items: stretch !important; }"
+            "  #query-input, #ask-button { width: 100% !important; min-width: 100% !important; }"
+            "  #chatbot-panel { height: 360px !important; }"
+            "  #graph-panel { min-height: 260px !important; }"
+            "  #insight-tabs [role='tablist'] { display: grid !important;"
+            " grid-template-columns: 1fr 1fr !important; gap: 6px; }"
+            "  #insight-tabs [role='tablist'] button { min-width: 0 !important;"
+            " width: 100% !important; padding: 8px 6px !important;"
+            " font-size: 12px !important; }"
+            "}"
         ),
     ) as demo:
         # ── Header ────────────────────────────────────────────────────────
         gr.HTML(
-            "<div style='padding:14px 0 10px;border-bottom:1px solid #E2E8F0;margin-bottom:12px'>"
+            "<div id='app-header' style='padding:14px 0 10px;border-bottom:1px solid #E2E8F0;margin-bottom:12px'>"
             "<h1 style='margin:0;font-size:24px;font-weight:700;color:#1E293B'>"
             "Riskfolio-Lib &mdash; GraphRAG + Agentic AI Demo</h1>"
             "<p style='margin:8px 0 6px;font-size:14px;color:#334155;line-height:1.7'>"
-            "A <strong>production-style knowledge graph RAG system</strong> built over the"
+            "A production-style knowledge graph RAG system built over the"
             " <a href='https://riskfolio-lib.readthedocs.io/' target='_blank'"
             " style='color:#3B82F6;text-decoration:none'>Riskfolio-Lib</a>"
             " portfolio optimization library."
@@ -1089,6 +1116,7 @@ def create_gradio_app(
             scale=5,
             show_label=False,
             container=False,
+            elem_id="query-input",
             render=False,
         )
         gr.Examples(
@@ -1102,9 +1130,15 @@ def create_gradio_app(
         )
 
         # ── Input bar ─────────────────────────────────────────────────────────────
-        with gr.Row(equal_height=True):
+        with gr.Row(equal_height=True, elem_id="query-row"):
             question_box.render()
-            ask_button = gr.Button("Ask  ↵", variant="primary", scale=0, min_width=100)
+            ask_button = gr.Button(
+                "Ask  ↵",
+                variant="primary",
+                scale=0,
+                min_width=100,
+                elem_id="ask-button",
+            )
 
         # ── Chat history ────────────────────────────────────────────────────────────
         chatbot = gr.Chatbot(
@@ -1113,6 +1147,7 @@ def create_gradio_app(
             type="messages",
             show_label=False,
             bubble_full_width=False,
+            elem_id="chatbot-panel",
         )
         gr.HTML(
             "<p style='margin:4px 0 8px;font-size:12px;color:#94A3B8'>"
@@ -1129,18 +1164,22 @@ def create_gradio_app(
             "Each query goes through a multi-step agentic workflow. "
             "The tabs below show what happened when answering your question."
         )
-        with gr.Tabs() as inner_tabs:
-            with gr.Tab("🕸  Knowledge Graph"):
+        with gr.Tabs(elem_id="insight-tabs") as inner_tabs:
+            with gr.Tab("Knowledge Graph"):
                 gr.HTML(
                     "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
                     "Concepts and relationships retrieved from the Riskfolio-Lib"
                     " knowledge base for your query."
                     "</p>"
                 )
-                graph_panel = gr.Plot(value=_render_graph_plot({"nodes": [], "edges": []}), show_label=False)
+                graph_panel = gr.Plot(
+                    value=_render_graph_plot({"nodes": [], "edges": []}),
+                    show_label=False,
+                    elem_id="graph-panel",
+                )
                 graph_evidence_panel = gr.HTML(value=_EMPTY_GRAPH_EVIDENCE_HTML)
 
-            with gr.Tab("🧭  Query Routing"):
+            with gr.Tab("Query Routing"):
                 gr.HTML(
                     "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
                     "The agent breaks your question into sub-questions and"
@@ -1152,7 +1191,7 @@ def create_gradio_app(
                 )
                 routing_panel = gr.HTML(value=_EMPTY_ROUTING_HTML)
 
-            with gr.Tab("✅  Answer Grounding"):
+            with gr.Tab("Answer Grounding"):
                 gr.HTML(
                     "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
                     "Grounding checks that the answer is supported by retrieved"
@@ -1163,7 +1202,7 @@ def create_gradio_app(
                 grounding_panel = gr.HTML(value=_EMPTY_GROUNDING_HTML)
                 citations_json = gr.JSON(label="Raw citation records", value=[])
 
-            with gr.Tab("🛡  Governance"):
+            with gr.Tab("Governance"):
                 gr.HTML(
                     "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
                     "LLM used, safety guardrails"
