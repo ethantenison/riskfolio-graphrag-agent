@@ -31,6 +31,37 @@ This is a **portfolio project** that demonstrates:
 
 ---
 
+## Role Alignment (Knowledge Graph / RAG Agentic AI)
+
+This repository is intentionally structured to demonstrate the core capabilities requested in enterprise roles such as Dell's **Knowledge Graph / RAG Agentic AI Expert** position.
+
+### What this project demonstrates
+
+- **End-to-end LLM + GraphRAG architecture**: ingestion, semantic modeling, retrieval, agentic reasoning, evaluation, observability, and deployment in one workflow.
+- **Knowledge graph operations at implementation depth**: Neo4j-backed entity/relationship modeling, Cypher-driven traversal, graph enrichment, and explainable provenance.
+- **Agentic workflows with safeguards**: LangGraph orchestration with plan/retrieve/reason/verify stages and NL-to-Cypher safety controls.
+- **Hybrid retrieval and grounded answers**: vector search + graph neighborhood traversal with citation evidence, verification checks, and routing rationale.
+- **Evaluation and governance discipline**: regression gating and metrics for grounding/faithfulness/retrieval quality plus OpenTelemetry + LangSmith tracing.
+- **Production-minded engineering**: modular architecture, CLI/API/Gradio interfaces, tests, and CI.
+
+### Direct fit to the posted responsibilities
+
+- **Semantic architecture and KG design**: ontology-aware entity and relation extraction, canonical graph representation, and graph-backed queryability.
+- **Graph + GenAI integration**: GraphRAG and agentic retrieval pipelines combining symbolic graph context with LLM generation.
+- **Observability and reliability**: traceability from user query to retrieved evidence and final answer, with measurable quality indicators.
+- **Governance and explainability**: source-linked citations, route selection visibility, and safety-first tool usage patterns.
+
+### Essential requirements covered by this portfolio
+
+- Strong **Python** implementation across ingestion, graph, retrieval, and agent layers.
+- Hands-on **Neo4j/Cypher** usage for graph persistence and traversal.
+- Practical **RAG/GraphRAG + multi-step agentic** system delivery using LangGraph.
+- Clear emphasis on **evaluation, error analysis mindset, and reproducibility** through scripts, artifacts, and CI checks.
+
+If useful for interview review, this README plus the `docs/` and `artifacts/` folders provide concrete evidence of architecture decisions, metrics, and execution quality.
+
+---
+
 ## Architecture
 
 ```

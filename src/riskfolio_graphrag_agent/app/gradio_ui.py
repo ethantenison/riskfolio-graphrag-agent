@@ -1071,6 +1071,11 @@ def create_gradio_app(
             " &mdash; plan, retrieve, reason, verify &mdash; combining"
             " <strong>vector similarity search</strong> with"
             " <strong>graph-neighbourhood traversal</strong> for hybrid retrieval."
+            "<br/><span style='font-size:12px;color:#475569'>"
+            "Source code: "
+            "<a href='https://github.com/ethantenison/riskfolio-graphrag-agent' target='_blank'"
+            " style='color:#3B82F6;text-decoration:none'>"
+            "github.com/ethantenison/riskfolio-graphrag-agent</a></span>"
             "</p>"
             "</div>"
         )
