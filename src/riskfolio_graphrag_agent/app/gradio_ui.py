@@ -512,6 +512,10 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
             "bordercolor": "#CBD5E1",
             "borderwidth": 1,
             "font": {"size": 10, "color": fg},
+            "x": 0.99,
+            "y": 0.01,
+            "xanchor": "right",
+            "yanchor": "bottom",
         },
         dragmode="pan",
     )
@@ -1093,11 +1097,11 @@ def create_gradio_app(
             " style='color:#3B82F6;text-decoration:none'>Riskfolio-Lib</a>"
             " portfolio optimization library."
             " Entities (functions, classes, parameters, concepts) are extracted from"
-            " source code and documentation and stored in <strong>Neo4j</strong>."
-            " Each query runs a <strong>LangGraph agentic workflow</strong>"
+            " source code and documentation and stored in Neo4j."
+            " Each query runs a LangGraph agentic workflow"
             " &mdash; plan, retrieve, reason, verify &mdash; combining"
-            " <strong>vector similarity search</strong> with"
-            " <strong>graph-neighbourhood traversal</strong> for hybrid retrieval."
+            " vector similarity search with"
+            " graph-neighbourhood traversal for hybrid retrieval."
             "<br/><span style='font-size:12px;color:#475569'>"
             "Source code: "
             "<a href='https://github.com/ethantenison/riskfolio-graphrag-agent' target='_blank'"
