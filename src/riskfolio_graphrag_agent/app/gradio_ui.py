@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import html
-import json
 from typing import Any
 
 import gradio as gr
@@ -214,166 +213,86 @@ _REL_COLOURS: dict[str, str] = {
 _DEFAULT_REL_COLOUR = "#94A3B8"
 
 
-def _load_visjs() -> str:
-    """Load vis-network JS from the bundled static file."""
-    import pathlib
+def _render_graph_image(graph: dict[str, list[dict[str, Any]]]) -> Any:
+    """Render the knowledge graph as a matplotlib image via networkx."""
+    import io
 
-    static = pathlib.Path(__file__).parent / "static" / "vis-network.min.js"
-    return static.read_text(encoding="utf-8")
+    import matplotlib
 
+    matplotlib.use("Agg")
+    import matplotlib.patches as mpatches
+    import matplotlib.pyplot as plt
+    import networkx as nx
+    from PIL import Image as PILImage
 
-def _render_graph_visjs(graph: dict[str, list[dict[str, Any]]], height: int = 520) -> str:
-    """Render an interactive vis.js network: drag nodes, scroll to zoom, pan."""
     nodes = graph.get("nodes", [])
     edges = graph.get("edges", [])
 
     if not nodes:
-        return (
-            "<div style='display:flex;align-items:center;justify-content:center;"
-            f"height:{height}px;background:#F8FAFC;border-radius:8px;color:#9CA3AF;"
-            "font-size:13px;font-family:sans-serif'>"
-            "Ask a question to populate the knowledge graph."
-            "</div>"
-        )
+        return None
 
-    vis_nodes: list[dict] = []
-    present_types: list[str] = []
-    seen_types: set[str] = set()
+    G = nx.DiGraph()
+    node_labels: dict[str, str] = {}
+    node_colours: list[str] = []
+    node_types: dict[str, str] = {}
 
     for node in nodes:
         nid = str(node.get("id", ""))
         name = str(node.get("name", "")).strip() or "Unnamed"
         labels = node.get("labels", [])
         primary = str(labels[0]) if labels else "Concept"
-        colour = _NODE_COLOURS.get(primary, _DEFAULT_NODE_COLOUR)
-        source = str(node.get("source_path", ""))
-        tooltip_html = f"<b>{html.escape(name)}</b><br/>Type: {html.escape(primary)}" + (
-            f"<br/><small style='color:#94A3B8'>{html.escape(source)}</small>" if source else ""
-        )
-        if primary not in seen_types:
-            seen_types.add(primary)
-            present_types.append(primary)
-        vis_nodes.append(
-            {
-                "id": nid,
-                "label": name[:26] + ("\u2026" if len(name) > 26 else ""),
-                "_tooltip": tooltip_html,
-                "color": {
-                    "background": colour,
-                    "border": "#ffffff",
-                    "highlight": {"background": colour, "border": "#1E293B"},
-                    "hover": {"background": colour, "border": "#1E293B"},
-                },
-                "font": {
-                    "size": 11,
-                    "color": "#1E293B",
-                    "strokeWidth": 3,
-                    "strokeColor": "#fff",
-                },
-                "size": 18,
-            }
-        )
+        G.add_node(nid)
+        node_labels[nid] = name[:20] + ("…" if len(name) > 20 else "")
+        node_types[nid] = primary
 
-    vis_edges: list[dict] = []
-    for i, edge in enumerate(edges):
+    for edge in edges:
         src = str(edge.get("source", ""))
         tgt = str(edge.get("target", ""))
-        if src == tgt:
-            continue
         rel = str(edge.get("type", ""))
-        colour = _REL_COLOURS.get(rel, _DEFAULT_REL_COLOUR)
-        vis_edges.append(
-            {
-                "id": i,
-                "from": src,
-                "to": tgt,
-                "label": rel,
-                "color": {"color": colour, "highlight": colour, "hover": colour},
-                "font": {
-                    "size": 9,
-                    "color": colour,
-                    "strokeWidth": 2,
-                    "strokeColor": "#fff",
-                },
-                "arrows": "to",
-                "width": 1.5,
-                "smooth": {"type": "curvedCW", "roundness": 0.15},
-            }
-        )
+        if src != tgt and G.has_node(src) and G.has_node(tgt):
+            G.add_edge(src, tgt, label=rel)
 
-    nodes_json = json.dumps(vis_nodes)
-    edges_json = json.dumps(vis_edges)
+    for nid in G.nodes():
+        primary = node_types.get(nid, "Concept")
+        node_colours.append(_NODE_COLOURS.get(primary, _DEFAULT_NODE_COLOUR))
 
-    # ── Legend ───────────────────────────────────────────────────────────────
-    legend_rows = "".join(
-        "<div style='display:flex;align-items:center;gap:5px;margin:2px 0'>"
-        f"<span style='width:10px;height:10px;border-radius:50%;flex-shrink:0;"
-        f"background:{_NODE_COLOURS.get(pt, _DEFAULT_NODE_COLOUR)};display:inline-block'>"
-        f"</span><span style='font-size:10px;color:#334155'>{html.escape(pt)}</span></div>"
-        for pt in sorted(present_types)
-    )
-    legend_html = (
-        "<div style='position:absolute;bottom:8px;left:8px;"
-        "background:rgba(248,250,252,0.92);border:1px solid #E2E8F0;"
-        "border-radius:6px;padding:8px 12px;max-height:180px;overflow-y:auto;z-index:10'>"
-        "<div style='font-size:9px;font-weight:700;color:#64748B;"
-        f"text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px'>Node Types</div>"
-        f"{legend_rows}</div>"
-    )
+    fig, ax = plt.subplots(figsize=(12, 8), facecolor="#F8FAFC")
+    ax.set_facecolor("#F8FAFC")
+    ax.axis("off")
 
-    inner_html = (
-        "<!DOCTYPE html><html><head><meta charset='utf-8'/>"
-        f"<script>{_load_visjs()}</script><style>"
-        "body{margin:0;padding:0;background:#F8FAFC;overflow:hidden;position:relative}"
-        f"#g{{width:100%;height:{height}px}}"
-        "#tt{position:absolute;pointer-events:none;display:none;background:#1E293B;"
-        "color:#F8FAFC;font-size:12px;padding:6px 10px;border-radius:6px;max-width:240px;"
-        "z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.3);line-height:1.5;"
-        "font-family:system-ui,sans-serif}"
-        f"</style></head><body><div id='g'></div>{legend_html}"
-        "<div id='tt'></div><script>"
-        f"var nodes=new vis.DataSet({nodes_json});"
-        f"var edges=new vis.DataSet({edges_json});"
-        "var opt={physics:{enabled:true,barnesHut:{gravitationalConstant:-7000,"
-        "centralGravity:0.25,springLength:130,springConstant:0.04},"
-        "stabilization:{iterations:200,fit:true}},"
-        "interaction:{hover:true,zoomView:true,dragNodes:true,dragView:true},"
-        "nodes:{shape:'dot',borderWidth:2,borderWidthSelected:3},"
-        "edges:{selectionWidth:3},layout:{improvedLayout:true}};"
-        "var tt=document.getElementById('tt');"
-        "function initNet(){"
-        "var c=document.getElementById('g');"
-        "var net=new vis.Network(c,{nodes:nodes,edges:edges},opt);"
-        "net.on('hoverNode',function(p){"
-        "var n=nodes.get(p.node);"
-        "if(n&&n._tooltip){tt.innerHTML=n._tooltip;tt.style.display='block';"
-        "tt.style.left=(p.pointer.DOM.x+12)+'px';tt.style.top=(p.pointer.DOM.y-10)+'px'}"
-        "});"
-        "net.on('blurNode',function(){tt.style.display='none'});"
-        "net.on('dragStart',function(){tt.style.display='none'});"
-        "net.on('zoom',function(){tt.style.display='none'});"
-        "net.once('stabilizationIterationsDone',function(){"
-        "net.fit({animation:false});"
-        "});"
-        "}"
-        "var c=document.getElementById('g');"
-        "if(c.offsetWidth>0){initNet();}"
-        "else{"
-        "var ro=new ResizeObserver(function(){"
-        "var c2=document.getElementById('g');"
-        "if(c2.offsetWidth>0){ro.disconnect();initNet();}"
-        "});"
-        "ro.observe(c);"
-        "}"
-        "</script></body></html>"
-    )
+    pos = nx.spring_layout(G, k=2.5 / max(len(G.nodes()) ** 0.5, 1), seed=42)
 
-    srcdoc = html.escape(inner_html, quote=True)
-    return (
-        f'<iframe srcdoc="{srcdoc}" '
-        f'style="width:100%;height:{height}px;border:none;border-radius:8px;'
-        f'background:#F8FAFC" sandbox="allow-scripts"></iframe>'
+    nx.draw_networkx_nodes(G, pos, ax=ax, node_color=node_colours, node_size=600, alpha=0.95)
+    nx.draw_networkx_labels(G, pos, labels=node_labels, ax=ax, font_size=7, font_color="#1E293B")
+    nx.draw_networkx_edges(
+        G,
+        pos,
+        ax=ax,
+        edge_color="#94A3B8",
+        arrows=True,
+        arrowsize=15,
+        width=1.2,
+        connectionstyle="arc3,rad=0.1",
+        node_size=600,
     )
+    edge_labels = nx.get_edge_attributes(G, "label")
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax, font_size=6, font_color="#64748B")
+
+    # Legend
+    seen: dict[str, str] = {}
+    for nid in G.nodes():
+        pt = node_types.get(nid, "Concept")
+        if pt not in seen:
+            seen[pt] = _NODE_COLOURS.get(pt, _DEFAULT_NODE_COLOUR)
+    patches = [mpatches.Patch(color=c, label=t) for t, c in sorted(seen.items())]
+    ax.legend(handles=patches, loc="lower left", fontsize=7, framealpha=0.9, ncol=2)
+
+    plt.tight_layout(pad=0.5)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=130, bbox_inches="tight", facecolor=fig.get_facecolor())
+    plt.close(fig)
+    buf.seek(0)
+    return PILImage.open(buf).copy()
 
 
 # ── Insight-panel rendering helpers ─────────────────────────────────────────
@@ -724,7 +643,7 @@ def create_gradio_app(
             _LOADING_HTML,
             [],
             _LOADING_HTML,
-            _render_graph_visjs({"nodes": [], "edges": []}),
+            None,
             _LOADING_HTML,
             gr.update(),
         )
@@ -748,7 +667,7 @@ def create_gradio_app(
             _render_grounding_html(insights),
             citations,
             _render_graph_evidence_html(insights),
-            _render_graph_visjs(graph),
+            _render_graph_image(graph),
             _render_governance_html(insights),
             gr.update(selected=0),
         )
@@ -839,7 +758,7 @@ def create_gradio_app(
                     " knowledge base for your query."
                     "</p>"
                 )
-                graph_panel = gr.HTML(value=_render_graph_visjs({"nodes": [], "edges": []}))
+                graph_panel = gr.Image(value=None, label="Knowledge Graph", show_label=False, interactive=False)
                 graph_evidence_panel = gr.HTML(value=_EMPTY_GRAPH_EVIDENCE_HTML)
 
             with gr.Tab("🧭  Query Routing"):
