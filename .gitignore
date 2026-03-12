@@ -214,3 +214,4 @@ __marimo__/
 chroma/
 *.chroma
 *.chroma-wal
+.gradio/certificate.pem

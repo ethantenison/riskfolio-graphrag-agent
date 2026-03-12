@@ -213,8 +213,308 @@ _REL_COLOURS: dict[str, str] = {
 _DEFAULT_REL_COLOUR = "#94A3B8"
 
 
+def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 500) -> Any:
+    """Render an interactive network graph using Plotly."""
+    import networkx as nx
+    import plotly.graph_objects as go
+
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+
+    if not nodes:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Ask a question to populate the knowledge graph.",
+            x=0.5,
+            y=0.5,
+            showarrow=False,
+            font={"size": 14, "color": "#64748B"},
+        )
+        fig.update_layout(
+            height=height,
+            paper_bgcolor="#0F172A",
+            plot_bgcolor="#0F172A",
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            xaxis={"visible": False},
+            yaxis={"visible": False},
+        )
+        return fig
+
+    excluded_types = {"Chunk", "DocPage", "ExampleNotebook", "TestCase"}
+    priority_types = {"PortfolioMethod", "RiskMeasure", "ConstraintType", "Estimator", "PythonClass", "Concept"}
+
+    filtered_nodes = [n for n in nodes if str((n.get("labels") or ["Concept"])[0]) not in excluded_types]
+    if len(filtered_nodes) > 35:
+
+        def _score(n: dict[str, Any]) -> tuple[bool, int]:
+            t = str((n.get("labels") or ["Concept"])[0])
+            deg = sum(1 for e in edges if str(e.get("source")) == str(n.get("id")) or str(e.get("target")) == str(n.get("id")))
+            return (t in priority_types, deg)
+
+        filtered_nodes = sorted(filtered_nodes, key=_score, reverse=True)[:35]
+
+    kept_ids = {str(n.get("id", "")) for n in filtered_nodes}
+
+    graph_nx = nx.DiGraph()
+    node_meta: dict[str, dict[str, str]] = {}
+    for node in filtered_nodes:
+        nid = str(node.get("id", ""))
+        name = str(node.get("name", "")).strip() or "Unnamed"
+        labels = node.get("labels", [])
+        node_type = str(labels[0]) if labels else "Concept"
+        graph_nx.add_node(nid)
+        node_meta[nid] = {"name": name, "type": node_type}
+
+    skip_rel = {"HAS_CHUNK", "DECLARES"}
+    for edge in edges:
+        src = str(edge.get("source", ""))
+        tgt = str(edge.get("target", ""))
+        if src == tgt or src not in kept_ids or tgt not in kept_ids:
+            continue
+        rel = str(edge.get("type", ""))
+        graph_nx.add_edge(src, tgt, rel=rel, colour=_REL_COLOURS.get(rel, _DEFAULT_REL_COLOUR), show_label=rel not in skip_rel)
+
+    if graph_nx.number_of_nodes() == 0:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No connected nodes found for this query after filtering.",
+            x=0.5,
+            y=0.5,
+            showarrow=False,
+            font={"size": 14, "color": "#94A3B8"},
+        )
+        fig.update_layout(
+            height=height,
+            paper_bgcolor="#0F172A",
+            plot_bgcolor="#0F172A",
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            xaxis={"visible": False},
+            yaxis={"visible": False},
+        )
+        return fig
+
+    node_count = graph_nx.number_of_nodes()
+    edge_count = graph_nx.number_of_edges()
+    density = edge_count / max(node_count, 1)
+
+    # In dense graphs, prune low-signal edge types to reduce visual hairballs.
+    low_signal_rel = {"RELATED_TO", "MENTIONS", "DESCRIBES", "DEMONSTRATES"}
+    if density > 4:
+        low_signal_rel.update({"VALIDATES", "VALIDATED_AGAINST"})
+    if density > 2.5:
+        to_remove = [(u, v) for u, v, d in graph_nx.edges(data=True) if str(d.get("rel", "")) in low_signal_rel]
+        graph_nx.remove_edges_from(to_remove)
+
+    isolates = list(nx.isolates(graph_nx))
+    graph_nx.remove_nodes_from(isolates)
+    if graph_nx.number_of_nodes() == 0:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No connected nodes found for this query after filtering.",
+            x=0.5,
+            y=0.5,
+            showarrow=False,
+            font={"size": 14, "color": "#94A3B8"},
+        )
+        fig.update_layout(
+            height=height,
+            paper_bgcolor="#0F172A",
+            plot_bgcolor="#0F172A",
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            xaxis={"visible": False},
+            yaxis={"visible": False},
+        )
+        return fig
+
+    node_count = graph_nx.number_of_nodes()
+    edge_count = graph_nx.number_of_edges()
+    density = edge_count / max(node_count, 1)
+
+    # Spread dense graphs more aggressively to reduce node/label collisions.
+    if density > 4:
+        k_value = 3.0 / max(node_count**0.5, 1)
+        iterations = 550
+    elif density > 2:
+        k_value = 2.4 / max(node_count**0.5, 1)
+        iterations = 430
+    else:
+        k_value = 1.8 / max(node_count**0.5, 1)
+        iterations = 320
+    pos = nx.spring_layout(graph_nx, seed=7, k=k_value, iterations=iterations)
+
+    # Simple deterministic collision-repulsion pass to enforce minimum spacing.
+    node_ids = list(graph_nx.nodes())
+    min_sep = 0.11 if node_count >= 30 else 0.085
+    for _ in range(12):
+        moved = False
+        for i, a in enumerate(node_ids):
+            xa, ya = pos[a]
+            for b in node_ids[i + 1 :]:
+                xb, yb = pos[b]
+                dx = xb - xa
+                dy = yb - ya
+                dist2 = dx * dx + dy * dy
+                if dist2 == 0:
+                    dx = 1e-4
+                    dy = -1e-4
+                    dist2 = dx * dx + dy * dy
+                dist = dist2**0.5
+                if dist < min_sep:
+                    push = (min_sep - dist) / 2.0
+                    ux = dx / dist
+                    uy = dy / dist
+                    pos[a] = (xa - ux * push, ya - uy * push)
+                    pos[b] = (xb + ux * push, yb + uy * push)
+                    xa, ya = pos[a]
+                    moved = True
+        if not moved:
+            break
+
+    high_signal_rel = {
+        "IS_SUBTYPE_OF",
+        "ALTERNATIVE_TO",
+        "SUPPORTS_RISK_MEASURE",
+        "USES_ESTIMATOR",
+        "HAS_PARAMETER",
+        "HAS_CONSTRAINT",
+        "REQUIRES",
+        "IMPLEMENTS",
+        "PARAMETERIZED_BY",
+        "BENCHMARKED_ON",
+        "CALIBRATED_ON",
+        "PRECEDES",
+    }
+
+    edge_x_hi: list[float | None] = []
+    edge_y_hi: list[float | None] = []
+    edge_x_lo: list[float | None] = []
+    edge_y_lo: list[float | None] = []
+    edge_hover_x: list[float] = []
+    edge_hover_y: list[float] = []
+    edge_hover_text: list[str] = []
+
+    for source, target, data in graph_nx.edges(data=True):
+        x0, y0 = pos[source]
+        x1, y1 = pos[target]
+        rel = str(data.get("rel", ""))
+        if rel in high_signal_rel:
+            edge_x_hi.extend([x0, x1, None])
+            edge_y_hi.extend([y0, y1, None])
+        else:
+            edge_x_lo.extend([x0, x1, None])
+            edge_y_lo.extend([y0, y1, None])
+
+        # Midpoint hover targets for relationship labels without drawing edge text.
+        mx = (x0 + x1) / 2.0
+        my = (y0 + y1) / 2.0
+        dx = x1 - x0
+        dy = y1 - y0
+        norm = (dx * dx + dy * dy) ** 0.5
+        if norm > 0:
+            mx += (-dy / norm) * 0.012
+            my += (dx / norm) * 0.012
+        edge_hover_x.append(mx)
+        edge_hover_y.append(my)
+        edge_hover_text.append(
+            f"{html.escape(rel)}<br>{html.escape(node_meta[source]['name'])} -> {html.escape(node_meta[target]['name'])}"
+        )
+
+    edge_trace_lo = go.Scatter(
+        x=edge_x_lo,
+        y=edge_y_lo,
+        mode="lines",
+        line={"width": 0.9, "color": "rgba(100,116,139,0.32)", "shape": "spline", "smoothing": 0.25},
+        hoverinfo="skip",
+        showlegend=False,
+    )
+
+    edge_trace_hi = go.Scatter(
+        x=edge_x_hi,
+        y=edge_y_hi,
+        mode="lines",
+        line={"width": 1.5, "color": "rgba(148,163,184,0.62)", "shape": "spline", "smoothing": 0.25},
+        hoverinfo="skip",
+        showlegend=False,
+    )
+
+    edge_hover_trace = go.Scatter(
+        x=edge_hover_x,
+        y=edge_hover_y,
+        mode="markers",
+        marker={"size": 10, "color": "rgba(0,0,0,0)"},
+        hovertext=edge_hover_text,
+        hoverinfo="text",
+        showlegend=False,
+    )
+
+    node_degree = dict(graph_nx.degree())
+    type_to_nodes: dict[str, list[str]] = {}
+    for node_id in graph_nx.nodes():
+        node_type = node_meta[node_id]["type"]
+        type_to_nodes.setdefault(node_type, []).append(node_id)
+
+    # Label only the most informative nodes on dense graphs; others remain interactive via hover.
+    label_budget = 16 if node_count >= 30 else 24
+    ranked_for_labels = sorted(graph_nx.nodes(), key=lambda n: node_degree.get(n, 0), reverse=True)[:label_budget]
+    label_nodes = set(ranked_for_labels)
+
+    node_traces: list[Any] = []
+    for node_type in sorted(type_to_nodes.keys()):
+        ids = type_to_nodes[node_type]
+        x_vals = [pos[i][0] for i in ids]
+        y_vals = [pos[i][1] for i in ids]
+        hover_text = [
+            f"{html.escape(node_meta[i]['name'])}<br>Type: {html.escape(node_type)}<br>Degree: {node_degree.get(i, 0)}"
+            for i in ids
+        ]
+        labels = [
+            (node_meta[i]["name"][:20] + ("..." if len(node_meta[i]["name"]) > 20 else "")) if i in label_nodes else ""
+            for i in ids
+        ]
+        sizes = [14 + min(node_degree.get(i, 0) * 2, 16) for i in ids]
+
+        node_traces.append(
+            go.Scatter(
+                x=x_vals,
+                y=y_vals,
+                mode="markers+text",
+                text=labels,
+                textposition="top center",
+                textfont={"size": 10, "color": "#E2E8F0"},
+                hovertext=hover_text,
+                hoverinfo="text",
+                marker={
+                    "size": sizes,
+                    "color": _NODE_COLOURS.get(node_type, _DEFAULT_NODE_COLOUR),
+                    "line": {"width": 1.5, "color": "#0B1220"},
+                    "opacity": 0.95,
+                },
+                name=node_type,
+            )
+        )
+
+    fig = go.Figure(data=[edge_trace_lo, edge_trace_hi, edge_hover_trace, *node_traces])
+    fig.update_layout(
+        height=height,
+        paper_bgcolor="#0F172A",
+        plot_bgcolor="#0F172A",
+        margin={"l": 8, "r": 8, "t": 8, "b": 8},
+        xaxis={"visible": False},
+        yaxis={"visible": False},
+        showlegend=True,
+        legend={
+            "bgcolor": "rgba(15,23,42,0.85)",
+            "bordercolor": "#334155",
+            "borderwidth": 1,
+            "font": {"size": 10, "color": "#CBD5E1"},
+        },
+        dragmode="pan",
+    )
+    return fig
+
+
 def _render_graph_image(graph: dict[str, list[dict[str, Any]]]) -> Any:
-    """Render the knowledge graph as a matplotlib image via networkx."""
+    """Render the knowledge graph as a matplotlib image via networkx (fallback)."""
     import io
 
     import matplotlib
@@ -231,9 +531,12 @@ def _render_graph_image(graph: dict[str, list[dict[str, Any]]]) -> Any:
     if not nodes:
         return None
 
+    _EXCLUDED_TYPES = {"Chunk", "DocPage", "ExampleNotebook", "TestCase"}
+    # Priority types to always keep; others trimmed if graph is large
+    _PRIORITY_TYPES = {"PortfolioMethod", "RiskMeasure", "ConstraintType", "Estimator", "PythonClass", "Concept"}
+
     G = nx.DiGraph()
     node_labels: dict[str, str] = {}
-    node_colours: list[str] = []
     node_types: dict[str, str] = {}
 
     for node in nodes:
@@ -241,8 +544,10 @@ def _render_graph_image(graph: dict[str, list[dict[str, Any]]]) -> Any:
         name = str(node.get("name", "")).strip() or "Unnamed"
         labels = node.get("labels", [])
         primary = str(labels[0]) if labels else "Concept"
+        if primary in _EXCLUDED_TYPES:
+            continue
         G.add_node(nid)
-        node_labels[nid] = name[:20] + ("…" if len(name) > 20 else "")
+        node_labels[nid] = name
         node_types[nid] = primary
 
     for edge in edges:
@@ -252,31 +557,91 @@ def _render_graph_image(graph: dict[str, list[dict[str, Any]]]) -> Any:
         if src != tgt and G.has_node(src) and G.has_node(tgt):
             G.add_edge(src, tgt, label=rel)
 
-    for nid in G.nodes():
-        primary = node_types.get(nid, "Concept")
-        node_colours.append(_NODE_COLOURS.get(primary, _DEFAULT_NODE_COLOUR))
+    # Remove isolated nodes to reduce clutter
+    isolates = list(nx.isolates(G))
+    G.remove_nodes_from(isolates)
 
-    fig, ax = plt.subplots(figsize=(12, 8), facecolor="#F8FAFC")
-    ax.set_facecolor("#F8FAFC")
+    # Cap at 25 nodes: keep highest-degree first, priority types preferred
+    if len(G.nodes()) > 25:
+        scored = sorted(
+            G.nodes(),
+            key=lambda n: (node_types.get(n, "") in _PRIORITY_TYPES, G.degree(n)),
+            reverse=True,
+        )
+        keep = set(scored[:25])
+        remove = [n for n in list(G.nodes()) if n not in keep]
+        G.remove_nodes_from(remove)
+
+    if not G.nodes():
+        return None
+
+    n_nodes = len(G.nodes())
+    # Spring layout with high k spreads nodes far apart; more iterations = more stable
+    pos = nx.spring_layout(G, k=5.0 / max(n_nodes**0.4, 1), seed=7, iterations=300)
+
+    node_list = list(G.nodes())
+    node_colours = [_NODE_COLOURS.get(node_types.get(n, "Concept"), _DEFAULT_NODE_COLOUR) for n in node_list]
+
+    # Node sizes: hubs slightly larger but keep variance low to avoid crowding
+    degree = dict(G.degree())
+    node_sizes = [180 + degree.get(n, 0) * 40 for n in node_list]
+
+    fig, ax = plt.subplots(figsize=(14, 9), facecolor="#0F172A")
+    ax.set_facecolor("#0F172A")
     ax.axis("off")
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.95, bottom=0.10)
 
-    pos = nx.spring_layout(G, k=2.5 / max(len(G.nodes()) ** 0.5, 1), seed=42)
-
-    nx.draw_networkx_nodes(G, pos, ax=ax, node_color=node_colours, node_size=600, alpha=0.95)
-    nx.draw_networkx_labels(G, pos, labels=node_labels, ax=ax, font_size=7, font_color="#1E293B")
+    # Draw edges first (behind nodes)
     nx.draw_networkx_edges(
         G,
         pos,
         ax=ax,
-        edge_color="#94A3B8",
+        edge_color="#334155",
         arrows=True,
-        arrowsize=15,
-        width=1.2,
-        connectionstyle="arc3,rad=0.1",
-        node_size=600,
+        arrowsize=10,
+        width=0.8,
+        alpha=0.6,
+        connectionstyle="arc3,rad=0.08",
+        node_size=node_sizes,
+        min_source_margin=12,
+        min_target_margin=12,
     )
-    edge_labels = nx.get_edge_attributes(G, "label")
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax, font_size=6, font_color="#64748B")
+
+    # Draw nodes
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        nodelist=node_list,
+        ax=ax,
+        node_color=node_colours,
+        node_size=node_sizes,
+        alpha=0.92,
+        linewidths=1.0,
+        edgecolors="#0F172A",
+    )
+
+    # Labels
+    short_labels = {
+        n: (node_labels.get(n, n)[:16] + "…" if len(node_labels.get(n, n)) > 16 else node_labels.get(n, n)) for n in node_list
+    }
+    nx.draw_networkx_labels(G, pos, labels=short_labels, ax=ax, font_size=7, font_color="#F1F5F9", font_weight="bold")
+
+    # Only draw edge labels for the most meaningful relationship types
+    _SHOW_REL_LABELS = {"IS_SUBTYPE_OF", "ALTERNATIVE_TO", "SUPPORTS_RISK_MEASURE", "IMPLEMENTS", "USES_ESTIMATOR"}
+    edge_labels = {(u, v): d["label"] for u, v, d in G.edges(data=True) if d.get("label", "") in _SHOW_REL_LABELS}
+    if edge_labels:
+        nx.draw_networkx_edge_labels(
+            G,
+            pos,
+            edge_labels=edge_labels,
+            ax=ax,
+            font_size=6,
+            font_color="#94A3B8",
+            bbox={"boxstyle": "round,pad=0.15", "facecolor": "#1E293B", "edgecolor": "none", "alpha": 0.7},
+        )
+
+    # Title
+    ax.set_title("Knowledge Graph", color="#94A3B8", fontsize=11, pad=8, loc="left")
 
     # Legend
     seen: dict[str, str] = {}
@@ -285,11 +650,20 @@ def _render_graph_image(graph: dict[str, list[dict[str, Any]]]) -> Any:
         if pt not in seen:
             seen[pt] = _NODE_COLOURS.get(pt, _DEFAULT_NODE_COLOUR)
     patches = [mpatches.Patch(color=c, label=t) for t, c in sorted(seen.items())]
-    ax.legend(handles=patches, loc="lower left", fontsize=7, framealpha=0.9, ncol=2)
+    ax.legend(
+        handles=patches,
+        loc="lower center",
+        fontsize=7,
+        framealpha=0.6,
+        ncol=min(len(patches), 6),
+        facecolor="#1E293B",
+        edgecolor="#334155",
+        labelcolor="#CBD5E1",
+        bbox_to_anchor=(0.5, -0.02),
+    )
 
-    plt.tight_layout(pad=0.5)
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=130, bbox_inches="tight", facecolor=fig.get_facecolor())
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     buf.seek(0)
     return PILImage.open(buf).copy()
@@ -643,7 +1017,7 @@ def create_gradio_app(
             _LOADING_HTML,
             [],
             _LOADING_HTML,
-            None,
+            _render_graph_plot({"nodes": [], "edges": []}),
             _LOADING_HTML,
             gr.update(),
         )
@@ -667,7 +1041,7 @@ def create_gradio_app(
             _render_grounding_html(insights),
             citations,
             _render_graph_evidence_html(insights),
-            _render_graph_image(graph),
+            _render_graph_plot(graph),
             _render_governance_html(insights),
             gr.update(selected=0),
         )
@@ -758,7 +1132,7 @@ def create_gradio_app(
                     " knowledge base for your query."
                     "</p>"
                 )
-                graph_panel = gr.Image(value=None, label="Knowledge Graph", show_label=False, interactive=False)
+                graph_panel = gr.Plot(value=_render_graph_plot({"nodes": [], "edges": []}), show_label=False)
                 graph_evidence_panel = gr.HTML(value=_EMPTY_GRAPH_EVIDENCE_HTML)
 
             with gr.Tab("🧭  Query Routing"):
@@ -824,4 +1198,4 @@ def launch_gradio_app(
         graph_max_nodes=graph_max_nodes,
         graph_max_edges=graph_max_edges,
     )
-    app.launch(server_name=host, server_port=port, show_api=False, share=True)
+    app.launch(server_name=host, server_port=port, show_api=False, share=True, ssr_mode=False)
