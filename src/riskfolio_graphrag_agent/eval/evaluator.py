@@ -84,7 +84,7 @@ class EvalReport:
         answer_faithfulness: Mean support score for generated answers.
         answer_relevance: Mean overlap between questions and generated answers.
         grounding: Mean grounding score against top-ranked retrieved evidence.
-        multi_hop_accuracy: Mean proxy score for graph-supported multi-hop evidence.
+        multi_hop_accuracy: Mean heuristic score for graph-supported multi-hop evidence coherence.
         er_precision: Entity-resolution precision carried in from ER evaluation.
         er_recall: Entity-resolution recall carried in from ER evaluation.
         er_f1: Entity-resolution F1 carried in from ER evaluation.
@@ -202,7 +202,7 @@ class Evaluator:
                 relevance = _ragas_style_answer_relevance(sample.question, sample.generated_answer)
 
             grounding = _grounding_score(sample.generated_answer, sample.retrieved_contexts)
-            multi_hop = _multi_hop_accuracy(results)
+            multi_hop = _multi_hop_accuracy(sample.question, results)
             link_prediction = _link_prediction_proxy(expected_terms, sample.retrieved_contexts)
             estimated_cost = _estimated_cost_usd(sample.question, sample.generated_answer, sample.retrieved_contexts)
             failure_reasons = _failure_reasons(
@@ -587,11 +587,69 @@ def _jaccard(left: set[str], right: set[str]) -> float:
     return len(left & right) / len(union)
 
 
-def _multi_hop_accuracy(results: list[RetrievalResult]) -> float:
+def _multi_hop_accuracy(question: str, results: list[RetrievalResult]) -> float:
+    """Estimate whether retrieved evidence forms a coherent graph-supported chain.
+
+    This is still a deterministic heuristic, but it is stricter than the prior
+    count-based proxy. A result scores well when it:
+
+    - aligns its entities or graph neighbours with the query,
+    - includes both direct entities and additional graph context, and
+    - shares a bridge concept with other retrieved results.
+
+    Args:
+        question: User question being evaluated.
+        results: Retrieved evidence results ordered by rank.
+
+    Returns:
+        A score in the range ``[0.0, 1.0]``.
+    """
     if not results:
         return 0.0
-    supporting = sum(1 for result in results if len(result.graph_neighbours) >= 2 or len(result.related_entities) >= 2)
-    return supporting / len(results)
+
+    query_tokens = set(_tokens(question))
+    result_support_sets = [_result_support_tokens(result) for result in results]
+    scores: list[float] = []
+
+    for index, result in enumerate(results):
+        support_tokens = result_support_sets[index]
+        if not support_tokens:
+            scores.append(0.0)
+            continue
+
+        entity_support_tokens = set().union(*(set(_tokens(item)) for item in result.related_entities if item.strip()))
+        graph_only_neighbours = [item for item in result.graph_neighbours if item not in set(result.related_entities)]
+        graph_support_tokens = set().union(*(set(_tokens(item)) for item in graph_only_neighbours if item.strip()))
+
+        query_alignment = _token_coverage(query_tokens, support_tokens)
+        bridge_strength = max(
+            (
+                _jaccard(entity_support_tokens, other_support_tokens)
+                for other_index, other_support_tokens in enumerate(result_support_sets)
+                if other_index != index and entity_support_tokens and other_support_tokens
+            ),
+            default=0.0,
+        )
+        structural_support = 1.0 if entity_support_tokens and graph_support_tokens else 0.5 if entity_support_tokens else 0.0
+
+        scores.append(round((0.45 * query_alignment) + (0.35 * bridge_strength) + (0.20 * structural_support), 4))
+
+    return _mean(scores)
+
+
+def _result_support_tokens(result: RetrievalResult) -> set[str]:
+    support_tokens = set(_tokens(result.content))
+    for item in result.related_entities:
+        support_tokens.update(_tokens(item))
+    for item in result.graph_neighbours:
+        support_tokens.update(_tokens(item))
+    return support_tokens
+
+
+def _token_coverage(expected: set[str], observed: set[str]) -> float:
+    if not expected or not observed:
+        return 0.0
+    return len(expected & observed) / len(expected)
 
 
 def _failure_reasons(

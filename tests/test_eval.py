@@ -10,6 +10,7 @@ from riskfolio_graphrag_agent.eval.evaluator import (
     Evaluator,
     _answer_faithfulness,
     _grounding_score,
+    _multi_hop_accuracy,
 )
 from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
 
@@ -137,3 +138,35 @@ def test_evaluator_reports_failure_reasons_when_no_contexts():
     assert isinstance(failure_reasons, list)
     assert "low_context_recall" in failure_reasons
     assert "low_grounding" in failure_reasons
+
+
+def test_multi_hop_accuracy_rewards_coherent_graph_support():
+    coherent_results = [
+        RetrievalResult(
+            content="Hierarchical Risk Parity uses clustering to allocate diversified portfolios.",
+            source_path="docs/hrp.md",
+            related_entities=["Hierarchical Risk Parity", "clustering"],
+            graph_neighbours=["risk parity", "allocation workflow", "docs/cluster_walkthrough::chunk:2"],
+        ),
+        RetrievalResult(
+            content="Risk parity allocation connects clustering outputs to portfolio weights.",
+            source_path="docs/risk_parity.md",
+            related_entities=["risk parity", "portfolio weights"],
+            graph_neighbours=["Hierarchical Risk Parity", "clustering tree", "docs/hrp.md::chunk:1"],
+        ),
+    ]
+    shallow_results = [
+        RetrievalResult(
+            content="General documentation about plotting.",
+            source_path="docs/plots.md",
+            related_entities=["plots"],
+            graph_neighbours=[],
+        )
+    ]
+
+    coherent_score = _multi_hop_accuracy("How does HRP connect clustering to allocation?", coherent_results)
+    shallow_score = _multi_hop_accuracy("How does HRP connect clustering to allocation?", shallow_results)
+
+    assert 0.0 <= coherent_score <= 1.0
+    assert 0.0 <= shallow_score <= 1.0
+    assert coherent_score > shallow_score
