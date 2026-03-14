@@ -83,7 +83,7 @@ class EvalReport:
         context_precision: Mean relevance estimate of retrieved contexts.
         answer_faithfulness: Mean support score for generated answers.
         answer_relevance: Mean overlap between questions and generated answers.
-        grounding: Mean grounding score against retrieved evidence.
+        grounding: Mean grounding score against top-ranked retrieved evidence.
         multi_hop_accuracy: Mean proxy score for graph-supported multi-hop evidence.
         er_precision: Entity-resolution precision carried in from ER evaluation.
         er_recall: Entity-resolution recall carried in from ER evaluation.
@@ -96,7 +96,8 @@ class EvalReport:
         retrieval_mode: Retrieval mode metadata for the run.
         embedding_provider: Embedding backend metadata for the run.
         metric_profile: Metric profile identifier used for scoring.
-        per_sample: Per-sample metric dictionaries for artifact inspection.
+        per_sample: Per-sample metric dictionaries for artifact inspection,
+            including optional diagnostic fields.
     """
 
     num_samples: int = 0
@@ -200,10 +201,18 @@ class Evaluator:
                 )
                 relevance = _ragas_style_answer_relevance(sample.question, sample.generated_answer)
 
-            grounding = _answer_faithfulness(sample.generated_answer, sample.retrieved_contexts)
+            grounding = _grounding_score(sample.generated_answer, sample.retrieved_contexts)
             multi_hop = _multi_hop_accuracy(results)
             link_prediction = _link_prediction_proxy(expected_terms, sample.retrieved_contexts)
             estimated_cost = _estimated_cost_usd(sample.question, sample.generated_answer, sample.retrieved_contexts)
+            failure_reasons = _failure_reasons(
+                context_recall=recall,
+                context_precision=precision,
+                answer_faithfulness=faithfulness,
+                answer_relevance=relevance,
+                grounding=grounding,
+                multi_hop_accuracy=multi_hop,
+            )
 
             recall_scores.append(recall)
             precision_scores.append(precision)
@@ -233,6 +242,7 @@ class Evaluator:
                     "latency_ms": round(latency_ms, 2),
                     "estimated_cost_usd": round(estimated_cost, 6),
                     "retrieved_contexts": len(sample.retrieved_contexts),
+                    "failure_reasons": list(failure_reasons),
                 }
             )
 
@@ -394,6 +404,47 @@ def _answer_relevance(question: str, answer: str) -> float:
     return len(q_tokens & a_tokens) / len(q_tokens)
 
 
+def _grounding_score(answer: str, contexts: list[str], top_k: int = 3) -> float:
+    """Estimate how well the answer is grounded in top-ranked retrieved evidence.
+
+    Grounding is intentionally distinct from faithfulness. Faithfulness checks
+    whether answer tokens appear anywhere in the retrieved evidence set, while
+    grounding emphasizes whether support appears in the highest-ranked contexts
+    and whether that support is concentrated rather than scattered deep in the
+    tail of the retrieval list.
+
+    Args:
+        answer: Answer text to evaluate.
+        contexts: Retrieved context strings ordered by rank.
+        top_k: Number of highest-ranked contexts that count as primary support.
+
+    Returns:
+        A score in the range ``[0.0, 1.0]``.
+    """
+    claims = _extract_claim_units(answer)
+    if not claims:
+        claims = [answer.strip()] if answer.strip() else []
+    if not claims or not contexts:
+        return 0.0
+
+    all_context_tokens = set().union(*(set(_tokens(context)) for context in contexts if context.strip()))
+    top_context_tokens = set().union(*(set(_tokens(context)) for context in contexts[: max(1, top_k)] if context.strip()))
+    if not all_context_tokens or not top_context_tokens:
+        return 0.0
+
+    claim_scores: list[float] = []
+    for claim in claims:
+        claim_tokens = set(_tokens(claim))
+        if not claim_tokens:
+            continue
+        all_overlap = len(claim_tokens & all_context_tokens) / len(claim_tokens)
+        top_overlap = len(claim_tokens & top_context_tokens) / len(claim_tokens)
+        concentration = (top_overlap / all_overlap) if all_overlap > 0 else 0.0
+        claim_scores.append((0.75 * top_overlap) + (0.25 * concentration))
+
+    return _mean(claim_scores)
+
+
 def _synthesize_answer(question: str, results: list[RetrievalResult]) -> str:
     """Build a context-grounded answer for evaluation.
 
@@ -541,6 +592,32 @@ def _multi_hop_accuracy(results: list[RetrievalResult]) -> float:
         return 0.0
     supporting = sum(1 for result in results if len(result.graph_neighbours) >= 2 or len(result.related_entities) >= 2)
     return supporting / len(results)
+
+
+def _failure_reasons(
+    *,
+    context_recall: float,
+    context_precision: float,
+    answer_faithfulness: float,
+    answer_relevance: float,
+    grounding: float,
+    multi_hop_accuracy: float,
+) -> list[str]:
+    """Return diagnostic labels for weak sample-level evaluation signals."""
+    reasons: list[str] = []
+    if context_recall < 0.45:
+        reasons.append("low_context_recall")
+    if context_precision < 0.4:
+        reasons.append("low_context_precision")
+    if answer_faithfulness < 0.35:
+        reasons.append("low_answer_faithfulness")
+    if answer_relevance < 0.7:
+        reasons.append("low_answer_relevance")
+    if grounding < 0.35:
+        reasons.append("low_grounding")
+    if multi_hop_accuracy < 0.25:
+        reasons.append("low_multi_hop_accuracy")
+    return reasons
 
 
 def _link_prediction_proxy(expected_terms: list[str], contexts: list[str]) -> dict[str, float]:

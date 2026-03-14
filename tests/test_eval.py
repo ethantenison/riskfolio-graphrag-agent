@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import json
 
-from riskfolio_graphrag_agent.eval.evaluator import EvalReport, EvalSample, Evaluator
+from riskfolio_graphrag_agent.eval.evaluator import (
+    EvalReport,
+    EvalSample,
+    Evaluator,
+    _answer_faithfulness,
+    _grounding_score,
+)
 from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
 
 
@@ -97,3 +103,37 @@ def test_evaluator_save(tmp_path):
     assert output.exists()
     data = json.loads(output.read_text())
     assert data["num_samples"] == 2
+
+
+def test_grounding_is_distinct_from_faithfulness():
+    answer = "Regarding HRP: clustering organizes assets. Key entities: HRP, clustering."
+    contexts = [
+        "clustering organizes assets for HRP portfolios",
+        "tail context with extra repeated HRP clustering terms and unrelated filler",
+        "more unrelated filler terms for retrieval depth",
+    ]
+
+    faithfulness = _answer_faithfulness(answer, contexts)
+    grounding = _grounding_score(answer, contexts)
+
+    assert 0.0 <= grounding <= 1.0
+    assert grounding != faithfulness
+
+
+def test_evaluator_reports_failure_reasons_when_no_contexts():
+    samples = [
+        EvalSample(
+            question="What is HRP?",
+            reference_answer="HRP is a portfolio method.",
+            expected_context_terms=["hrp", "portfolio"],
+        )
+    ]
+
+    evaluator = Evaluator(samples=samples, retriever=None)
+    report = evaluator.run()
+
+    assert report.num_samples == 1
+    failure_reasons = report.per_sample[0]["failure_reasons"]
+    assert isinstance(failure_reasons, list)
+    assert "low_context_recall" in failure_reasons
+    assert "low_grounding" in failure_reasons
