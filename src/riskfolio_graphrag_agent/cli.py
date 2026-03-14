@@ -29,8 +29,9 @@ from rich.console import Console
 
 from riskfolio_graphrag_agent.config.settings import Settings
 from riskfolio_graphrag_agent.er.pipeline import EntityRecord, run_er_pipeline
-from riskfolio_graphrag_agent.eval.evaluator import Evaluator, build_default_eval_samples
+from riskfolio_graphrag_agent.eval.evaluator import EvalSample, Evaluator, build_default_eval_samples
 from riskfolio_graphrag_agent.eval.regression_gate import run_regression_gate
+from riskfolio_graphrag_agent.eval.samples import load_eval_samples
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
 from riskfolio_graphrag_agent.ingestion.loader import Document, load_directory, summarize_documents
 from riskfolio_graphrag_agent.retrieval.embeddings import resolve_embedding_provider
@@ -175,6 +176,12 @@ def _make_openai_graph_extractor(settings: Settings):
             raise RuntimeError("Graph LLM returned invalid JSON") from exc
 
     return _extract
+
+
+def _resolve_eval_samples(samples_path: str | None) -> list[EvalSample]:
+    if samples_path is None:
+        return build_default_eval_samples()
+    return load_eval_samples(samples_path)
 
 
 def _resolve_source_directories(source_dir: str | None, settings: Settings) -> list[Path]:
@@ -436,6 +443,11 @@ def graph_stats() -> None:
 @app.command()
 def eval_command(
     output_file: str = typer.Option("eval_results.json", "--output", "-o", help="Path to write evaluation results JSON."),
+    samples_path: str | None = typer.Option(
+        None,
+        "--samples",
+        help="Optional path to a JSON file containing evaluation samples.",
+    ),
     metric_profile: str = typer.Option(
         "ragas-style",
         "--metric-profile",
@@ -450,7 +462,10 @@ def eval_command(
     """
     settings = Settings()
     provider_resolution = _resolve_embedding(settings)
-    samples = build_default_eval_samples()
+    try:
+        samples = _resolve_eval_samples(samples_path)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--samples") from exc
     er_entities = [
         EntityRecord(entity_id="e1", name="Hierarchical Risk Parity", source="docs"),
         EntityRecord(entity_id="e2", name="hierarchical-risk-parity", source="code"),

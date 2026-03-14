@@ -106,6 +106,7 @@ Must not: bury core business logic in handlers when it belongs in lower layers.
 | `src/riskfolio_graphrag_agent/retrieval/retriever.py` | Evidence retrieval and graph-aware reranking | Main retrieval entry point used by the agent layer. |
 | `src/riskfolio_graphrag_agent/agent/workflow.py` | Multi-step plan, retrieve, reason, verify flow | Orchestrates answer production over retrieved evidence. |
 | `src/riskfolio_graphrag_agent/eval/evaluator.py` | Retrieval and answer quality evaluation | Produces quality scorecards and evaluation artifacts. |
+| `src/riskfolio_graphrag_agent/eval/samples.py` | Evaluation sample loading and serialization | Keeps benchmark sample definitions externalizable and typed. |
 | `src/riskfolio_graphrag_agent/eval/regression_gate.py` | Regression thresholds and CI gating | Encodes pass-fail gates over evaluation output. |
 | `src/riskfolio_graphrag_agent/er/pipeline.py` | Entity resolution pipeline and metrics | Supports ER auditability and quality measurement. |
 | `src/riskfolio_graphrag_agent/observability/reporting.py` | SLI, freshness, and drift reporting | Operational reporting rather than product behavior. |

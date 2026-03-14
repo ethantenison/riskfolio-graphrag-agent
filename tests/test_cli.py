@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from riskfolio_graphrag_agent.cli import _select_documents_for_build
+import json
+
+from riskfolio_graphrag_agent.cli import _resolve_eval_samples, _select_documents_for_build
 from riskfolio_graphrag_agent.ingestion.loader import Document
 
 
@@ -26,3 +28,30 @@ def test_select_documents_for_build_empty_when_offset_too_large():
     docs = _make_docs(2)
     selected = _select_documents_for_build(docs, chunk_offset=10, max_chunks=1)
     assert selected == []
+
+
+def test_resolve_eval_samples_uses_custom_file(tmp_path):
+    sample_file = tmp_path / "samples.json"
+    sample_file.write_text(
+        json.dumps(
+            {
+                "samples": [
+                    {
+                        "question": "What is CVaR?",
+                        "reference_answer": "CVaR is a tail-risk measure.",
+                        "expected_context_terms": ["cvar", "tail risk"],
+                        "domain": "risk-measures",
+                        "difficulty": "easy",
+                        "retrieval_type": "dense",
+                        "tags": ["cvar"],
+                    }
+                ]
+            }
+        )
+    )
+
+    samples = _resolve_eval_samples(str(sample_file))
+
+    assert len(samples) == 1
+    assert samples[0].question == "What is CVaR?"
+    assert samples[0].domain == "risk-measures"

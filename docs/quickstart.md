@@ -16,6 +16,7 @@ Expected outputs:
 ```bash
 poetry install
 poetry run pytest -q
+poetry run riskfolio-agent eval --samples path/to/eval_samples.json
 poetry run python scripts/benchmark_retrieval_ablation.py
 poetry run riskfolio-agent er-eval
 poetry run python scripts/report_observability.py

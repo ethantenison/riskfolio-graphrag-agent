@@ -55,6 +55,10 @@ class EvalSample:
         generated_answer: Answer synthesized during evaluation.
         retrieved_contexts: Retrieved text chunks captured during evaluation.
         retrieved_sources: Source paths associated with retrieved contexts.
+        domain: Optional domain tag used for segmented reporting.
+        difficulty: Optional difficulty tag such as ``easy`` or ``hard``.
+        retrieval_type: Optional expected retrieval mode tag for the sample.
+        tags: Free-form tags that classify the sample for diagnostics.
     """
 
     question: str
@@ -63,6 +67,10 @@ class EvalSample:
     generated_answer: str = ""
     retrieved_contexts: list[str] = field(default_factory=list)
     retrieved_sources: list[str] = field(default_factory=list)
+    domain: str = ""
+    difficulty: str = ""
+    retrieval_type: str = ""
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -109,7 +117,7 @@ class EvalReport:
     retrieval_mode: str = "hybrid_rerank"
     embedding_provider: str = "hash"
     metric_profile: str = "ragas-style"
-    per_sample: list[dict[str, str | float | int]] = field(default_factory=list)
+    per_sample: list[dict[str, str | float | int | list[str]]] = field(default_factory=list)
 
 
 class Evaluator:
@@ -163,7 +171,7 @@ class Evaluator:
         link_hits_10_scores: list[float] = []
         latency_ms_scores: list[float] = []
         estimated_cost_scores: list[float] = []
-        per_sample: list[dict[str, str | float | int]] = []
+        per_sample: list[dict[str, str | float | int | list[str]]] = []
 
         for sample in self._samples:
             started_at = time.perf_counter()
@@ -212,6 +220,10 @@ class Evaluator:
             per_sample.append(
                 {
                     "question": sample.question,
+                    "domain": sample.domain,
+                    "difficulty": sample.difficulty,
+                    "retrieval_type": sample.retrieval_type,
+                    "tags": list(sample.tags),
                     "context_recall": round(recall, 4),
                     "context_precision": round(precision, 4),
                     "answer_faithfulness": round(faithfulness, 4),
@@ -272,6 +284,10 @@ DEFAULT_EVAL_SAMPLES: list[EvalSample] = [
         question="What is Hierarchical Risk Parity (HRP)?",
         reference_answer="HRP is a hierarchical portfolio allocation method based on clustering and risk budgeting.",
         expected_context_terms=["hrp", "hierarchical risk parity", "clustering", "risk parity"],
+        domain="portfolio-construction",
+        difficulty="easy",
+        retrieval_type="hybrid",
+        tags=["hrp", "clustering", "risk-measure"],
     ),
     EvalSample(
         question="How does Riskfolio compute CVaR-based optimization?",
@@ -279,11 +295,19 @@ DEFAULT_EVAL_SAMPLES: list[EvalSample] = [
             "Riskfolio supports CVaR as a risk measure and can optimize portfolios under CVaR objectives/constraints."
         ),
         expected_context_terms=["cvar", "value at risk", "risk measure", "optimization"],
+        domain="risk-measures",
+        difficulty="medium",
+        retrieval_type="hybrid",
+        tags=["cvar", "optimization", "constraints"],
     ),
     EvalSample(
         question="Which estimators are used for covariance in Riskfolio?",
         reference_answer="Riskfolio documents multiple estimators, including historical and shrinkage-style estimators.",
         expected_context_terms=["historical", "ledoit", "shrinkage", "covariance"],
+        domain="estimation",
+        difficulty="medium",
+        retrieval_type="dense",
+        tags=["covariance", "estimators", "shrinkage"],
     ),
     EvalSample(
         question="What constraints can be applied in Riskfolio optimization?",
@@ -291,11 +315,19 @@ DEFAULT_EVAL_SAMPLES: list[EvalSample] = [
             "Riskfolio supports multiple portfolio constraints such as budget, leverage, and risk-related constraints."
         ),
         expected_context_terms=["constraint", "budget", "leverage", "risk contribution"],
+        domain="optimization",
+        difficulty="medium",
+        retrieval_type="graph",
+        tags=["constraints", "budget", "leverage"],
     ),
     EvalSample(
         question="How do examples demonstrate portfolio reports and plots?",
         reference_answer="Examples and docs show plotting/reporting workflows for frontier, allocations, and risk contributions.",
         expected_context_terms=["examples", "report", "plot", "efficient frontier"],
+        domain="reporting",
+        difficulty="easy",
+        retrieval_type="sparse",
+        tags=["plots", "reports", "examples"],
     ),
 ]
 
@@ -311,6 +343,10 @@ def build_default_eval_samples() -> list[EvalSample]:
             question=sample.question,
             reference_answer=sample.reference_answer,
             expected_context_terms=list(sample.expected_context_terms),
+            domain=sample.domain,
+            difficulty=sample.difficulty,
+            retrieval_type=sample.retrieval_type,
+            tags=list(sample.tags),
         )
         for sample in DEFAULT_EVAL_SAMPLES
     ]
