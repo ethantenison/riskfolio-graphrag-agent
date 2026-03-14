@@ -1,4 +1,22 @@
-"""Guarded natural-language to Cypher translation with audit logging."""
+"""Provide a narrow, auditable natural-language to Cypher safety layer.
+
+This module belongs to the graph layer but acts as a guardrail rather than a
+general query engine. It translates a small allowlisted subset of natural
+language prompts into read-only Cypher templates and records the resulting
+decision for auditability.
+
+Inputs are end-user questions and audit metadata. Outputs are structured guard
+decisions and newline-delimited JSON audit records.
+
+Key implementation decisions:
+- the translator is template-based rather than generative so behavior remains
+    deterministic and reviewable;
+- unsafe write-oriented keywords are blocked before template selection;
+- ambiguous questions are escalated instead of guessed.
+
+This module does not execute Cypher, own graph retrieval ranking, or provide
+unrestricted NL-to-Cypher generation.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +31,16 @@ UNSAFE_KEYWORDS = ("create", "merge", "delete", "set ", "remove", "drop", "call 
 
 @dataclass
 class GuardDecision:
+    """Describe the result of evaluating a natural-language Cypher request.
+
+    Attributes:
+        status: Decision outcome such as ``safe``, ``blocked``, or ``escalate``.
+        reason: Stable machine-readable explanation for the outcome.
+        cypher: Read-only Cypher statement when the request is allowed.
+        params: Query parameters associated with ``cypher``.
+        requires_human_review: Whether a human should review the request.
+    """
+
     status: str
     reason: str
     cypher: str = ""
@@ -22,6 +50,16 @@ class GuardDecision:
 
 @dataclass
 class QueryAuditRecord:
+    """Capture one guard decision in the append-only audit log.
+
+    Attributes:
+        tenant_id: Tenant identifier associated with the request context.
+        request_id: Request correlation identifier.
+        question: Original natural-language question.
+        decision: Structured guard outcome for the question.
+        timestamp_utc: ISO 8601 UTC timestamp for the audit entry.
+    """
+
     tenant_id: str
     request_id: str
     question: str
@@ -30,6 +68,15 @@ class QueryAuditRecord:
 
 
 def guarded_nl_to_cypher(question: str) -> GuardDecision:
+    """Translate a narrow allowlisted query into safe read-only Cypher.
+
+    Args:
+        question: Natural-language request to evaluate.
+
+    Returns:
+        A ``GuardDecision`` describing whether the request was blocked,
+        escalated, or mapped to an allowlisted Cypher template.
+    """
     text = question.strip()
     if not text:
         return GuardDecision(status="blocked", reason="empty_question", requires_human_review=True)
@@ -72,6 +119,15 @@ def append_query_audit(
     decision: GuardDecision,
     audit_path: str | Path,
 ) -> None:
+    """Append a guard decision to the newline-delimited audit log.
+
+    Args:
+        tenant_id: Tenant identifier for multi-tenant audit partitioning.
+        request_id: Correlation identifier for the originating request.
+        question: Original natural-language question.
+        decision: Guard outcome to persist.
+        audit_path: Destination JSONL file path.
+    """
     record = QueryAuditRecord(
         tenant_id=tenant_id,
         request_id=request_id,

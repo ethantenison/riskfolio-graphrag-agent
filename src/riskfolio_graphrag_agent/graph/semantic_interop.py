@@ -1,4 +1,29 @@
-"""RDF/OWL export, SPARQL examples, and SHACL-like graph validation."""
+"""Bridge the Neo4j graph into semantic-web style artifacts and checks.
+
+This module sits in the graph layer alongside the Neo4j builder, but its scope
+is interoperability rather than extraction. It projects graph records into an
+RDF/OWL view, runs a small set of example SPARQL queries, and produces a
+lightweight SHACL-like validation report.
+
+Inputs are node and edge dictionaries or Neo4j connection settings. Outputs are
+Turtle files, ``rdflib.Graph`` objects, example query result payloads, and JSON
+validation summaries.
+
+Key implementation decisions:
+- ontology classes and properties are declared from the same label and
+    relationship registries used by the builder so exports stay aligned with the
+    primary graph schema;
+- a stable project namespace is used for generated URIs to keep artifacts
+    reproducible across runs;
+- validation is intentionally lightweight and artifact-oriented rather than a
+    full SHACL engine.
+
+This module does not own Neo4j extraction, answer generation, or UI rendering.
+
+Example:
+        summary = export_rdf_owl_from_records(nodes=nodes, edges=edges, output_path="artifacts/semantic/graph.ttl")
+        report = shacl_like_validate(nodes=nodes, edges=edges)
+"""
 
 from __future__ import annotations
 
@@ -32,6 +57,19 @@ def export_rdf_owl_from_records(
     edges: list[dict[str, Any]],
     output_path: str | Path,
 ) -> dict[str, int | str]:
+    """Serialize in-memory graph records to Turtle.
+
+    Args:
+        nodes: Node dictionaries containing at least ``name`` and optionally
+            ``labels``.
+        edges: Edge dictionaries containing ``source``, ``target``, and
+            ``relation`` fields.
+        output_path: Destination path for the Turtle file.
+
+    Returns:
+        A summary containing the output path and record counts used to build the
+        RDF graph.
+    """
     graph = build_rdf_graph(nodes=nodes, edges=edges)
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -54,6 +92,19 @@ def export_rdf_owl_from_neo4j(
     node_limit: int = 300,
     edge_limit: int = 600,
 ) -> dict[str, int | str]:
+    """Query Neo4j for a bounded graph sample and export it as Turtle.
+
+    Args:
+        neo4j_uri: Neo4j connection URI.
+        neo4j_user: Neo4j username.
+        neo4j_password: Neo4j password.
+        output_path: Destination path for the Turtle file.
+        node_limit: Maximum number of named nodes to export.
+        edge_limit: Maximum number of relationships to export.
+
+    Returns:
+        The same artifact summary returned by ``export_rdf_owl_from_records``.
+    """
     driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
     try:
         with driver.session() as session:
@@ -91,6 +142,16 @@ def export_rdf_owl_from_neo4j(
 
 
 def build_rdf_graph(*, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> Graph:
+    """Construct an RDF/OWL projection of the application graph.
+
+    Args:
+        nodes: Node dictionaries with ``name`` and optional ``labels`` fields.
+        edges: Edge dictionaries with ``source``, ``target``, and ``relation``.
+
+    Returns:
+        An ``rdflib.Graph`` containing ontology declarations, instance triples,
+        and exported relationships.
+    """
     graph = Graph()
     graph.bind("rf", RF)
     graph.bind("owl", OWL)
@@ -190,6 +251,16 @@ def build_rdf_graph(*, nodes: list[dict[str, Any]], edges: list[dict[str, Any]])
 
 
 def run_basic_sparql_queries(rdf_path: str | Path) -> dict[str, list[dict[str, str]]]:
+    """Run sample SPARQL queries over an exported Turtle artifact.
+
+    Args:
+        rdf_path: Path to a Turtle file produced by this module.
+
+    Returns:
+        A dictionary of sample result sets keyed by query purpose. The payload is
+        designed for smoke tests, demos, and artifact inspection rather than for
+        general analytics.
+    """
     graph = Graph()
     graph.parse(str(rdf_path), format="turtle")
 
@@ -272,6 +343,17 @@ def shacl_like_validate(
     edges: list[dict[str, Any]],
     output_path: str | Path | None = None,
 ) -> dict[str, Any]:
+    """Run lightweight structural validation checks over graph records.
+
+    Args:
+        nodes: Node dictionaries that may be exported or validated.
+        edges: Edge dictionaries that may be exported or validated.
+        output_path: Optional path for writing the JSON validation report.
+
+    Returns:
+        A report containing per-check pass and fail counts plus aggregate status
+        metrics.
+    """
     node_names = {str(node.get("name", "")).strip() for node in nodes if str(node.get("name", "")).strip()}
 
     checks = {

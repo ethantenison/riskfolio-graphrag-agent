@@ -1,4 +1,31 @@
-"""Riskfolio-aware knowledge graph builder for Neo4j."""
+"""Build the repository knowledge graph from chunked source documents.
+
+This module is the graph-construction entry point described in the architecture
+map. It sits between the ingestion layer, which emits typed ``Document``
+records, and graph-backed consumers such as retrieval, semantic export, and UI
+subgraph views.
+
+Inputs are chunked documents plus optional LLM-assisted extraction callbacks.
+Outputs are Neo4j nodes and relationships, graph statistics, and bounded query
+subgraphs for visualization.
+
+Key implementation decisions:
+- domain aliases are handled with deterministic regex matching so the graph has
+    predictable baseline coverage even when LLM extraction is disabled;
+- taxonomy edges are emitted centrally to keep ontology relationships
+    consistent across ingestion runs;
+- writes are idempotent through per-label unique constraints and merge-based
+    upserts.
+
+This module does not rank retrieval results, generate end-user answers, or own
+HTTP or UI orchestration.
+
+Example:
+        builder = GraphBuilder("bolt://localhost:7687", "neo4j", "password")
+        builder.build(documents)
+        stats = builder.get_stats()
+        builder.close()
+"""
 
 from __future__ import annotations
 
@@ -199,7 +226,17 @@ _ALTERNATIVE_PAIRS: tuple[tuple[str, str, str], ...] = (
 
 
 def emit_taxonomy_edges() -> tuple[list["GraphNode"], list["GraphEdge"]]:
-    """Emit IS_SUBTYPE_OF edges for DOMAIN_ALIASES entries and ALTERNATIVE_TO sibling pairs."""
+    """Return ontology nodes and edges derived from domain aliases.
+
+    The emitted records model two deterministic structures used throughout the
+    graph layer:
+
+    - ``IS_SUBTYPE_OF`` edges from canonical concepts to their category label.
+    - bidirectional ``ALTERNATIVE_TO`` edges for selected sibling concepts.
+
+    Returns:
+        A tuple of ``(nodes, edges)`` ready to merge into the extracted graph.
+    """
     nodes: list[GraphNode] = []
     edges: list[GraphEdge] = []
 
@@ -243,7 +280,13 @@ def emit_taxonomy_edges() -> tuple[list["GraphNode"], list["GraphEdge"]]:
 
 @dataclass
 class GraphNode:
-    """A graph node for Neo4j upsert."""
+    """Represent a Neo4j node candidate before deduplication and upsert.
+
+    Attributes:
+        label: Neo4j label to merge under, such as ``Chunk`` or ``RiskMeasure``.
+        name: Stable logical identifier used as the uniqueness key.
+        properties: Flat property payload to merge onto the node.
+    """
 
     label: str
     name: str
@@ -252,7 +295,16 @@ class GraphNode:
 
 @dataclass
 class GraphEdge:
-    """A directed graph edge for Neo4j upsert."""
+    """Represent a directed Neo4j relationship candidate.
+
+    Attributes:
+        source_name: Unique ``name`` property of the source node.
+        target_name: Unique ``name`` property of the target node.
+        relation_type: Neo4j relationship type, such as ``MENTIONS``.
+        source_label: Expected label for the source node match.
+        target_label: Expected label for the target node match.
+        properties: Flat property payload to merge onto the relationship.
+    """
 
     source_name: str
     target_name: str
@@ -263,17 +315,40 @@ class GraphEdge:
 
 
 class LLMExtractProtocol(Protocol):
+    """Callable contract for optional chunk-level graph enrichment.
+
+    Implementations may inspect a document chunk and return additional node and
+    edge payloads using the same labels and relationship types defined by this
+    module.
+    """
+
     def __call__(
         self,
         *,
         content: str,
         source_type: str,
         model_name: str,
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, Any]:
+        """Extract supplemental graph records from one document chunk.
+
+        Args:
+            content: Raw text content of the chunk.
+            source_type: Ingestion source classification for the chunk.
+            model_name: LLM identifier configured for extraction.
+
+        Returns:
+            A dictionary with optional ``nodes`` and ``edges`` lists.
+        """
+        ...
 
 
 class GraphBuilder:
-    """Coordinates Riskfolio-aware extraction and Neo4j writes."""
+    """Build and query the graph-layer representation of repository content.
+
+    The builder owns extraction-to-Neo4j persistence and lightweight graph
+    introspection helpers. It deliberately stops at evidence-graph production;
+    retrieval orchestration and answer generation live in higher layers.
+    """
 
     def __init__(
         self,
@@ -283,6 +358,15 @@ class GraphBuilder:
         llm_extract: LLMExtractProtocol | None = None,
         llm_model_name: str = "gpt-4o-mini",
     ) -> None:
+        """Initialize a graph builder.
+
+        Args:
+            neo4j_uri: Neo4j connection URI.
+            neo4j_user: Neo4j username.
+            neo4j_password: Neo4j password.
+            llm_extract: Optional callback that enriches extracted graph records.
+            llm_model_name: Model name passed to ``llm_extract`` when enabled.
+        """
         self._uri = neo4j_uri
         self._user = neo4j_user
         self._password = neo4j_password
@@ -297,11 +381,17 @@ class GraphBuilder:
         return self._driver
 
     def close(self) -> None:
+        """Close the cached Neo4j driver if one has been created."""
         if self._driver is not None:
             self._driver.close()
 
     def ensure_schema(self, apply_constraints: bool = True) -> None:
-        """Create optional indexes/constraints for idempotent graph writes."""
+        """Create indexes and uniqueness constraints used by graph writes.
+
+        Args:
+            apply_constraints: Whether to apply Neo4j constraints and indexes.
+                When ``False``, schema creation is skipped entirely.
+        """
         if not apply_constraints:
             return
 
@@ -323,7 +413,18 @@ class GraphBuilder:
         drop_existing: bool = False,
         apply_schema: bool = True,
     ) -> None:
-        """Extract entities from chunks and upsert a Riskfolio graph."""
+        """Extract graph records from documents and persist them to Neo4j.
+
+        Args:
+            documents: Chunked ingestion records to transform into graph
+                entities and relationships.
+            drop_existing: Whether to wipe the existing database before writing.
+            apply_schema: Whether to ensure indexes and constraints before upsert.
+
+        Raises:
+            RuntimeError: If too many relationships are skipped because their
+                endpoints are missing after deduplication.
+        """
         nodes: list[GraphNode] = []
         edges: list[GraphEdge] = []
         started_at = time.perf_counter()
@@ -400,7 +501,12 @@ class GraphBuilder:
         logger.info("Graph write complete: %d nodes, %d edges (%d skipped).", len(unique_nodes), len(unique_edges), skipped)
 
     def get_stats(self) -> dict[str, int | dict[str, int]]:
-        """Return graph counts by label and relationship type."""
+        """Return aggregate counts for the current graph.
+
+        Returns:
+            A dictionary containing total node and relationship counts plus
+            per-label and per-relationship-type breakdowns.
+        """
         driver = self._ensure_driver()
         with driver.session() as session:
             node_count = session.run("MATCH (n) RETURN count(n) AS count").single()
@@ -432,7 +538,16 @@ class GraphBuilder:
 
         The method matches seed nodes by lexical overlap on common textual
         properties, expands one hop, and returns node/edge dictionaries suitable
-        for UI visualisation.
+        for UI visualization.
+
+        Args:
+            query: User text used to select lexical seed nodes.
+            max_seed_nodes: Maximum number of seed matches before expansion.
+            max_nodes: Hard cap on the returned node count after one-hop growth.
+
+        Returns:
+            A dictionary with ``nodes`` and ``edges`` lists that can be rendered
+            directly by app-layer visualization code.
         """
         terms = _query_terms(query)
         if not terms:
