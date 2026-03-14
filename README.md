@@ -33,7 +33,7 @@ This is a **portfolio project** that demonstrates:
 
 ## Role Alignment (Knowledge Graph / RAG Agentic AI)
 
-This repository is intentionally structured to demonstrate the core capabilities requested in enterprise roles such as Dell's **Knowledge Graph / RAG Agentic AI Expert** position.
+This repository is intentionally structured to demonstrate the core capabilities requested in enterprise roles such as a **Knowledge Graph / RAG Agentic AI Engineer**. 
 
 ### What this project demonstrates
 
