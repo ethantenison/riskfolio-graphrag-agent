@@ -1,4 +1,27 @@
-"""Evaluation regression gate utilities and CLI."""
+"""Apply CI-style threshold checks to evaluation reports and track trends.
+
+This module is the eval-layer policy gate described in the architecture map. It
+consumes JSON reports produced by the evaluator, applies configurable quality
+thresholds, appends a compact trend history artifact, and exposes a small CLI
+for local use or CI integration.
+
+Inputs are evaluation report paths and threshold values. Outputs are raised
+errors for failed gates, terminal exit codes for the CLI, and a rolling JSON
+trend file.
+
+Key implementation decisions:
+- threshold enforcement is deterministic and file-based so it can run in CI
+    without service dependencies;
+- trend tracking is appended before failure is raised so regressions are still
+    recorded historically;
+- the CLI stays thin and delegates all policy logic to ``run_regression_gate``.
+
+This module does not compute metrics itself, execute retrieval, or own broader
+observability reporting.
+
+Usage:
+        python -m riskfolio_graphrag_agent.eval.regression_gate --report eval_results.json
+"""
 
 from __future__ import annotations
 
@@ -23,6 +46,22 @@ def run_regression_gate(
     max_estimated_cost_usd: float = 0.02,
     trend_path: str | Path = "artifacts/eval/eval_trend.json",
 ) -> None:
+    """Validate an evaluation report against configured thresholds.
+
+    Args:
+        report_path: Path to the JSON report produced by the evaluator.
+        min_faithfulness: Minimum acceptable answer faithfulness.
+        min_relevance: Minimum acceptable answer relevance.
+        min_context_recall: Minimum acceptable context recall.
+        min_grounding: Minimum acceptable grounding score.
+        min_multi_hop_accuracy: Minimum acceptable multi-hop support score.
+        max_latency_ms: Maximum acceptable mean latency in milliseconds.
+        max_estimated_cost_usd: Maximum acceptable estimated cost.
+        trend_path: Path to the rolling JSON trend artifact.
+
+    Raises:
+        RegressionGateError: If any configured threshold is violated.
+    """
     report = json.loads(Path(report_path).read_text())
 
     faithfulness = float(report.get("answer_faithfulness", 0.0))
@@ -60,6 +99,11 @@ def run_regression_gate(
 
 
 def main() -> int:
+    """Run the regression gate CLI.
+
+    Returns:
+        ``0`` when the report passes all thresholds, otherwise ``1``.
+    """
     parser = argparse.ArgumentParser(description="Evaluation regression gate")
     parser.add_argument("--report", default="eval_results.json", help="Path to eval report JSON")
     parser.add_argument("--min-faithfulness", type=float, default=0.35)

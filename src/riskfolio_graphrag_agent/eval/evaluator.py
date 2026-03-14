@@ -1,4 +1,31 @@
-"""Retrieval-quality and answer-faithfulness evaluation harness."""
+"""Evaluate retrieval and answer quality for the GraphRAG workflow.
+
+This module is the primary evaluation-layer harness described in the
+architecture map. It consumes evaluation samples plus an optional retrieval
+entry point and produces deterministic scorecards that quantify retrieval
+coverage, answer quality, multi-hop support, latency, cost, and ER metrics.
+
+Inputs are ``EvalSample`` definitions, a retriever compatible with the
+retrieval layer, and optional runtime metadata. Outputs are ``EvalReport``
+instances and JSON artifacts suitable for CI, benchmarking, and trend
+tracking.
+
+Key implementation decisions:
+- default metrics are heuristic but structured to resemble RAG-style evaluation
+    dimensions so the artifact remains easy to interpret;
+- answer synthesis is intentionally context-grounded because faithfulness is
+    measured against retrieved evidence rather than an LLM judge;
+- evaluation tolerates retriever failures and records degraded results instead
+    of aborting the full report.
+
+This module does not own CI pass-fail policy, ingestion, graph construction, or
+user-facing API handling.
+
+Example:
+        evaluator = Evaluator(build_default_eval_samples(), retriever=my_retriever)
+        report = evaluator.run()
+        evaluator.save("artifacts/eval/report.json")
+"""
 
 from __future__ import annotations
 
@@ -17,7 +44,18 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class EvalSample:
-    """A single question/answer/context evaluation sample."""
+    """Represent one evaluation prompt and its expected evidence profile.
+
+    Attributes:
+        question: User-style query to send through retrieval and answer synthesis.
+        reference_answer: Short reference answer used for fallback expectation
+            generation.
+        expected_context_terms: Terms expected to appear in relevant retrieved
+            evidence.
+        generated_answer: Answer synthesized during evaluation.
+        retrieved_contexts: Retrieved text chunks captured during evaluation.
+        retrieved_sources: Source paths associated with retrieved contexts.
+    """
 
     question: str
     reference_answer: str
@@ -29,7 +67,29 @@ class EvalSample:
 
 @dataclass
 class EvalReport:
-    """Aggregated evaluation results."""
+    """Aggregate metrics and per-sample details for one evaluation run.
+
+    Attributes:
+        num_samples: Number of evaluated samples.
+        context_recall: Mean recall of expected terms in retrieved contexts.
+        context_precision: Mean relevance estimate of retrieved contexts.
+        answer_faithfulness: Mean support score for generated answers.
+        answer_relevance: Mean overlap between questions and generated answers.
+        grounding: Mean grounding score against retrieved evidence.
+        multi_hop_accuracy: Mean proxy score for graph-supported multi-hop evidence.
+        er_precision: Entity-resolution precision carried in from ER evaluation.
+        er_recall: Entity-resolution recall carried in from ER evaluation.
+        er_f1: Entity-resolution F1 carried in from ER evaluation.
+        link_prediction_mrr: Proxy mean reciprocal rank derived from evidence hits.
+        link_prediction_hits_at_3: Proxy hit rate within the top three contexts.
+        link_prediction_hits_at_10: Proxy hit rate within the top ten contexts.
+        avg_latency_ms: Mean retrieval latency per sample in milliseconds.
+        estimated_cost_usd: Mean estimated token cost per sample.
+        retrieval_mode: Retrieval mode metadata for the run.
+        embedding_provider: Embedding backend metadata for the run.
+        metric_profile: Metric profile identifier used for scoring.
+        per_sample: Per-sample metric dictionaries for artifact inspection.
+    """
 
     num_samples: int = 0
     context_recall: float = 0.0
@@ -53,7 +113,12 @@ class EvalReport:
 
 
 class Evaluator:
-    """Run deterministic retrieval/faithfulness metrics over evaluation samples."""
+    """Run deterministic evaluation over retrieval and answer-generation behavior.
+
+    The evaluator turns a sample set into a compact scorecard used by the eval
+    and regression-gate layers. It measures evidence quality and answer support;
+    it does not decide CI policy or modify the retrieval pipeline.
+    """
 
     def __init__(
         self,
@@ -63,6 +128,16 @@ class Evaluator:
         runtime_config: dict[str, str] | None = None,
         er_metrics: dict[str, float] | None = None,
     ) -> None:
+        """Initialize an evaluator.
+
+        Args:
+            samples: Evaluation samples to score.
+            retriever: Optional retriever used to gather evidence for each sample.
+            metric_profile: Metric family used for context and answer scoring.
+            runtime_config: Run metadata such as retrieval mode or embedding backend.
+            er_metrics: Optional entity-resolution summary metrics to include in
+                the final report.
+        """
         self._samples = samples
         self._retriever = retriever
         self._metric_profile = metric_profile
@@ -70,6 +145,11 @@ class Evaluator:
         self._er_metrics = er_metrics or {}
 
     def run(self) -> EvalReport:
+        """Execute evaluation and return an aggregate report.
+
+        Returns:
+            An ``EvalReport`` containing aggregate metrics and per-sample details.
+        """
         logger.info("Running evaluation over %d samples.", len(self._samples))
 
         recall_scores: list[float] = []
@@ -167,6 +247,11 @@ class Evaluator:
         )
 
     def save(self, output_path: str | Path) -> None:
+        """Run evaluation and write the resulting report as JSON.
+
+        Args:
+            output_path: Destination path for the serialized report artifact.
+        """
         report = self.run()
         path = Path(output_path)
         path.write_text(json.dumps(asdict(report), indent=2))
@@ -216,6 +301,11 @@ DEFAULT_EVAL_SAMPLES: list[EvalSample] = [
 
 
 def build_default_eval_samples() -> list[EvalSample]:
+    """Return a fresh copy of the built-in evaluation sample set.
+
+    Returns:
+        Default ``EvalSample`` records suitable for demos, smoke tests, and CI.
+    """
     return [
         EvalSample(
             question=sample.question,
