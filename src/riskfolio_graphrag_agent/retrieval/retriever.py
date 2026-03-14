@@ -1,4 +1,67 @@
-"""Hybrid retriever combining dense, sparse, and graph retrieval modes."""
+"""Retrieval orchestration for the GraphRAG package.
+
+This module implements the retrieval layer for the package. It is responsible
+for turning a user query into ranked evidence chunks that can be consumed by
+the agent workflow. In the overall architecture, it sits between:
+
+- ingestion, which produces chunked `Document` records
+- graph construction, which stores `Chunk` and related entity nodes in Neo4j
+- the agent workflow, which requests grounded context before answer generation
+
+Package fit:
+    - `riskfolio_graphrag_agent.ingestion.loader` creates the chunked documents
+      that can be upserted into a vector backend.
+    - `riskfolio_graphrag_agent.graph.builder` provides domain aliases used for
+      graph-oriented concept expansion.
+    - `riskfolio_graphrag_agent.retrieval.router` may choose which retrieval
+      mode to use per query.
+    - `riskfolio_graphrag_agent.agent.workflow` consumes `RetrievalResult`
+      objects as evidence for reasoning and citation building.
+
+This module supports four retrieval modes:
+
+- `dense`: embedding-based similarity over a vector store
+- `sparse`: lexical token matching over Neo4j `Chunk` nodes
+- `graph`: entity-seeded retrieval plus one-hop domain-concept expansion
+- `hybrid_rerank`: dense and sparse retrieval merged, then lightly boosted
+  using graph neighbourhood evidence
+
+Minimal working example:
+    >>> from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
+    >>> retriever = HybridRetriever(
+    ...     neo4j_uri="bolt://localhost:7687",
+    ...     neo4j_user="neo4j",
+    ...     neo4j_password="password",
+    ...     top_k=3,
+    ...     vector_store_backend="neo4j",
+    ... )
+    >>> try:
+    ...     results = retriever.retrieve("What is Hierarchical Risk Parity?")
+    ...     for item in results:
+    ...         print(item.source_path, round(item.score, 3))
+    ... finally:
+    ...     retriever.close()
+
+Non-obvious design decisions:
+    - The vector backend is abstracted behind `VectorStore` so the retrieval
+      flow can work with either Chroma or a Neo4j-backed fallback.
+    - Hybrid merging uses fixed weights rather than a learned reranker to keep
+      the system deterministic, lightweight, and testable.
+    - Graph expansion is intentionally shallow. It augments retrieval with local
+      entity and chunk context, but does not attempt deep graph reasoning.
+    - Domain-concept expansion uses curated aliases from the graph builder
+      rather than arbitrary NLP extraction at query time.
+
+What this module does not do:
+    - It does not chunk source files or create `Document` objects.
+    - It does not build the Neo4j knowledge graph schema or extract entities.
+    - It does not generate final natural-language answers.
+    - It does not choose retrieval mode by itself unless the caller passes a
+      mode override or configures a router elsewhere.
+    - It does not run a cross-encoder, learned reranker, or approximate nearest
+      neighbour index tuning pipeline.
+    - It does not translate arbitrary natural language into Cypher queries.
+"""
 
 from __future__ import annotations
 
