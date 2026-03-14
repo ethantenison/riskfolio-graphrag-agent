@@ -5,10 +5,10 @@ architecture map. It consumes evaluation samples plus an optional retrieval
 entry point and produces deterministic scorecards that quantify retrieval
 coverage, answer quality, multi-hop support, latency, cost, and ER metrics.
 
-Inputs are ``EvalSample`` definitions, a retriever compatible with the
-retrieval layer, and optional runtime metadata. Outputs are ``EvalReport``
-instances and JSON artifacts suitable for CI, benchmarking, and trend
-tracking.
+Inputs are ``EvalSample`` definitions, retrievers compatible with the
+retrieval layer, and optional runtime metadata. Outputs are ``EvalReport`` and
+``ContrastiveEvalReport`` instances plus JSON artifacts suitable for CI,
+benchmarking, and trend tracking.
 
 Key implementation decisions:
 - default metrics are heuristic but structured to resemble RAG-style evaluation
@@ -25,6 +25,16 @@ Example:
         evaluator = Evaluator(build_default_eval_samples(), retriever=my_retriever)
         report = evaluator.run()
         evaluator.save("artifacts/eval/report.json")
+
+        contrastive = evaluator.run_contrastive(
+            baseline_retriever=baseline_retriever,
+            candidate_retriever=candidate_retriever,
+        )
+        evaluator.save_contrastive(
+            "artifacts/eval/contrastive.json",
+            baseline_retriever=baseline_retriever,
+            candidate_retriever=candidate_retriever,
+        )
 """
 
 from __future__ import annotations
@@ -119,6 +129,36 @@ class EvalReport:
     embedding_provider: str = "hash"
     metric_profile: str = "ragas-style"
     per_sample: list[dict[str, str | float | int | list[str]]] = field(default_factory=list)
+
+
+@dataclass
+class ContrastiveEvalReport:
+    """Represent a baseline-vs-candidate evaluation artifact.
+
+    Attributes:
+        baseline_label: Human-readable label for the baseline retriever.
+        candidate_label: Human-readable label for the candidate retriever.
+        baseline_report: Aggregate report produced for the baseline retriever.
+        candidate_report: Aggregate report produced for the candidate retriever.
+        metric_deltas: Candidate-minus-baseline deltas for aggregate metrics.
+        improved_metrics: Metrics whose deltas indicate improvement.
+        regressed_metrics: Metrics whose deltas indicate regression.
+        unchanged_metrics: Metrics whose deltas are effectively unchanged.
+        winner: Summary label indicating whether the candidate improved on more
+            metrics than it regressed.
+        per_sample_deltas: Per-sample comparison rows keyed by question.
+    """
+
+    baseline_label: str
+    candidate_label: str
+    baseline_report: EvalReport
+    candidate_report: EvalReport
+    metric_deltas: dict[str, float] = field(default_factory=dict)
+    improved_metrics: list[str] = field(default_factory=list)
+    regressed_metrics: list[str] = field(default_factory=list)
+    unchanged_metrics: list[str] = field(default_factory=list)
+    winner: str = "tie"
+    per_sample_deltas: list[dict[str, str | float | int | list[str]]] = field(default_factory=list)
 
 
 class Evaluator:
@@ -279,6 +319,76 @@ class Evaluator:
         path.write_text(json.dumps(asdict(report), indent=2))
         logger.info("Evaluation results written to %s", path)
 
+    def run_contrastive(
+        self,
+        *,
+        baseline_retriever: HybridRetriever | None,
+        candidate_retriever: HybridRetriever | None,
+        baseline_label: str = "baseline",
+        candidate_label: str = "candidate",
+    ) -> ContrastiveEvalReport:
+        """Run the same evaluation set against baseline and candidate retrievers.
+
+        Args:
+            baseline_retriever: Retriever representing the current baseline.
+            candidate_retriever: Retriever representing the candidate change.
+            baseline_label: Human-readable label for the baseline artifact.
+            candidate_label: Human-readable label for the candidate artifact.
+
+        Returns:
+            A ``ContrastiveEvalReport`` containing both reports and their deltas.
+        """
+        baseline_report = self._run_with_retriever(baseline_retriever)
+        candidate_report = self._run_with_retriever(candidate_retriever)
+        metric_deltas = _contrastive_metric_deltas(baseline_report, candidate_report)
+        improved_metrics, regressed_metrics, unchanged_metrics = _contrastive_metric_buckets(metric_deltas)
+        winner = _contrastive_winner(improved_metrics, regressed_metrics)
+        per_sample_deltas = _contrastive_per_sample_deltas(
+            baseline_report.per_sample,
+            candidate_report.per_sample,
+        )
+
+        return ContrastiveEvalReport(
+            baseline_label=baseline_label,
+            candidate_label=candidate_label,
+            baseline_report=baseline_report,
+            candidate_report=candidate_report,
+            metric_deltas=metric_deltas,
+            improved_metrics=improved_metrics,
+            regressed_metrics=regressed_metrics,
+            unchanged_metrics=unchanged_metrics,
+            winner=winner,
+            per_sample_deltas=per_sample_deltas,
+        )
+
+    def save_contrastive(
+        self,
+        output_path: str | Path,
+        *,
+        baseline_retriever: HybridRetriever | None,
+        candidate_retriever: HybridRetriever | None,
+        baseline_label: str = "baseline",
+        candidate_label: str = "candidate",
+    ) -> None:
+        """Run contrastive evaluation and write the artifact as JSON.
+
+        Args:
+            output_path: Destination path for the serialized contrastive report.
+            baseline_retriever: Retriever representing the current baseline.
+            candidate_retriever: Retriever representing the candidate change.
+            baseline_label: Human-readable label for the baseline artifact.
+            candidate_label: Human-readable label for the candidate artifact.
+        """
+        report = self.run_contrastive(
+            baseline_retriever=baseline_retriever,
+            candidate_retriever=candidate_retriever,
+            baseline_label=baseline_label,
+            candidate_label=candidate_label,
+        )
+        path = Path(output_path)
+        path.write_text(json.dumps(asdict(report), indent=2))
+        logger.info("Contrastive evaluation results written to %s", path)
+
     def _retrieve(self, question: str) -> list[RetrievalResult]:
         if self._retriever is None:
             return []
@@ -287,6 +397,14 @@ class Evaluator:
         except Exception as exc:
             logger.warning("Retriever failed for %r: %s", question, exc)
             return []
+
+    def _run_with_retriever(self, retriever: HybridRetriever | None) -> EvalReport:
+        original_retriever = self._retriever
+        try:
+            self._retriever = retriever
+            return self.run()
+        finally:
+            self._retriever = original_retriever
 
 
 DEFAULT_EVAL_SAMPLES: list[EvalSample] = [
@@ -676,6 +794,119 @@ def _failure_reasons(
     if multi_hop_accuracy < 0.25:
         reasons.append("low_multi_hop_accuracy")
     return reasons
+
+
+def _contrastive_metric_deltas(baseline_report: EvalReport, candidate_report: EvalReport) -> dict[str, float]:
+    """Return candidate-minus-baseline deltas for aggregate evaluation metrics."""
+    metrics = (
+        "context_recall",
+        "context_precision",
+        "answer_faithfulness",
+        "answer_relevance",
+        "grounding",
+        "multi_hop_accuracy",
+        "link_prediction_mrr",
+        "link_prediction_hits_at_3",
+        "link_prediction_hits_at_10",
+        "avg_latency_ms",
+        "estimated_cost_usd",
+    )
+    return {
+        metric: round(float(getattr(candidate_report, metric)) - float(getattr(baseline_report, metric)), 6) for metric in metrics
+    }
+
+
+def _contrastive_metric_buckets(metric_deltas: dict[str, float]) -> tuple[list[str], list[str], list[str]]:
+    """Partition contrastive metric deltas into improved, regressed, and unchanged sets."""
+    lower_is_better = {"avg_latency_ms", "estimated_cost_usd"}
+    improved: list[str] = []
+    regressed: list[str] = []
+    unchanged: list[str] = []
+
+    for metric, delta in metric_deltas.items():
+        if abs(delta) < 0.0001:
+            unchanged.append(metric)
+            continue
+
+        if metric in lower_is_better:
+            if delta < 0:
+                improved.append(metric)
+            else:
+                regressed.append(metric)
+            continue
+
+        if delta > 0:
+            improved.append(metric)
+        else:
+            regressed.append(metric)
+
+    return improved, regressed, unchanged
+
+
+def _contrastive_winner(improved_metrics: list[str], regressed_metrics: list[str]) -> str:
+    """Return the winner label for a contrastive evaluation artifact."""
+    if len(improved_metrics) > len(regressed_metrics):
+        return "candidate"
+    if len(regressed_metrics) > len(improved_metrics):
+        return "baseline"
+    return "tie"
+
+
+def _contrastive_per_sample_deltas(
+    baseline_rows: list[dict[str, str | float | int | list[str]]],
+    candidate_rows: list[dict[str, str | float | int | list[str]]],
+) -> list[dict[str, str | float | int | list[str]]]:
+    """Return per-sample comparison rows aligned by question."""
+    candidate_by_question = {str(row.get("question", "")): row for row in candidate_rows}
+    rows: list[dict[str, str | float | int | list[str]]] = []
+    for baseline_row in baseline_rows:
+        question = str(baseline_row.get("question", ""))
+        candidate_row = candidate_by_question.get(question, {})
+        baseline_context_recall = _row_float(baseline_row, "context_recall")
+        candidate_context_recall = _row_float(candidate_row, "context_recall")
+        baseline_answer_faithfulness = _row_float(baseline_row, "answer_faithfulness")
+        candidate_answer_faithfulness = _row_float(candidate_row, "answer_faithfulness")
+        rows.append(
+            {
+                "question": question,
+                "baseline_context_recall": baseline_context_recall,
+                "candidate_context_recall": candidate_context_recall,
+                "delta_context_recall": round(
+                    candidate_context_recall - baseline_context_recall,
+                    4,
+                ),
+                "baseline_answer_faithfulness": baseline_answer_faithfulness,
+                "candidate_answer_faithfulness": candidate_answer_faithfulness,
+                "delta_answer_faithfulness": round(
+                    candidate_answer_faithfulness - baseline_answer_faithfulness,
+                    4,
+                ),
+                "baseline_failure_reasons": _row_string_list(baseline_row, "failure_reasons"),
+                "candidate_failure_reasons": _row_string_list(candidate_row, "failure_reasons"),
+            }
+        )
+    return rows
+
+
+def _row_float(row: dict[str, str | float | int | list[str]], key: str) -> float:
+    value = row.get(key, 0.0)
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _row_string_list(row: dict[str, str | float | int | list[str]], key: str) -> list[str]:
+    value = row.get(key, [])
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    return []
 
 
 def _link_prediction_proxy(expected_terms: list[str], contexts: list[str]) -> dict[str, float]:

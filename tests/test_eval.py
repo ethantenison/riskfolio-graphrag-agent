@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from riskfolio_graphrag_agent.eval.evaluator import (
+    ContrastiveEvalReport,
     EvalReport,
     EvalSample,
     Evaluator,
@@ -25,6 +26,24 @@ class _StubRetriever:
                 score=0.9,
                 related_entities=["HRP", "clustering", "risk parity"],
                 metadata={"chunk_id": "c1", "section": "HRP"},
+            )
+        ]
+
+
+class _CandidateRetriever:
+    def retrieve(self, query: str) -> list[RetrievalResult]:
+        _ = query
+        return [
+            RetrievalResult(
+                content=(
+                    "Hierarchical Risk Parity uses clustering"
+                    " and risk parity to allocate portfolio weights with strong grounding."
+                ),
+                source_path="docs/hrp.md",
+                score=0.95,
+                related_entities=["Hierarchical Risk Parity", "clustering", "risk parity"],
+                graph_neighbours=["allocation workflow", "portfolio weights", "docs/hrp.md::chunk:2"],
+                metadata={"chunk_id": "c2", "section": "HRP"},
             )
         ]
 
@@ -170,3 +189,54 @@ def test_multi_hop_accuracy_rewards_coherent_graph_support():
     assert 0.0 <= coherent_score <= 1.0
     assert 0.0 <= shallow_score <= 1.0
     assert coherent_score > shallow_score
+
+
+def test_evaluator_run_contrastive_returns_comparison_artifact():
+    samples = [
+        EvalSample(
+            question="What is Hierarchical Risk Parity?",
+            reference_answer="HRP uses clustering and risk parity.",
+            expected_context_terms=["hierarchical", "risk parity", "clustering"],
+        )
+    ]
+
+    evaluator = Evaluator(samples=samples, retriever=_StubRetriever())
+    report = evaluator.run_contrastive(
+        baseline_retriever=_StubRetriever(),
+        candidate_retriever=_CandidateRetriever(),
+        baseline_label="baseline-v1",
+        candidate_label="candidate-v2",
+    )
+
+    assert isinstance(report, ContrastiveEvalReport)
+    assert report.baseline_label == "baseline-v1"
+    assert report.candidate_label == "candidate-v2"
+    assert "context_recall" in report.metric_deltas
+    assert report.winner in {"baseline", "candidate", "tie"}
+    assert len(report.per_sample_deltas) == 1
+    assert report.per_sample_deltas[0]["question"] == "What is Hierarchical Risk Parity?"
+
+
+def test_evaluator_save_contrastive_writes_json(tmp_path):
+    samples = [
+        EvalSample(
+            question="What is Hierarchical Risk Parity?",
+            reference_answer="HRP uses clustering and risk parity.",
+            expected_context_terms=["hierarchical", "risk parity", "clustering"],
+        )
+    ]
+
+    evaluator = Evaluator(samples=samples, retriever=_StubRetriever())
+    output = tmp_path / "contrastive.json"
+    evaluator.save_contrastive(
+        output,
+        baseline_retriever=_StubRetriever(),
+        candidate_retriever=_CandidateRetriever(),
+    )
+
+    assert output.exists()
+    data = json.loads(output.read_text())
+    assert data["baseline_label"] == "baseline"
+    assert data["candidate_label"] == "candidate"
+    assert "metric_deltas" in data
+    assert "per_sample_deltas" in data
