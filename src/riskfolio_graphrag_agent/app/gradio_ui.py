@@ -1273,8 +1273,9 @@ def create_gradio_app(
                     "The agent breaks your question into sub-questions and"
                     " routes each to the best tool."
                     " <em>Dense</em> = vector search"
+                    " &nbsp;|&nbsp; <em>Sparse</em> = lexical/keyword retrieval"
                     " &nbsp;|&nbsp; <em>Graph</em> = KG traversal"
-                    " &nbsp;|&nbsp; <em>Hybrid</em> = both + reranking."
+                    " &nbsp;|&nbsp; <em>Hybrid</em> = dense + sparse + graph reranking."
                     "</p>"
                 )
                 routing_panel = gr.HTML(value=_EMPTY_ROUTING_HTML)
