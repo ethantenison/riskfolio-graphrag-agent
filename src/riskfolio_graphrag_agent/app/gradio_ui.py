@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import html
-import json
-from pathlib import Path
 from typing import Any
 
 import gradio as gr
@@ -16,9 +14,6 @@ from riskfolio_graphrag_agent.graph.semantic_interop import describe_relationshi
 from riskfolio_graphrag_agent.retrieval.embeddings import resolve_embedding_provider
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
 from riskfolio_graphrag_agent.retrieval.router import QueryToolRouter
-
-_CONTRASTIVE_ARTIFACT_PATH = Path("artifacts/eval/contrastive.json")
-_ABLATION_ARTIFACT_PATH = Path("benchmarks/retrieval_ablation_results.json")
 
 
 def run_query_with_graph(
@@ -167,66 +162,7 @@ def _compute_insights(
             "sub_questions": list(state.sub_questions),
             "estimated_cost_usd": estimated_cost,
         },
-        "contrastive": _load_contrastive_summary(),
     }
-
-
-def _read_json_artifact(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    try:
-        payload = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return None
-    return payload if isinstance(payload, dict) else None
-
-
-def _load_contrastive_summary() -> dict[str, Any]:
-    contrastive = _read_json_artifact(_CONTRASTIVE_ARTIFACT_PATH)
-    if contrastive is not None:
-        metric_deltas = contrastive.get("metric_deltas", {})
-        top_deltas: list[dict[str, float | str]] = []
-        if isinstance(metric_deltas, dict):
-            sortable: list[tuple[str, float]] = []
-            for metric, value in metric_deltas.items():
-                if isinstance(metric, str) and isinstance(value, int | float):
-                    sortable.append((metric, float(value)))
-            top_deltas = [
-                {"metric": metric, "delta": round(value, 4)}
-                for metric, value in sorted(sortable, key=lambda item: abs(item[1]), reverse=True)[:4]
-            ]
-
-        return {
-            "source": "contrastive",
-            "title": f"{contrastive.get('baseline_label', 'baseline')} vs {contrastive.get('candidate_label', 'candidate')}",
-            "winner": str(contrastive.get("winner", "tie")),
-            "improved_metrics": list(contrastive.get("improved_metrics", [])),
-            "regressed_metrics": list(contrastive.get("regressed_metrics", [])),
-            "top_deltas": top_deltas,
-        }
-
-    ablation = _read_json_artifact(_ABLATION_ARTIFACT_PATH)
-    if ablation is not None:
-        results = ablation.get("results", [])
-        top_rows: list[dict[str, Any]] = []
-        if isinstance(results, list):
-            for row in results[:4]:
-                if isinstance(row, dict):
-                    top_rows.append(
-                        {
-                            "mode": str(row.get("mode", "")),
-                            "context_recall": float(row.get("context_recall", 0.0)),
-                            "context_precision": float(row.get("context_precision", 0.0)),
-                        }
-                    )
-        return {
-            "source": "ablation",
-            "title": "Retrieval mode benchmark",
-            "winner": str(ablation.get("winner", "unknown")),
-            "results": top_rows,
-        }
-
-    return {}
 
 
 def _annotate_graph_semantics(graph: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
@@ -820,12 +756,6 @@ _EMPTY_GOVERNANCE_HTML = (
     "and how much the query cost in tokens."
     "</p>"
 )
-_EMPTY_CONTRASTIVE_HTML = (
-    "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
-    "No contrastive artifact detected yet. Add <code>artifacts/eval/contrastive.json</code> "
-    "to show baseline-vs-candidate summaries here, or rely on the ablation benchmark fallback."
-    "</p>"
-)
 
 
 def _render_graph_svg(graph: dict[str, list[dict[str, Any]]], width: int = 800, height: int = 400) -> str:
@@ -1090,76 +1020,6 @@ def _render_governance_html(insights: dict[str, Any]) -> str:
     return f"<table style='border-collapse:collapse;width:100%'>{cells}</table>"
 
 
-def _render_contrastive_html(insights: dict[str, Any]) -> str:
-    summary = insights.get("contrastive", {})
-    if not summary:
-        return _EMPTY_CONTRASTIVE_HTML
-
-    source = str(summary.get("source", ""))
-    title = html.escape(str(summary.get("title", "Benchmark summary")))
-    winner = html.escape(str(summary.get("winner", "unknown")))
-
-    if source == "contrastive":
-        improved = [str(item) for item in summary.get("improved_metrics", [])[:6]]
-        regressed = [str(item) for item in summary.get("regressed_metrics", [])[:6]]
-        top_deltas = list(summary.get("top_deltas", []))
-        delta_rows: list[str] = []
-        for item in top_deltas:
-            if not isinstance(item, dict):
-                continue
-            metric = html.escape(str(item.get("metric", "")))
-            delta = float(item.get("delta", 0.0))
-            colour = "#10B981" if delta >= 0 else "#EF4444"
-            delta_rows.append(
-                (f"<div style='margin:2px 0'><strong>{metric}</strong>: <span style='color:{colour}'>{delta:+.4f}</span></div>")
-            )
-        empty_badge_text = "<span style='color:#9CA3AF'>none</span>"
-        improved_badges = "".join(_badge(metric, "#10B981") + "&nbsp;" for metric in improved) or empty_badge_text
-        regressed_badges = "".join(_badge(metric, "#EF4444") + "&nbsp;" for metric in regressed) or empty_badge_text
-        delta_block = "".join(delta_rows) if delta_rows else "<span style='color:#9CA3AF'>no deltas recorded</span>"
-        return "".join(
-            [
-                f"<div><div style='font-weight:700;color:#1E293B;margin-bottom:8px'>{title}</div>",
-                f"<div style='margin-bottom:8px'>Winner: {_badge(winner, '#3B82F6')}</div>",
-                "<div style='margin-bottom:8px'>"
-                "<div style='color:#64748B;font-size:12px;margin-bottom:4px'>Improved metrics</div>"
-                f"{improved_badges}</div>",
-                "<div style='margin-bottom:8px'>"
-                "<div style='color:#64748B;font-size:12px;margin-bottom:4px'>Regressed metrics</div>"
-                f"{regressed_badges}</div>",
-                f"<div style='color:#64748B;font-size:12px;margin-bottom:4px'>Largest deltas</div>{delta_block}</div>",
-            ]
-        )
-
-    results = list(summary.get("results", []))
-    rows: list[str] = []
-    for item in results:
-        if not isinstance(item, dict):
-            continue
-        mode = str(item.get("mode", ""))
-        rows.append(
-            f"<tr><td style='padding:6px 10px'>{_badge(mode, _MODE_COLOURS.get(mode, '#6B7280'))}</td>"
-            f"<td style='padding:6px 10px'>{float(item.get('context_recall', 0.0)):.4f}</td>"
-            f"<td style='padding:6px 10px'>{float(item.get('context_precision', 0.0)):.4f}</td></tr>"
-        )
-    return "".join(
-        [
-            f"<div><div style='font-weight:700;color:#1E293B;margin-bottom:8px'>{title}</div>",
-            f"<div style='margin-bottom:8px'>Current winner: {_badge(winner, '#3B82F6')}</div>",
-            "<table style='width:100%;border-collapse:collapse;font-size:13px'>",
-            "<thead><tr style='background:#F1F5F9'><th style='padding:6px 10px;text-align:left'>Mode</th>",
-            "<th style='padding:6px 10px;text-align:left'>Recall</th>",
-            "<th style='padding:6px 10px;text-align:left'>Precision</th></tr></thead>",
-            f"<tbody>{''.join(rows)}</tbody></table></div>",
-        ]
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-
-_LOADING_HTML = "<p style='color:#6B7280;font-size:13px;padding:8px'>⏳ Searching knowledge graph…</p>"
-
-
 def _format_answer_markdown(answer: str, citations: list) -> str:
     """Bold entity names from citations when the answer is plain prose."""
     if not answer:
@@ -1167,12 +1027,14 @@ def _format_answer_markdown(answer: str, citations: list) -> str:
     # If already markdown-formatted, trust it as-is
     if any(c in answer for c in ("**", "##", "\n- ", "\n* ", "\n1.")):
         return answer
+
     entities: set[str] = set()
-    for c in citations:
-        for e in c.get("matched_entities") or []:
-            e_str = str(e).strip()
-            if len(e_str) > 3:
-                entities.add(e_str)
+    for citation in citations:
+        for entity in citation.get("matched_entities") or []:
+            entity_text = str(entity).strip()
+            if len(entity_text) > 3:
+                entities.add(entity_text)
+
     formatted = answer
     for entity in sorted(entities, key=len, reverse=True):
         if entity in formatted:
@@ -1205,6 +1067,9 @@ def _render_summary_card(insights: dict, citations: list, top_k: int = 10) -> st
     )
 
 
+_LOADING_HTML = "<p style='color:#6B7280;font-size:13px;padding:8px'>⏳ Searching knowledge graph…</p>"
+
+
 def create_gradio_app(
     top_k_default: int = 10,
     graph_max_nodes: int = 40,
@@ -1234,7 +1099,6 @@ def create_gradio_app(
             _LOADING_HTML,
             _render_graph_plot({"nodes": [], "edges": []}),
             _LOADING_HTML,
-            _LOADING_HTML,
             gr.update(),
         )
 
@@ -1259,7 +1123,6 @@ def create_gradio_app(
             _render_graph_evidence_html(insights),
             _render_graph_plot(graph),
             _render_governance_html(insights),
-            _render_contrastive_html(insights),
             gr.update(selected=0),
         )
 
@@ -1437,16 +1300,6 @@ def create_gradio_app(
                 )
                 governance_panel = gr.HTML(value=_EMPTY_GOVERNANCE_HTML)
 
-            with gr.Tab("Benchmarking"):
-                gr.HTML(
-                    "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
-                    "Contrastive baseline-vs-candidate evaluation summaries for interviews,"
-                    " with a retrieval ablation fallback when the latest contrastive artifact"
-                    " is not available."
-                    "</p>"
-                )
-                contrastive_panel = gr.HTML(value=_EMPTY_CONTRASTIVE_HTML)
-
         _outputs = [
             question_box,
             chatbot,
@@ -1456,7 +1309,6 @@ def create_gradio_app(
             graph_evidence_panel,
             graph_panel,
             governance_panel,
-            contrastive_panel,
             inner_tabs,
         ]
         _inputs = [question_box, chatbot]

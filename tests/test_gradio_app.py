@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from riskfolio_graphrag_agent.agent.workflow import AgentState
 from riskfolio_graphrag_agent.app.gradio_ui import (
-    _render_contrastive_html,
     _render_governance_html,
     _render_graph_evidence_html,
     _render_graph_svg,
@@ -75,10 +74,6 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
     monkeypatch.setattr("riskfolio_graphrag_agent.app.gradio_ui.HybridRetriever", _FakeRetriever)
     monkeypatch.setattr("riskfolio_graphrag_agent.app.gradio_ui.AgentWorkflow", _FakeWorkflow)
     monkeypatch.setattr("riskfolio_graphrag_agent.app.gradio_ui.GraphBuilder", _FakeGraphBuilder)
-    monkeypatch.setattr(
-        "riskfolio_graphrag_agent.app.gradio_ui._load_contrastive_summary",
-        lambda: {"source": "contrastive", "title": "baseline vs candidate", "winner": "candidate"},
-    )
 
     answer, citations, graph, insights = run_query_with_graph("What is HRP?", top_k=3)
 
@@ -88,7 +83,7 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
     assert len(graph["edges"]) == 1
     assert graph["edges"][0]["semantic"]["predicate"] == "rf:SUPPORTS_RISK_MEASURE"
     assert isinstance(insights, dict)
-    assert {"routing", "grounding", "graph_evidence", "governance", "contrastive"} <= insights.keys()
+    assert {"routing", "grounding", "graph_evidence", "governance"} <= insights.keys()
     # grounding: verified=True, citation_count=1, avg_score=0.91, entity HRP present
     assert insights["grounding"]["verified"] is True
     assert insights["grounding"]["citation_count"] == 1
@@ -100,7 +95,6 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
     # governance keys present
     assert "model" in insights["governance"]
     assert "adaptive_routing_enabled" in insights["governance"]
-    assert insights["contrastive"]["winner"] == "candidate"
 
 
 def test_render_routing_html_with_data():
@@ -166,47 +160,6 @@ def test_render_governance_html_with_data():
     assert "hybrid_rerank" in html_out
     assert "ON" in html_out
     assert "What is HRP?" in html_out
-
-
-def test_render_contrastive_html_with_contrastive_summary():
-    insights = {
-        "contrastive": {
-            "source": "contrastive",
-            "title": "baseline vs candidate",
-            "winner": "candidate",
-            "improved_metrics": ["grounding", "answer_relevance"],
-            "regressed_metrics": ["latency_ms"],
-            "top_deltas": [
-                {"metric": "grounding", "delta": 0.12},
-                {"metric": "latency_ms", "delta": -15.0},
-            ],
-        }
-    }
-
-    html_out = _render_contrastive_html(insights)
-    assert "baseline vs candidate" in html_out
-    assert "candidate" in html_out
-    assert "grounding" in html_out
-    assert "latency_ms" in html_out
-
-
-def test_render_contrastive_html_with_ablation_fallback():
-    insights = {
-        "contrastive": {
-            "source": "ablation",
-            "title": "Retrieval mode benchmark",
-            "winner": "sparse",
-            "results": [
-                {"mode": "sparse", "context_recall": 0.9, "context_precision": 0.7},
-                {"mode": "graph", "context_recall": 0.6, "context_precision": 0.8},
-            ],
-        }
-    }
-
-    html_out = _render_contrastive_html(insights)
-    assert "Retrieval mode benchmark" in html_out
-    assert "sparse" in html_out
-    assert "0.9000" in html_out
 
 
 def test_render_graph_svg_contains_svg_markup():
