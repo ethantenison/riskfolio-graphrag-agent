@@ -87,6 +87,9 @@ This repository uses Ruff and tests in CI. All generated code must be clean in e
 ### Formatting Rules
 
 - Max line length: 130.
+- Treat the 130-character limit as a hard authoring constraint, not a formatter cleanup step.
+- Proactively split long f-strings, HTML snippets, SQL/Cypher strings, and chained expressions while writing code instead of relying on `ruff format` to fix them later.
+- When generating multiline UI markup or other long string content inside Python, prefer adjacent string concatenation, helper variables, or small rendering helpers so each source line stays within the limit.
 - Organize imports: standard library, third-party, local.
 - Keep public APIs and naming stable unless the task explicitly requires a breaking change.
 
@@ -101,4 +104,5 @@ This repository uses Ruff and tests in CI. All generated code must be clean in e
 - Add or update tests when behavior changes.
 - Prefer focused unit tests near the changed area over broad incidental test churn.
 - Do not rewrite unrelated tests to fit new code if the production change can be made compatible.
+- For any edited Python file, run `ruff check` on the touched files before considering the change complete. Run `ruff format` as needed and re-check if formatting changes the file.
 - If behavior cannot be tested in the current environment, state that clearly in the final response.

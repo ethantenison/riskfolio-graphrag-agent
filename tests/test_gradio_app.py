@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from riskfolio_graphrag_agent.agent.workflow import AgentState
 from riskfolio_graphrag_agent.app.gradio_ui import (
+    _render_contrastive_html,
     _render_governance_html,
     _render_graph_evidence_html,
     _render_graph_svg,
@@ -74,6 +75,10 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
     monkeypatch.setattr("riskfolio_graphrag_agent.app.gradio_ui.HybridRetriever", _FakeRetriever)
     monkeypatch.setattr("riskfolio_graphrag_agent.app.gradio_ui.AgentWorkflow", _FakeWorkflow)
     monkeypatch.setattr("riskfolio_graphrag_agent.app.gradio_ui.GraphBuilder", _FakeGraphBuilder)
+    monkeypatch.setattr(
+        "riskfolio_graphrag_agent.app.gradio_ui._load_contrastive_summary",
+        lambda: {"source": "contrastive", "title": "baseline vs candidate", "winner": "candidate"},
+    )
 
     answer, citations, graph, insights = run_query_with_graph("What is HRP?", top_k=3)
 
@@ -81,8 +86,9 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
     assert len(citations) == 1
     assert len(graph["nodes"]) == 2
     assert len(graph["edges"]) == 1
+    assert graph["edges"][0]["semantic"]["predicate"] == "rf:SUPPORTS_RISK_MEASURE"
     assert isinstance(insights, dict)
-    assert {"routing", "grounding", "graph_evidence", "governance"} <= insights.keys()
+    assert {"routing", "grounding", "graph_evidence", "governance", "contrastive"} <= insights.keys()
     # grounding: verified=True, citation_count=1, avg_score=0.91, entity HRP present
     assert insights["grounding"]["verified"] is True
     assert insights["grounding"]["citation_count"] == 1
@@ -90,9 +96,11 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
     # graph_evidence: subgraph populated by _FakeGraphBuilder
     assert insights["graph_evidence"]["subgraph_nodes"] == 2
     assert insights["graph_evidence"]["subgraph_edges"] == 1
+    assert insights["graph_evidence"]["edge_semantics"][0]["predicate"] == "rf:SUPPORTS_RISK_MEASURE"
     # governance keys present
     assert "model" in insights["governance"]
     assert "adaptive_routing_enabled" in insights["governance"]
+    assert insights["contrastive"]["winner"] == "candidate"
 
 
 def test_render_routing_html_with_data():
@@ -124,12 +132,22 @@ def test_render_graph_evidence_html_with_data():
             "unique_neighbours": ["CVaR"],
             "subgraph_nodes": 3,
             "subgraph_edges": 2,
+            "edge_semantics": [
+                {
+                    "relation": "SUPPORTS_RISK_MEASURE",
+                    "predicate": "rf:supportsRiskMeasure",
+                    "domain": "rf:PortfolioMethod",
+                    "range": "rf:RiskMeasure",
+                }
+            ],
         }
     }
     html_out = _render_graph_evidence_html(insights)
     assert "HRP" in html_out
     assert "CVaR" in html_out
     assert "3" in html_out
+    assert "rf:supportsRiskMeasure" in html_out
+    assert "rf:PortfolioMethod" in html_out
 
 
 def test_render_governance_html_with_data():
@@ -150,6 +168,47 @@ def test_render_governance_html_with_data():
     assert "What is HRP?" in html_out
 
 
+def test_render_contrastive_html_with_contrastive_summary():
+    insights = {
+        "contrastive": {
+            "source": "contrastive",
+            "title": "baseline vs candidate",
+            "winner": "candidate",
+            "improved_metrics": ["grounding", "answer_relevance"],
+            "regressed_metrics": ["latency_ms"],
+            "top_deltas": [
+                {"metric": "grounding", "delta": 0.12},
+                {"metric": "latency_ms", "delta": -15.0},
+            ],
+        }
+    }
+
+    html_out = _render_contrastive_html(insights)
+    assert "baseline vs candidate" in html_out
+    assert "candidate" in html_out
+    assert "grounding" in html_out
+    assert "latency_ms" in html_out
+
+
+def test_render_contrastive_html_with_ablation_fallback():
+    insights = {
+        "contrastive": {
+            "source": "ablation",
+            "title": "Retrieval mode benchmark",
+            "winner": "sparse",
+            "results": [
+                {"mode": "sparse", "context_recall": 0.9, "context_precision": 0.7},
+                {"mode": "graph", "context_recall": 0.6, "context_precision": 0.8},
+            ],
+        }
+    }
+
+    html_out = _render_contrastive_html(insights)
+    assert "Retrieval mode benchmark" in html_out
+    assert "sparse" in html_out
+    assert "0.9000" in html_out
+
+
 def test_render_graph_svg_contains_svg_markup():
     graph = {
         "nodes": [
@@ -161,13 +220,25 @@ def test_render_graph_svg_contains_svg_markup():
             },
             {"id": "n2", "name": "CVaR", "labels": ["RiskMeasure"], "source_path": "docs/risk.md"},
         ],
-        "edges": [{"source": "n1", "target": "n2", "type": "SUPPORTS_RISK_MEASURE"}],
+        "edges": [
+            {
+                "source": "n1",
+                "target": "n2",
+                "type": "SUPPORTS_RISK_MEASURE",
+                "semantic": {
+                    "predicate": "rf:supportsRiskMeasure",
+                    "domain": "rf:PortfolioMethod",
+                    "range": "rf:RiskMeasure",
+                },
+            }
+        ],
     }
 
     rendered = _render_graph_svg(graph)
     assert "<svg" in rendered
     assert "Hierarchical Risk Parity" in rendered
     assert "SUPPORTS_RISK_MEASURE" in rendered
+    assert "rf:supportsRiskMeasure" in rendered
 
 
 def test_render_graph_svg_empty_graph_message():

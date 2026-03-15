@@ -44,6 +44,8 @@ from riskfolio_graphrag_agent.ingestion.loader import Document
 
 logger = logging.getLogger(__name__)
 
+WRITE_BATCH_SIZE = 500
+
 NODE_LABELS: tuple[str, ...] = (
     "Chunk",
     "DocPage",
@@ -403,9 +405,9 @@ class GraphBuilder:
                     f"CREATE CONSTRAINT {safe_label.lower()}_name_unique IF NOT EXISTS "
                     f"FOR (n:{safe_label}) REQUIRE n.name IS UNIQUE"
                 )
-                session.run(cypher)
+                session.run(cypher).consume()
 
-            session.run("CREATE INDEX chunk_source_path IF NOT EXISTS FOR (c:Chunk) ON (c.source_path, c.chunk_index)")
+            session.run("CREATE INDEX chunk_source_path IF NOT EXISTS FOR (c:Chunk) ON (c.source_path, c.chunk_index)").consume()
 
     def build(
         self,
@@ -486,9 +488,12 @@ class GraphBuilder:
         with driver.session() as session:
             if drop_existing:
                 logger.warning("drop_existing=True – wiping graph.")
-                session.run("MATCH (n) DETACH DELETE n")
+                session.run("MATCH (n) DETACH DELETE n").consume()
+                logger.info("Existing graph wipe complete.")
             self.ensure_schema(apply_constraints=apply_schema)
+            logger.info("Graph schema ready; starting node upsert.")
             _upsert_nodes(session, unique_nodes)
+            logger.info("Node upsert complete; starting edge upsert.")
             skipped = _upsert_edges(session, unique_edges, known_node_names=known_node_names)
 
         ci_threshold = max(1, int(0.05 * len(unique_edges)))
@@ -1075,6 +1080,10 @@ def _dedupe_edges(edges: list[GraphEdge]) -> list[GraphEdge]:
     return list(deduped.values())
 
 
+def _batched_rows(rows: list[dict[str, Any]], batch_size: int = WRITE_BATCH_SIZE) -> list[list[dict[str, Any]]]:
+    return [rows[index : index + batch_size] for index in range(0, len(rows), batch_size)]
+
+
 def _upsert_nodes(session, nodes: list[GraphNode]) -> None:
     if not nodes:
         return
@@ -1087,7 +1096,11 @@ def _upsert_nodes(session, nodes: list[GraphNode]) -> None:
         safe_label = _safe_name(label)
         cypher = f"UNWIND $rows AS row MERGE (n:{safe_label} {{name: row.name}}) SET n += row.properties"
         rows = [{"name": n.name, "properties": n.properties} for n in labeled_nodes]
-        session.run(cypher, rows=rows)
+        processed = 0
+        for batch in _batched_rows(rows):
+            session.run(cypher, rows=batch).consume()
+            processed += len(batch)
+        logger.info("Node upserted: label=%s count=%d", label, processed)
 
 
 def _upsert_edges(
@@ -1100,6 +1113,7 @@ def _upsert_edges(
         return 0
 
     skipped = 0
+    grouped_rows: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for edge in edges:
         if known_node_names is not None:
             if edge.source_name not in known_node_names or edge.target_name not in known_node_names:
@@ -1112,19 +1126,32 @@ def _upsert_edges(
                 skipped += 1
                 continue
 
-        safe_source_label = _safe_name(edge.source_label)
-        safe_target_label = _safe_name(edge.target_label)
-        safe_relation = _safe_name(edge.relation_type)
+        group_key = (
+            _safe_name(edge.source_label),
+            _safe_name(edge.target_label),
+            _safe_name(edge.relation_type),
+        )
+        grouped_rows.setdefault(group_key, []).append(
+            {
+                "source_name": edge.source_name,
+                "target_name": edge.target_name,
+                "properties": edge.properties,
+            }
+        )
+
+    total_edges = sum(len(rows) for rows in grouped_rows.values())
+    processed = 0
+    for (safe_source_label, safe_target_label, safe_relation), rows in grouped_rows.items():
         cypher = (
-            f"MATCH (s:{safe_source_label} {{name: $source_name}}) "
-            f"MATCH (t:{safe_target_label} {{name: $target_name}}) "
+            "UNWIND $rows AS row "
+            f"MATCH (s:{safe_source_label} {{name: row.source_name}}) "
+            f"MATCH (t:{safe_target_label} {{name: row.target_name}}) "
             f"MERGE (s)-[r:{safe_relation}]->(t) "
-            "SET r += $properties"
+            "SET r += row.properties"
         )
-        session.run(
-            cypher,
-            source_name=edge.source_name,
-            target_name=edge.target_name,
-            properties=edge.properties,
-        )
+        for batch in _batched_rows(rows):
+            session.run(cypher, rows=batch).consume()
+            processed += len(batch)
+            if processed == total_edges or processed % 1000 == 0:
+                logger.info("Edge upsert progress: %d/%d", processed, total_edges)
     return skipped
