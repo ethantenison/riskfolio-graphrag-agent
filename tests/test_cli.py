@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import json
 
+from typer.testing import CliRunner
+
+from riskfolio_graphrag_agent import cli
 from riskfolio_graphrag_agent.cli import _resolve_eval_samples, _select_documents_for_build
 from riskfolio_graphrag_agent.ingestion.loader import Document
+
+runner = CliRunner()
 
 
 def _make_docs(count: int) -> list[Document]:
@@ -55,3 +60,49 @@ def test_resolve_eval_samples_uses_custom_file(tmp_path):
     assert len(samples) == 1
     assert samples[0].question == "What is CVaR?"
     assert samples[0].domain == "risk-measures"
+
+
+def test_eval_gate_cli_passes_all_thresholds(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+
+    def _fake_run_regression_gate(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(cli, "run_regression_gate", _fake_run_regression_gate)
+
+    report_file = tmp_path / "eval.json"
+    report_file.write_text("{}")
+    trend_file = tmp_path / "trend.json"
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval-gate",
+            "--report",
+            str(report_file),
+            "--min-faithfulness",
+            "0.4",
+            "--min-relevance",
+            "0.85",
+            "--min-context-recall",
+            "0.5",
+            "--min-grounding",
+            "0.45",
+            "--min-multi-hop-accuracy",
+            "0.3",
+            "--max-latency-ms",
+            "2500",
+            "--max-estimated-cost-usd",
+            "0.01",
+            "--trend-path",
+            str(trend_file),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["report_path"] == str(report_file)
+    assert captured["min_grounding"] == 0.45
+    assert captured["min_multi_hop_accuracy"] == 0.3
+    assert captured["max_latency_ms"] == 2500.0
+    assert captured["max_estimated_cost_usd"] == 0.01
+    assert captured["trend_path"] == str(trend_file)

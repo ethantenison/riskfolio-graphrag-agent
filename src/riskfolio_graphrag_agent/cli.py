@@ -563,6 +563,11 @@ def eval_gate(
     min_faithfulness: float = typer.Option(0.35, "--min-faithfulness"),
     min_relevance: float = typer.Option(0.8, "--min-relevance"),
     min_context_recall: float = typer.Option(0.45, "--min-context-recall"),
+    min_grounding: float = typer.Option(0.35, "--min-grounding"),
+    min_multi_hop_accuracy: float = typer.Option(0.25, "--min-multi-hop-accuracy"),
+    max_latency_ms: float = typer.Option(5000.0, "--max-latency-ms"),
+    max_estimated_cost_usd: float = typer.Option(0.02, "--max-estimated-cost-usd"),
+    trend_path: str = typer.Option("artifacts/eval/eval_trend.json", "--trend-path"),
 ) -> None:
     """Fail fast if evaluation metrics regress below minimum thresholds."""
     run_regression_gate(
@@ -570,6 +575,11 @@ def eval_gate(
         min_faithfulness=min_faithfulness,
         min_relevance=min_relevance,
         min_context_recall=min_context_recall,
+        min_grounding=min_grounding,
+        min_multi_hop_accuracy=min_multi_hop_accuracy,
+        max_latency_ms=max_latency_ms,
+        max_estimated_cost_usd=max_estimated_cost_usd,
+        trend_path=trend_path,
     )
     console.print("[bold green]eval-gate passed[/]")
 

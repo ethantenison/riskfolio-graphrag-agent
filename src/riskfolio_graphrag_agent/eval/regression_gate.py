@@ -7,13 +7,15 @@ for local use or CI integration.
 
 Inputs are evaluation report paths and threshold values. Outputs are raised
 errors for failed gates, terminal exit codes for the CLI, and a rolling JSON
-trend file.
+trend file with additive drift diagnostics.
 
 Key implementation decisions:
 - threshold enforcement is deterministic and file-based so it can run in CI
     without service dependencies;
 - trend tracking is appended before failure is raised so regressions are still
     recorded historically;
+- trend entries include additive metric deltas and a simple drift flag so the
+    history is useful for diagnostics, not just pass/fail bookkeeping;
 - the CLI stays thin and delegates all policy logic to ``run_regression_gate``.
 
 This module does not compute metrics itself, execute retrieval, or own broader
@@ -92,6 +94,7 @@ def run_regression_gate(
         trend_path=trend_path,
         report=report,
         passed=not failures,
+        failed_checks=failures,
     )
 
     if failures:
@@ -140,7 +143,13 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-def _append_trend(*, trend_path: str | Path, report: dict[str, object], passed: bool) -> None:
+def _append_trend(
+    *,
+    trend_path: str | Path,
+    report: dict[str, object],
+    passed: bool,
+    failed_checks: list[str] | None = None,
+) -> None:
     target = Path(trend_path)
     target.parent.mkdir(parents=True, exist_ok=True)
 
@@ -153,18 +162,66 @@ def _append_trend(*, trend_path: str | Path, report: dict[str, object], passed: 
         except json.JSONDecodeError:
             history = []
 
-    history.append(
-        {
-            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-            "passed": passed,
-            "context_recall": float(report.get("context_recall", 0.0)),
-            "answer_faithfulness": float(report.get("answer_faithfulness", 0.0)),
-            "answer_relevance": float(report.get("answer_relevance", 0.0)),
-            "grounding": float(report.get("grounding", 0.0)),
-            "multi_hop_accuracy": float(report.get("multi_hop_accuracy", 0.0)),
-            "avg_latency_ms": float(report.get("avg_latency_ms", 0.0)),
-            "estimated_cost_usd": float(report.get("estimated_cost_usd", 0.0)),
-        }
-    )
+    previous_entry = history[-1] if history else None
+    entry = {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "passed": passed,
+        "context_recall": float(report.get("context_recall", 0.0)),
+        "answer_faithfulness": float(report.get("answer_faithfulness", 0.0)),
+        "answer_relevance": float(report.get("answer_relevance", 0.0)),
+        "grounding": float(report.get("grounding", 0.0)),
+        "multi_hop_accuracy": float(report.get("multi_hop_accuracy", 0.0)),
+        "avg_latency_ms": float(report.get("avg_latency_ms", 0.0)),
+        "estimated_cost_usd": float(report.get("estimated_cost_usd", 0.0)),
+        "failed_checks": list(failed_checks or []),
+    }
+    entry["metric_deltas"] = _metric_deltas(previous_entry=previous_entry, current_entry=entry)
+    entry["drift_flagged"] = _drift_flagged(entry["metric_deltas"])
+
+    history.append(entry)
 
     target.write_text(json.dumps(history[-30:], indent=2))
+
+
+def _metric_deltas(
+    *,
+    previous_entry: dict[str, object] | None,
+    current_entry: dict[str, object],
+) -> dict[str, float]:
+    """Return additive metric deltas between the current and previous trend entries."""
+    tracked_metrics = (
+        "context_recall",
+        "answer_faithfulness",
+        "answer_relevance",
+        "grounding",
+        "multi_hop_accuracy",
+        "avg_latency_ms",
+        "estimated_cost_usd",
+    )
+    if previous_entry is None:
+        return {metric: 0.0 for metric in tracked_metrics}
+
+    deltas: dict[str, float] = {}
+    for metric in tracked_metrics:
+        current_value = float(current_entry.get(metric, 0.0))
+        previous_value = float(previous_entry.get(metric, 0.0))
+        deltas[metric] = round(current_value - previous_value, 6)
+    return deltas
+
+
+def _drift_flagged(metric_deltas: dict[str, float]) -> bool:
+    """Return whether recent metric deltas indicate meaningful regression drift."""
+    score_metrics = (
+        "context_recall",
+        "answer_faithfulness",
+        "answer_relevance",
+        "grounding",
+        "multi_hop_accuracy",
+    )
+    if any(metric_deltas.get(metric, 0.0) <= -0.15 for metric in score_metrics):
+        return True
+    if metric_deltas.get("avg_latency_ms", 0.0) >= 500.0:
+        return True
+    if metric_deltas.get("estimated_cost_usd", 0.0) >= 0.005:
+        return True
+    return False

@@ -10,6 +10,7 @@ import gradio as gr
 from riskfolio_graphrag_agent.agent.workflow import AgentWorkflow
 from riskfolio_graphrag_agent.config.settings import Settings
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
+from riskfolio_graphrag_agent.graph.semantic_interop import describe_relationship_semantics
 from riskfolio_graphrag_agent.retrieval.embeddings import resolve_embedding_provider
 from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
 from riskfolio_graphrag_agent.retrieval.router import QueryToolRouter
@@ -82,6 +83,8 @@ def run_query_with_graph(
     finally:
         graph_builder.close()
 
+    graph = _annotate_graph_semantics(graph)
+
     answer = state.answer or "I could not find matching graph context for that question yet."
     insights = _compute_insights(state, graph, settings, query_router)
     return answer, state.citations, graph, insights
@@ -130,6 +133,7 @@ def _compute_insights(
     for c in state.citations:
         all_neighbours.extend(c.get("graph_neighbours", []) or [])
     unique_neighbours = list(dict.fromkeys(str(n) for n in all_neighbours if n))
+    edge_semantics = _graph_edge_semantic_summary(graph)
 
     # ── Governance ────────────────────────────────────────────────────────────
     token_count = sum(len(sq.split()) for sq in state.sub_questions)
@@ -148,6 +152,7 @@ def _compute_insights(
             "unique_neighbours": unique_neighbours,
             "subgraph_nodes": len(graph.get("nodes", [])),
             "subgraph_edges": len(graph.get("edges", [])),
+            "edge_semantics": edge_semantics,
         },
         "governance": {
             "model": settings.openai_model,
@@ -158,6 +163,38 @@ def _compute_insights(
             "estimated_cost_usd": estimated_cost,
         },
     }
+
+
+def _annotate_graph_semantics(graph: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    edges = []
+    for edge in graph.get("edges", []):
+        relation = str(edge.get("type", "")).strip()
+        edges.append({**edge, "semantic": describe_relationship_semantics(relation)})
+    return {"nodes": list(graph.get("nodes", [])), "edges": edges}
+
+
+def _graph_edge_semantic_summary(graph: dict[str, list[dict[str, Any]]]) -> list[dict[str, str]]:
+    summaries: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for edge in graph.get("edges", []):
+        semantic = edge.get("semantic", {})
+        if not isinstance(semantic, dict):
+            continue
+        relation = str(semantic.get("relation", "")).strip()
+        if not relation or relation in seen:
+            continue
+        seen.add(relation)
+        summaries.append(
+            {
+                "relation": relation,
+                "predicate": str(semantic.get("predicate", "")),
+                "domain": str(semantic.get("domain", "")),
+                "range": str(semantic.get("range", "")),
+            }
+        )
+        if len(summaries) >= 4:
+            break
+    return summaries
 
 
 # ── Per-node-type fill colours ───────────────────────────────────────────────
@@ -393,6 +430,9 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
     edge_y_hi: list[float | None] = []
     edge_x_lo: list[float | None] = []
     edge_y_lo: list[float | None] = []
+    edge_label_x: list[float] = []
+    edge_label_y: list[float] = []
+    edge_label_text: list[str] = []
     edge_hover_x: list[float] = []
     edge_hover_y: list[float] = []
     edge_hover_text: list[str] = []
@@ -417,11 +457,24 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
         if norm > 0:
             mx += (-dy / norm) * 0.012
             my += (dx / norm) * 0.012
+        if rel in high_signal_rel:
+            edge_label_x.append(mx)
+            edge_label_y.append(my)
+            edge_label_text.append(rel)
         edge_hover_x.append(mx)
         edge_hover_y.append(my)
-        edge_hover_text.append(
-            f"{html.escape(rel)}<br>{html.escape(node_meta[source]['name'])} -> {html.escape(node_meta[target]['name'])}"
-        )
+        semantic = data.get("semantic", {}) if isinstance(data.get("semantic", {}), dict) else {}
+        predicate = html.escape(str(semantic.get("predicate", "")))
+        domain = html.escape(str(semantic.get("domain", "")))
+        range_name = html.escape(str(semantic.get("range", "")))
+        semantic_line = ""
+        if predicate:
+            semantic_line = f"<br>{predicate}"
+            if domain or range_name:
+                semantic_line += f"<br>{domain or 'owl:Thing'} → {range_name or 'owl:Thing'}"
+        source_name = html.escape(node_meta[source]["name"])
+        target_name = html.escape(node_meta[target]["name"])
+        edge_hover_text.append(f"{html.escape(rel)}<br>{source_name} -> {target_name}{semantic_line}")
 
     edge_trace_lo = go.Scatter(
         x=edge_x_lo,
@@ -448,6 +501,17 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
         marker={"size": 10, "color": "rgba(0,0,0,0)"},
         hovertext=edge_hover_text,
         hoverinfo="text",
+        showlegend=False,
+    )
+
+    edge_label_trace = go.Scatter(
+        x=edge_label_x,
+        y=edge_label_y,
+        mode="text",
+        text=edge_label_text,
+        textposition="middle center",
+        textfont={"size": 9, "color": "#475569"},
+        hoverinfo="skip",
         showlegend=False,
     )
 
@@ -497,7 +561,7 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
             )
         )
 
-    fig = go.Figure(data=[edge_trace_lo, edge_trace_hi, edge_hover_trace, *node_traces])
+    fig = go.Figure(data=[edge_trace_lo, edge_trace_hi, edge_label_trace, edge_hover_trace, *node_traces])
     fig.update_layout(
         height=height,
         paper_bgcolor=bg,
@@ -564,7 +628,7 @@ def _render_graph_image(graph: dict[str, list[dict[str, Any]]]) -> Any:
         tgt = str(edge.get("target", ""))
         rel = str(edge.get("type", ""))
         if src != tgt and G.has_node(src) and G.has_node(tgt):
-            G.add_edge(src, tgt, label=rel)
+            G.add_edge(src, tgt, label=rel, semantic=edge.get("semantic", {}))
 
     # Remove isolated nodes to reduce clutter
     isolates = list(nx.isolates(G))
@@ -687,29 +751,100 @@ _MODE_COLOURS: dict[str, str] = {
     "hybrid_rerank": "#F59E0B",
 }
 
+_MODE_LABELS: dict[str, str] = {
+    "dense": "Semantic search",
+    "sparse": "Exact match search",
+    "graph": "Relationship lookup",
+    "hybrid_rerank": "Blended retrieval",
+}
+
 _EMPTY_ROUTING_HTML = (
     "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
-    "Ask a question above to see how the AI decides which search tool to use for each part of your query."
+    "Ask a question above to see how the system chooses the retrieval strategy for each part of your query."
     "</p>"
 )
 _EMPTY_GROUNDING_HTML = (
     "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
-    "Ask a question above to see how well the answer is backed by evidence "
-    "(versus the AI guessing)."
+    "Ask a question above to see what source support was found for the answer and which concepts were matched."
     "</p>"
 )
 _EMPTY_GRAPH_EVIDENCE_HTML = (
     "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
-    "Ask a question above to see which concepts and relationships from the knowledge graph "
+    "Ask a question above to see which concepts and relationships from the domain map "
     "were used to construct the answer."
     "</p>"
 )
 _EMPTY_GOVERNANCE_HTML = (
     "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
-    "Ask a question above to see which AI model was used, what safety guardrails were active, "
-    "and how much the query cost in tokens."
+    "Ask a question above to see the operational controls used for the answer, including guardrails and cost."
     "</p>"
 )
+
+
+def _mode_label(mode: str) -> str:
+    return _MODE_LABELS.get(mode, mode.replace("_", " ").title())
+
+
+def _routing_signal_badge(confidence: float, reason: str) -> str:
+    primary_reason = reason.split(";", 1)[0].strip()
+    if primary_reason == "static_config (adaptive routing disabled)":
+        return _badge("Configured default", "#64748B")
+    if primary_reason == "low_confidence_fallback":
+        return _badge("Broad fallback", "#F59E0B")
+    if confidence >= 0.75:
+        return _badge("High match", "#10B981")
+    if confidence >= 0.5:
+        return _badge("Targeted match", "#3B82F6")
+    return _badge("Heuristic match", "#64748B")
+
+
+def _routing_reason_text(mode: str, reason: str) -> str:
+    primary_reason = reason.split(";", 1)[0].strip()
+    reason_map = {
+        "rule_graph_intent": "The question asked about relationships between concepts, so graph retrieval was prioritized.",
+        "rule_sparse_intent": (
+            "The question looked like an exact API or keyword lookup, so exact match retrieval was prioritized."
+        ),
+        "rule_hybrid_intent": "The question benefits from comparing multiple source types, so retrieval methods were combined.",
+        "rule_dense_intent": "The question asked for an explanation or definition, so semantic retrieval was prioritized.",
+        "rule_default": "No strong route-specific cue was present, so the default retrieval strategy was used.",
+        "low_confidence_fallback": "Signals were mixed, so the system fell back to the broadest retrieval strategy.",
+        "static_config (adaptive routing disabled)": (
+            "Adaptive selection is off, so the configured default retrieval strategy was used."
+        ),
+        "empty_query_fallback": "No usable query text was available, so the broad fallback strategy was used.",
+    }
+    if primary_reason in reason_map:
+        return reason_map[primary_reason]
+    return f"This question best matched the {_mode_label(mode).lower()} pattern."
+
+
+def _support_status(verified: bool, citation_count: int) -> tuple[str, str, str]:
+    if verified and citation_count > 0:
+        return (
+            "Strong source support",
+            "#10B981",
+            "Retrieved sources aligned well enough with the answer to clear the current support check.",
+        )
+    if citation_count > 0:
+        return (
+            "Partial source support",
+            "#F59E0B",
+            "Relevant sources were found, but the support signal is mixed and should be read with judgment.",
+        )
+    return (
+        "Limited source support",
+        "#EF4444",
+        "Few or no supporting sources were retrieved for this answer.",
+    )
+
+
+def _format_cost_estimate(cost: float) -> str:
+    if cost <= 0.0:
+        return "Low"
+    if cost < 0.001:
+        return "<$0.001 / query"
+    return f"${cost:.4f} / query"
 
 
 def _render_graph_svg(graph: dict[str, list[dict[str, Any]]], width: int = 800, height: int = 400) -> str:
@@ -748,7 +883,17 @@ def _render_graph_svg(graph: dict[str, list[dict[str, Any]]], width: int = 800, 
             x1, y1 = node_positions[src]
             x2, y2 = node_positions[tgt]
             mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-            parts.append(f"<line x1='{x1:.1f}' y1='{y1:.1f}' x2='{x2:.1f}' y2='{y2:.1f}' stroke='#94A3B8' stroke-width='1.5'/>")
+            semantic = edge.get("semantic", {}) if isinstance(edge.get("semantic", {}), dict) else {}
+            tooltip = html.escape(
+                f"{etype} | {semantic.get('predicate', '')} | {semantic.get('domain', '')} -> {semantic.get('range', '')}"
+            )
+            parts.append(
+                (
+                    f"<g><title>{tooltip}</title>"
+                    f"<line x1='{x1:.1f}' y1='{y1:.1f}' x2='{x2:.1f}' y2='{y2:.1f}' "
+                    "stroke='#94A3B8' stroke-width='1.5'/></g>"
+                )
+            )
             if etype:
                 parts.append(
                     f"<text x='{mx:.1f}' y='{my:.1f}' text-anchor='middle' "
@@ -792,9 +937,8 @@ def _render_routing_html(insights: dict[str, Any]) -> str:
         "<table style='width:100%;border-collapse:collapse;font-size:13px'>"
         "<thead><tr style='background:#F1F5F9'>"
         "<th style='padding:6px 10px;text-align:left;border-bottom:1px solid #E2E8F0'>Sub-question</th>"
-        "<th style='padding:6px 10px;text-align:center;border-bottom:1px solid #E2E8F0'>Tool selected</th>"
-        "<th style='padding:6px 10px;text-align:center;border-bottom:1px solid #E2E8F0'>Confidence</th>"
-        "<th style='padding:6px 10px;text-align:left;border-bottom:1px solid #E2E8F0'>Reason</th>"
+        "<th style='padding:6px 10px;text-align:center;border-bottom:1px solid #E2E8F0'>Retrieval strategy</th>"
+        "<th style='padding:6px 10px;text-align:left;border-bottom:1px solid #E2E8F0'>Why it was selected</th>"
         "</tr></thead><tbody>"
     )
     body_rows: list[str] = []
@@ -802,20 +946,17 @@ def _render_routing_html(insights: dict[str, Any]) -> str:
         mode = str(row.get("mode", "hybrid_rerank"))
         colour = _MODE_COLOURS.get(mode, "#6B7280")
         conf = float(row.get("confidence", 0.0))
-        pct = min(100, int(conf * 100))
-        conf_bar = (
-            f"<div style='background:#E2E8F0;border-radius:4px;height:8px;width:100px;"
-            f"display:inline-block;vertical-align:middle'>"
-            f"<div style='background:{colour};border-radius:4px;height:8px;width:{pct}%'></div></div>"
-            f"&nbsp;<span style='font-size:11px;color:#64748B'>{conf:.2f}</span>"
+        strategy_cell = (
+            f"{_badge(_mode_label(mode), colour)}<br>"
+            f"<span style='display:inline-block;margin-top:4px'>{_routing_signal_badge(conf, str(row.get('reason', '')))}</span>"
         )
         bg = "#FFFFFF" if index % 2 == 0 else "#F8FAFC"
         body_rows.append(
             f"<tr style='background:{bg}'>"
             f"<td style='padding:6px 10px;color:#334155'>{html.escape(str(row.get('sub_question', '')))}</td>"
-            f"<td style='padding:6px 10px;text-align:center'>{_badge(mode, colour)}</td>"
-            f"<td style='padding:6px 10px'>{conf_bar}</td>"
-            f"<td style='padding:6px 10px;color:#64748B;font-style:italic'>{html.escape(str(row.get('reason', '')))}</td>"
+            f"<td style='padding:6px 10px;text-align:center'>{strategy_cell}</td>"
+            f"<td style='padding:6px 10px;color:#64748B'>"
+            f"{html.escape(_routing_reason_text(mode, str(row.get('reason', ''))))}</td>"
             f"</tr>"
         )
     return f"<div style='overflow-x:auto'>{header}{''.join(body_rows)}</tbody></table></div>"
@@ -829,33 +970,25 @@ def _render_grounding_html(insights: dict[str, Any]) -> str:
 
     verified = bool(g.get("verified", False))
     citation_count = int(g.get("citation_count", 0))
-    avg_score = float(g.get("avg_score", 0.0))
     entities = list(g.get("unique_entities", []))
 
-    verdict_colour = "#10B981" if verified else "#EF4444"
-    verdict_icon = "✔ Verified" if verified else "✘ Unverified"
-    verdict_note = "Token-overlap ≥ 25 % and citations present." if verified else "Token-overlap below threshold or no citations."
+    support_label, support_colour, support_note = _support_status(verified, citation_count)
 
     entity_chips = "".join(_badge(e, "#6366F1") + "&nbsp;" for e in entities[:12])
     overflow = (
         f"<span style='color:#6B7280;font-size:11px'>&hellip;&nbsp;{len(entities) - 12} more</span>" if len(entities) > 12 else ""
     )
-    pct = min(100, int(avg_score * 100))
-    score_bar = (
-        f"<div style='background:#E2E8F0;border-radius:4px;height:10px;width:180px;"
-        f"display:inline-block;vertical-align:middle'>"
-        f"<div style='background:#3B82F6;border-radius:4px;height:10px;width:{pct}%'></div></div>"
-        f"&nbsp;<span style='font-size:12px;color:#475569'>{avg_score:.4f}</span>"
-    )
     table_rows = [
         (
-            "Answer verification",
-            f"<span style='color:{verdict_colour};font-weight:700'>{verdict_icon}</span>"
-            f"&nbsp;&mdash;&nbsp;<span style='color:#6B7280;font-size:12px'>{html.escape(verdict_note)}</span>",
+            "Source support",
+            f"<span style='color:{support_colour};font-weight:700'>{html.escape(support_label)}</span>"
+            f"&nbsp;&mdash;&nbsp;<span style='color:#6B7280;font-size:12px'>{html.escape(support_note)}</span>",
         ),
-        ("Citations retrieved", f"<strong>{citation_count}</strong>"),
-        ("Avg retrieval score", score_bar),
-        ("Matched entities", (entity_chips + overflow) if entities else "<span style='color:#9CA3AF'>none</span>"),
+        ("Supporting sources", f"<strong>{citation_count}</strong>"),
+        (
+            "Matched concepts",
+            (entity_chips + overflow) if entities else "<span style='color:#9CA3AF'>No specific concepts matched yet</span>",
+        ),
     ]
     cells = "".join(
         f"<tr><td style='padding:7px 12px;color:#64748B;font-size:13px;white-space:nowrap'>{label}</td>"
@@ -875,6 +1008,7 @@ def _render_graph_evidence_html(insights: dict[str, Any]) -> str:
     neighbours = list(ge.get("unique_neighbours", []))
     subgraph_nodes = int(ge.get("subgraph_nodes", 0))
     subgraph_edges = int(ge.get("subgraph_edges", 0))
+    edge_semantics = list(ge.get("edge_semantics", []))
 
     entity_chips = "".join(_badge(e, "#10B981") + "&nbsp;" for e in entities[:15])
     neighbour_chips = "".join(_badge(n, "#8B5CF6") + "&nbsp;" for n in neighbours[:10])
@@ -886,21 +1020,33 @@ def _render_graph_evidence_html(insights: dict[str, Any]) -> str:
         if len(neighbours) > 10
         else ""
     )
+    semantic_rows: list[str] = []
+    for item in edge_semantics[:4]:
+        if not isinstance(item, dict):
+            continue
+        relation = html.escape(str(item.get("relation", "")))
+        predicate = html.escape(str(item.get("predicate", "")))
+        domain = html.escape(str(item.get("domain", "owl:Thing")))
+        range_name = html.escape(str(item.get("range", "owl:Thing")))
+        semantic_rows.append(
+            f"<div style='margin:2px 0'>{_badge(relation, '#475569')} "
+            f"<span style='color:#475569'>{predicate} · {domain} → {range_name}</span></div>"
+        )
+    semantic_block = "".join(semantic_rows) if semantic_rows else "<span style='color:#9CA3AF'>no semantic edge details</span>"
     table_rows = [
-        ("Subgraph nodes (visualised)", f"<strong>{subgraph_nodes}</strong>"),
-        ("Subgraph edges (visualised)", f"<strong>{subgraph_edges}</strong>"),
+        ("Relevant concepts shown", f"<strong>{subgraph_nodes}</strong>"),
+        ("Relationships shown", f"<strong>{subgraph_edges}</strong>"),
         (
-            "Matched domain entities",
-            (entity_chips + e_overflow)
-            if entities
-            else "<span style='color:#9CA3AF'>none yet &ndash; graph not populated</span>",
+            "Matched domain concepts",
+            (entity_chips + e_overflow) if entities else "<span style='color:#9CA3AF'>No domain concepts matched yet</span>",
         ),
         (
-            "1-hop graph neighbours",
+            "Connected concepts",
             (neighbour_chips + n_overflow)
             if neighbours
-            else "<span style='color:#9CA3AF'>none yet &ndash; graph not populated</span>",
+            else "<span style='color:#9CA3AF'>No connected concepts surfaced yet</span>",
         ),
+        ("Relationship types surfaced", semantic_block),
     ]
     cells = "".join(
         f"<tr><td style='padding:7px 12px;color:#64748B;font-size:13px;white-space:nowrap;vertical-align:top'>{label}</td>"
@@ -923,9 +1069,10 @@ def _render_governance_html(insights: dict[str, Any]) -> str:
     sub_questions = list(gov.get("sub_questions", []))
     cost = float(gov.get("estimated_cost_usd", 0.0))
 
-    mode_badge = _badge(base_mode, _MODE_COLOURS.get(base_mode, "#6B7280"))
-    adaptive_badge = _badge("ON \u2714" if adaptive else "OFF", "#10B981" if adaptive else "#EF4444")
-    guard_badge = _badge("ALLOWLISTED TEMPLATES \u2714", "#10B981")
+    adaptive_label = "Adaptive selection on" if adaptive else "Adaptive selection off"
+    adaptive_colour = "#10B981" if adaptive else "#64748B"
+    adaptive_badge = _badge(adaptive_label, adaptive_colour)
+    guard_badge = _badge("Guardrails active", "#10B981")
 
     sq_items = "".join(f"<li style='margin:2px 0;font-size:12px;color:#334155'>{html.escape(q)}</li>" for q in sub_questions)
     sq_block = (
@@ -934,12 +1081,12 @@ def _render_governance_html(insights: dict[str, Any]) -> str:
 
     table_rows = [
         ("LLM model", f"<code style='background:#F1F5F9;padding:1px 5px;border-radius:3px'>{model}</code>"),
-        ("Base retrieval mode", mode_badge),
-        ("Adaptive tool routing", adaptive_badge),
-        ("Vector backend", f"<code style='background:#F1F5F9;padding:1px 5px;border-radius:3px'>{backend}</code>"),
-        ("NL\u2192Cypher guardrails", guard_badge),
-        ("Estimated token cost", f"<span style='color:#475569'>${cost:.8f}</span>"),
-        ("Agent sub-questions", sq_block),
+        ("Default retrieval strategy", _badge(_mode_label(base_mode), _MODE_COLOURS.get(base_mode, "#6B7280"))),
+        ("Adaptive retrieval selection", adaptive_badge),
+        ("Structured query guardrails", guard_badge),
+        ("Vector store", f"<code style='background:#F1F5F9;padding:1px 5px;border-radius:3px'>{backend}</code>"),
+        ("Approx. cost", f"<span style='color:#475569'>{_format_cost_estimate(cost)}</span>"),
+        ("Reasoning breakdown", sq_block),
     ]
     cells = "".join(
         f"<tr><td style='padding:7px 12px;color:#64748B;font-size:13px;white-space:nowrap;vertical-align:top'>{label}</td>"
@@ -949,11 +1096,6 @@ def _render_governance_html(insights: dict[str, Any]) -> str:
     return f"<table style='border-collapse:collapse;width:100%'>{cells}</table>"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-
-_LOADING_HTML = "<p style='color:#6B7280;font-size:13px;padding:8px'>⏳ Searching knowledge graph…</p>"
-
-
 def _format_answer_markdown(answer: str, citations: list) -> str:
     """Bold entity names from citations when the answer is plain prose."""
     if not answer:
@@ -961,12 +1103,14 @@ def _format_answer_markdown(answer: str, citations: list) -> str:
     # If already markdown-formatted, trust it as-is
     if any(c in answer for c in ("**", "##", "\n- ", "\n* ", "\n1.")):
         return answer
+
     entities: set[str] = set()
-    for c in citations:
-        for e in c.get("matched_entities") or []:
-            e_str = str(e).strip()
-            if len(e_str) > 3:
-                entities.add(e_str)
+    for citation in citations:
+        for entity in citation.get("matched_entities") or []:
+            entity_text = str(entity).strip()
+            if len(entity_text) > 3:
+                entities.add(entity_text)
+
     formatted = answer
     for entity in sorted(entities, key=len, reverse=True):
         if entity in formatted:
@@ -980,23 +1124,25 @@ def _render_summary_card(insights: dict, citations: list, top_k: int = 10) -> st
     graph_ev = insights.get("graph_evidence", {})
     gov = insights.get("governance", {})
     n_found = len(citations)
-    avg_score = grounding.get("avg_score", 0.0)
     verified = grounding.get("verified", False)
     subgraph_nodes = graph_ev.get("subgraph_nodes", 0)
+    matched_concepts = len(grounding.get("unique_entities", []))
     cost = gov.get("estimated_cost_usd", 0.0)
-    v_icon = "\u2714 Verified" if verified else "\u2718 Not verified"
-    v_colour = "#10B981" if verified else "#EF4444"
+    support_label, support_colour, _ = _support_status(bool(verified), n_found)
     return (
         "<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;"
         "padding:8px 16px;font-size:12px;color:#475569;display:flex;gap:20px;"
         "flex-wrap:wrap;margin-top:4px'>"
         f"<span>\U0001f4da <strong>{n_found}</strong> / {top_k} sources</span>"
         f"<span>\U0001f578 <strong>{subgraph_nodes}</strong> graph nodes</span>"
-        f"<span>\U0001f4ca avg score <strong>{avg_score:.3f}</strong></span>"
-        f"<span style='color:{v_colour}'><strong>{v_icon}</strong></span>"
-        f"<span>\U0001f4b0 est. cost <strong>${cost:.6f}</strong></span>"
+        f"<span>\U0001f9e0 <strong>{matched_concepts}</strong> matched concepts</span>"
+        f"<span style='color:{support_colour}'><strong>{html.escape(support_label)}</strong></span>"
+        f"<span>\U0001f4b0 approx. cost <strong>{_format_cost_estimate(cost)}</strong></span>"
         "</div>"
     )
+
+
+_LOADING_HTML = "<p style='color:#6B7280;font-size:13px;padding:8px'>⏳ Searching knowledge graph…</p>"
 
 
 def create_gradio_app(
@@ -1024,7 +1170,6 @@ def create_gradio_app(
             loading_history,
             _LOADING_HTML,
             _LOADING_HTML,
-            [],
             _LOADING_HTML,
             _render_graph_plot({"nodes": [], "edges": []}),
             _LOADING_HTML,
@@ -1048,7 +1193,6 @@ def create_gradio_app(
             final_history,
             _render_routing_html(insights),
             _render_grounding_html(insights),
-            citations,
             _render_graph_evidence_html(insights),
             _render_graph_plot(graph),
             _render_governance_html(insights),
@@ -1056,7 +1200,7 @@ def create_gradio_app(
         )
 
     with gr.Blocks(
-        title="Portfolio AI Assistant — Knowledge Graph + RAG",
+        title="Portfolio AI Assistant — Source-Backed Riskfolio-Lib Research",
         theme=gr.themes.Soft(),
         css=(
             "@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');"
@@ -1103,24 +1247,28 @@ def create_gradio_app(
         gr.HTML(
             "<div id='app-header' style='padding:14px 0 10px;border-bottom:1px solid #E2E8F0;margin-bottom:12px'>"
             "<h1 style='margin:0;font-size:24px;font-weight:700;color:#1E293B'>"
-            "Riskfolio-Lib &mdash; GraphRAG + Agentic AI Demo</h1>"
+            "Riskfolio-Lib &mdash; Source-Backed Portfolio Research Assistant</h1>"
             "<p style='margin:8px 0 6px;font-size:14px;color:#334155;line-height:1.7'>"
-            "A production-style knowledge graph RAG system built over the"
+            "Ask portfolio optimization questions and get answers grounded in the"
             " <a href='https://riskfolio-lib.readthedocs.io/' target='_blank'"
             " style='color:#3B82F6;text-decoration:none'>Riskfolio-Lib</a>"
-            " portfolio optimization library."
-            " Entities (functions, classes, parameters, concepts) are extracted from"
-            " source code and documentation and stored in Neo4j."
-            " Each query runs a LangGraph agentic workflow"
-            " &mdash; plan, retrieve, reason, verify &mdash; combining"
-            " vector similarity search with"
-            " graph-neighbourhood traversal for hybrid retrieval."
+            " library documentation and codebase."
+            " The system combines semantic search, exact lookup, and graph retrieval"
+            " to surface relevant methods, constraints, and implementation details,"
+            " with evidence and operational controls shown below each answer."
             "<br/><span style='font-size:12px;color:#475569'>"
             "Source code: "
             "<a href='https://github.com/ethantenison/riskfolio-graphrag-agent' target='_blank'"
             " style='color:#3B82F6;text-decoration:none'>"
             "github.com/ethantenison/riskfolio-graphrag-agent</a></span>"
             "</p>"
+            "</div>"
+        )
+
+        gr.HTML(
+            "<div style='margin:2px 0 10px;color:#64748B;font-size:12px;"
+            "letter-spacing:0.08em;text-transform:uppercase;font-weight:700'>"
+            "Try the demo with questions that reveal system judgment"
             "</div>"
         )
 
@@ -1138,12 +1286,12 @@ def create_gradio_app(
         )
         gr.Examples(
             examples=[
-                ["What is portfolio optimization and why does it matter?"],
-                ["How do I reduce risk in an investment portfolio?"],
-                ["What constraints can I add to an optimization problem?"],
+                ["Which Riskfolio-Lib constraints are most useful when building a long-only portfolio?"],
+                ["How does Risk Parity differ from Mean-Variance optimization in Riskfolio-Lib?"],
+                ["If I want lower drawdown risk, which Riskfolio-Lib methods and risk measures should I compare?"],
             ],
             inputs=[question_box],
-            label="📋 Example questions — click any to load it below, then press Ask",
+            label="Example questions — click any to load it below, then press Ask",
         )
 
         # ── Input bar ─────────────────────────────────────────────────────────────
@@ -1177,16 +1325,17 @@ def create_gradio_app(
 
         # ── Under the Hood ───────────────────────────────────────────────────────────
         gr.Markdown(
-            "### 🔍 Under the Hood: How the AI Works\n\n"
-            "Each query goes through a multi-step agentic workflow. "
-            "The tabs below show what happened when answering your question."
+            "### How This Answer Was Built\n\n"
+            "These panels show how the system chose its retrieval path, what evidence it found,"
+            " and which controls were active for the current answer."
         )
         with gr.Tabs(elem_id="insight-tabs") as inner_tabs:
-            with gr.Tab("Knowledge Graph"):
+            with gr.Tab("Domain Map"):
                 gr.HTML(
                     "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
-                    "Concepts and relationships retrieved from the Riskfolio-Lib"
-                    " knowledge base for your query."
+                    "Relevant methods, constraints, risk concepts, and connected components"
+                    " used for this answer.\n"
+                    "(Hover over graph edges and nodes for more details.)"
                     "</p>"
                 )
                 graph_panel = gr.Plot(
@@ -1196,35 +1345,33 @@ def create_gradio_app(
                 )
                 graph_evidence_panel = gr.HTML(value=_EMPTY_GRAPH_EVIDENCE_HTML)
 
-            with gr.Tab("Query Routing"):
+            with gr.Tab("Retrieval Strategy"):
                 gr.HTML(
                     "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
-                    "The agent breaks your question into sub-questions and"
-                    " routes each to the best tool."
-                    " <em>Dense</em> = vector search"
-                    " &nbsp;|&nbsp; <em>Graph</em> = KG traversal"
-                    " &nbsp;|&nbsp; <em>Hybrid</em> = both + reranking."
+                    "The system breaks your question into smaller parts and chooses the retrieval"
+                    " strategy most likely to surface useful evidence."
+                    " <em>Semantic</em> = concept similarity"
+                    " &nbsp;|&nbsp; <em>Exact match</em> = keyword or API lookup"
+                    " &nbsp;|&nbsp; <em>Relationship</em> = graph traversal"
+                    " &nbsp;|&nbsp; <em>Blended</em> = combined retrieval across sources."
                     "</p>"
                 )
                 routing_panel = gr.HTML(value=_EMPTY_ROUTING_HTML)
 
-            with gr.Tab("Answer Grounding"):
+            with gr.Tab("Evidence Support"):
                 gr.HTML(
                     "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
-                    "Grounding checks that the answer is supported by retrieved"
-                    " documents — not made up."
-                    " Higher scores = stronger evidence."
+                    "This panel shows how much source support was found for the answer"
+                    " and which domain concepts were matched in the retrieved evidence."
                     "</p>"
                 )
                 grounding_panel = gr.HTML(value=_EMPTY_GROUNDING_HTML)
-                citations_json = gr.JSON(label="Raw citation records", value=[])
 
-            with gr.Tab("Governance"):
+            with gr.Tab("Operational Controls"):
                 gr.HTML(
                     "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
-                    "LLM used, safety guardrails"
-                    " (NL→Cypher injection prevention),"
-                    " adaptive routing, and estimated cost per query."
+                    "Operational controls for this answer: model choice, structured query guardrails,"
+                    " adaptive retrieval selection, and approximate per-query cost."
                     "</p>"
                 )
                 governance_panel = gr.HTML(value=_EMPTY_GOVERNANCE_HTML)
@@ -1234,7 +1381,6 @@ def create_gradio_app(
             chatbot,
             routing_panel,
             grounding_panel,
-            citations_json,
             graph_evidence_panel,
             graph_panel,
             governance_panel,

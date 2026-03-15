@@ -5,10 +5,10 @@ architecture map. It consumes evaluation samples plus an optional retrieval
 entry point and produces deterministic scorecards that quantify retrieval
 coverage, answer quality, multi-hop support, latency, cost, and ER metrics.
 
-Inputs are ``EvalSample`` definitions, a retriever compatible with the
-retrieval layer, and optional runtime metadata. Outputs are ``EvalReport``
-instances and JSON artifacts suitable for CI, benchmarking, and trend
-tracking.
+Inputs are ``EvalSample`` definitions, retrievers compatible with the
+retrieval layer, and optional runtime metadata. Outputs are ``EvalReport`` and
+``ContrastiveEvalReport`` instances plus JSON artifacts suitable for CI,
+benchmarking, and trend tracking.
 
 Key implementation decisions:
 - default metrics are heuristic but structured to resemble RAG-style evaluation
@@ -25,6 +25,16 @@ Example:
         evaluator = Evaluator(build_default_eval_samples(), retriever=my_retriever)
         report = evaluator.run()
         evaluator.save("artifacts/eval/report.json")
+
+        contrastive = evaluator.run_contrastive(
+            baseline_retriever=baseline_retriever,
+            candidate_retriever=candidate_retriever,
+        )
+        evaluator.save_contrastive(
+            "artifacts/eval/contrastive.json",
+            baseline_retriever=baseline_retriever,
+            candidate_retriever=candidate_retriever,
+        )
 """
 
 from __future__ import annotations
@@ -83,8 +93,8 @@ class EvalReport:
         context_precision: Mean relevance estimate of retrieved contexts.
         answer_faithfulness: Mean support score for generated answers.
         answer_relevance: Mean overlap between questions and generated answers.
-        grounding: Mean grounding score against retrieved evidence.
-        multi_hop_accuracy: Mean proxy score for graph-supported multi-hop evidence.
+        grounding: Mean grounding score against top-ranked retrieved evidence.
+        multi_hop_accuracy: Mean heuristic score for graph-supported multi-hop evidence coherence.
         er_precision: Entity-resolution precision carried in from ER evaluation.
         er_recall: Entity-resolution recall carried in from ER evaluation.
         er_f1: Entity-resolution F1 carried in from ER evaluation.
@@ -96,7 +106,8 @@ class EvalReport:
         retrieval_mode: Retrieval mode metadata for the run.
         embedding_provider: Embedding backend metadata for the run.
         metric_profile: Metric profile identifier used for scoring.
-        per_sample: Per-sample metric dictionaries for artifact inspection.
+        per_sample: Per-sample metric dictionaries for artifact inspection,
+            including optional diagnostic fields.
     """
 
     num_samples: int = 0
@@ -118,6 +129,36 @@ class EvalReport:
     embedding_provider: str = "hash"
     metric_profile: str = "ragas-style"
     per_sample: list[dict[str, str | float | int | list[str]]] = field(default_factory=list)
+
+
+@dataclass
+class ContrastiveEvalReport:
+    """Represent a baseline-vs-candidate evaluation artifact.
+
+    Attributes:
+        baseline_label: Human-readable label for the baseline retriever.
+        candidate_label: Human-readable label for the candidate retriever.
+        baseline_report: Aggregate report produced for the baseline retriever.
+        candidate_report: Aggregate report produced for the candidate retriever.
+        metric_deltas: Candidate-minus-baseline deltas for aggregate metrics.
+        improved_metrics: Metrics whose deltas indicate improvement.
+        regressed_metrics: Metrics whose deltas indicate regression.
+        unchanged_metrics: Metrics whose deltas are effectively unchanged.
+        winner: Summary label indicating whether the candidate improved on more
+            metrics than it regressed.
+        per_sample_deltas: Per-sample comparison rows keyed by question.
+    """
+
+    baseline_label: str
+    candidate_label: str
+    baseline_report: EvalReport
+    candidate_report: EvalReport
+    metric_deltas: dict[str, float] = field(default_factory=dict)
+    improved_metrics: list[str] = field(default_factory=list)
+    regressed_metrics: list[str] = field(default_factory=list)
+    unchanged_metrics: list[str] = field(default_factory=list)
+    winner: str = "tie"
+    per_sample_deltas: list[dict[str, str | float | int | list[str]]] = field(default_factory=list)
 
 
 class Evaluator:
@@ -200,10 +241,18 @@ class Evaluator:
                 )
                 relevance = _ragas_style_answer_relevance(sample.question, sample.generated_answer)
 
-            grounding = _answer_faithfulness(sample.generated_answer, sample.retrieved_contexts)
-            multi_hop = _multi_hop_accuracy(results)
+            grounding = _grounding_score(sample.generated_answer, sample.retrieved_contexts)
+            multi_hop = _multi_hop_accuracy(sample.question, results)
             link_prediction = _link_prediction_proxy(expected_terms, sample.retrieved_contexts)
             estimated_cost = _estimated_cost_usd(sample.question, sample.generated_answer, sample.retrieved_contexts)
+            failure_reasons = _failure_reasons(
+                context_recall=recall,
+                context_precision=precision,
+                answer_faithfulness=faithfulness,
+                answer_relevance=relevance,
+                grounding=grounding,
+                multi_hop_accuracy=multi_hop,
+            )
 
             recall_scores.append(recall)
             precision_scores.append(precision)
@@ -233,6 +282,7 @@ class Evaluator:
                     "latency_ms": round(latency_ms, 2),
                     "estimated_cost_usd": round(estimated_cost, 6),
                     "retrieved_contexts": len(sample.retrieved_contexts),
+                    "failure_reasons": list(failure_reasons),
                 }
             )
 
@@ -269,6 +319,76 @@ class Evaluator:
         path.write_text(json.dumps(asdict(report), indent=2))
         logger.info("Evaluation results written to %s", path)
 
+    def run_contrastive(
+        self,
+        *,
+        baseline_retriever: HybridRetriever | None,
+        candidate_retriever: HybridRetriever | None,
+        baseline_label: str = "baseline",
+        candidate_label: str = "candidate",
+    ) -> ContrastiveEvalReport:
+        """Run the same evaluation set against baseline and candidate retrievers.
+
+        Args:
+            baseline_retriever: Retriever representing the current baseline.
+            candidate_retriever: Retriever representing the candidate change.
+            baseline_label: Human-readable label for the baseline artifact.
+            candidate_label: Human-readable label for the candidate artifact.
+
+        Returns:
+            A ``ContrastiveEvalReport`` containing both reports and their deltas.
+        """
+        baseline_report = self._run_with_retriever(baseline_retriever)
+        candidate_report = self._run_with_retriever(candidate_retriever)
+        metric_deltas = _contrastive_metric_deltas(baseline_report, candidate_report)
+        improved_metrics, regressed_metrics, unchanged_metrics = _contrastive_metric_buckets(metric_deltas)
+        winner = _contrastive_winner(improved_metrics, regressed_metrics)
+        per_sample_deltas = _contrastive_per_sample_deltas(
+            baseline_report.per_sample,
+            candidate_report.per_sample,
+        )
+
+        return ContrastiveEvalReport(
+            baseline_label=baseline_label,
+            candidate_label=candidate_label,
+            baseline_report=baseline_report,
+            candidate_report=candidate_report,
+            metric_deltas=metric_deltas,
+            improved_metrics=improved_metrics,
+            regressed_metrics=regressed_metrics,
+            unchanged_metrics=unchanged_metrics,
+            winner=winner,
+            per_sample_deltas=per_sample_deltas,
+        )
+
+    def save_contrastive(
+        self,
+        output_path: str | Path,
+        *,
+        baseline_retriever: HybridRetriever | None,
+        candidate_retriever: HybridRetriever | None,
+        baseline_label: str = "baseline",
+        candidate_label: str = "candidate",
+    ) -> None:
+        """Run contrastive evaluation and write the artifact as JSON.
+
+        Args:
+            output_path: Destination path for the serialized contrastive report.
+            baseline_retriever: Retriever representing the current baseline.
+            candidate_retriever: Retriever representing the candidate change.
+            baseline_label: Human-readable label for the baseline artifact.
+            candidate_label: Human-readable label for the candidate artifact.
+        """
+        report = self.run_contrastive(
+            baseline_retriever=baseline_retriever,
+            candidate_retriever=candidate_retriever,
+            baseline_label=baseline_label,
+            candidate_label=candidate_label,
+        )
+        path = Path(output_path)
+        path.write_text(json.dumps(asdict(report), indent=2))
+        logger.info("Contrastive evaluation results written to %s", path)
+
     def _retrieve(self, question: str) -> list[RetrievalResult]:
         if self._retriever is None:
             return []
@@ -277,6 +397,14 @@ class Evaluator:
         except Exception as exc:
             logger.warning("Retriever failed for %r: %s", question, exc)
             return []
+
+    def _run_with_retriever(self, retriever: HybridRetriever | None) -> EvalReport:
+        original_retriever = self._retriever
+        try:
+            self._retriever = retriever
+            return self.run()
+        finally:
+            self._retriever = original_retriever
 
 
 DEFAULT_EVAL_SAMPLES: list[EvalSample] = [
@@ -392,6 +520,47 @@ def _answer_relevance(question: str, answer: str) -> float:
     if not q_tokens or not a_tokens:
         return 0.0
     return len(q_tokens & a_tokens) / len(q_tokens)
+
+
+def _grounding_score(answer: str, contexts: list[str], top_k: int = 3) -> float:
+    """Estimate how well the answer is grounded in top-ranked retrieved evidence.
+
+    Grounding is intentionally distinct from faithfulness. Faithfulness checks
+    whether answer tokens appear anywhere in the retrieved evidence set, while
+    grounding emphasizes whether support appears in the highest-ranked contexts
+    and whether that support is concentrated rather than scattered deep in the
+    tail of the retrieval list.
+
+    Args:
+        answer: Answer text to evaluate.
+        contexts: Retrieved context strings ordered by rank.
+        top_k: Number of highest-ranked contexts that count as primary support.
+
+    Returns:
+        A score in the range ``[0.0, 1.0]``.
+    """
+    claims = _extract_claim_units(answer)
+    if not claims:
+        claims = [answer.strip()] if answer.strip() else []
+    if not claims or not contexts:
+        return 0.0
+
+    all_context_tokens = set().union(*(set(_tokens(context)) for context in contexts if context.strip()))
+    top_context_tokens = set().union(*(set(_tokens(context)) for context in contexts[: max(1, top_k)] if context.strip()))
+    if not all_context_tokens or not top_context_tokens:
+        return 0.0
+
+    claim_scores: list[float] = []
+    for claim in claims:
+        claim_tokens = set(_tokens(claim))
+        if not claim_tokens:
+            continue
+        all_overlap = len(claim_tokens & all_context_tokens) / len(claim_tokens)
+        top_overlap = len(claim_tokens & top_context_tokens) / len(claim_tokens)
+        concentration = (top_overlap / all_overlap) if all_overlap > 0 else 0.0
+        claim_scores.append((0.75 * top_overlap) + (0.25 * concentration))
+
+    return _mean(claim_scores)
 
 
 def _synthesize_answer(question: str, results: list[RetrievalResult]) -> str:
@@ -536,11 +705,208 @@ def _jaccard(left: set[str], right: set[str]) -> float:
     return len(left & right) / len(union)
 
 
-def _multi_hop_accuracy(results: list[RetrievalResult]) -> float:
+def _multi_hop_accuracy(question: str, results: list[RetrievalResult]) -> float:
+    """Estimate whether retrieved evidence forms a coherent graph-supported chain.
+
+    This is still a deterministic heuristic, but it is stricter than the prior
+    count-based proxy. A result scores well when it:
+
+    - aligns its entities or graph neighbours with the query,
+    - includes both direct entities and additional graph context, and
+    - shares a bridge concept with other retrieved results.
+
+    Args:
+        question: User question being evaluated.
+        results: Retrieved evidence results ordered by rank.
+
+    Returns:
+        A score in the range ``[0.0, 1.0]``.
+    """
     if not results:
         return 0.0
-    supporting = sum(1 for result in results if len(result.graph_neighbours) >= 2 or len(result.related_entities) >= 2)
-    return supporting / len(results)
+
+    query_tokens = set(_tokens(question))
+    result_support_sets = [_result_support_tokens(result) for result in results]
+    scores: list[float] = []
+
+    for index, result in enumerate(results):
+        support_tokens = result_support_sets[index]
+        if not support_tokens:
+            scores.append(0.0)
+            continue
+
+        entity_support_tokens = set().union(*(set(_tokens(item)) for item in result.related_entities if item.strip()))
+        graph_only_neighbours = [item for item in result.graph_neighbours if item not in set(result.related_entities)]
+        graph_support_tokens = set().union(*(set(_tokens(item)) for item in graph_only_neighbours if item.strip()))
+
+        query_alignment = _token_coverage(query_tokens, support_tokens)
+        bridge_strength = max(
+            (
+                _jaccard(entity_support_tokens, other_support_tokens)
+                for other_index, other_support_tokens in enumerate(result_support_sets)
+                if other_index != index and entity_support_tokens and other_support_tokens
+            ),
+            default=0.0,
+        )
+        structural_support = 1.0 if entity_support_tokens and graph_support_tokens else 0.5 if entity_support_tokens else 0.0
+
+        scores.append(round((0.45 * query_alignment) + (0.35 * bridge_strength) + (0.20 * structural_support), 4))
+
+    return _mean(scores)
+
+
+def _result_support_tokens(result: RetrievalResult) -> set[str]:
+    support_tokens = set(_tokens(result.content))
+    for item in result.related_entities:
+        support_tokens.update(_tokens(item))
+    for item in result.graph_neighbours:
+        support_tokens.update(_tokens(item))
+    return support_tokens
+
+
+def _token_coverage(expected: set[str], observed: set[str]) -> float:
+    if not expected or not observed:
+        return 0.0
+    return len(expected & observed) / len(expected)
+
+
+def _failure_reasons(
+    *,
+    context_recall: float,
+    context_precision: float,
+    answer_faithfulness: float,
+    answer_relevance: float,
+    grounding: float,
+    multi_hop_accuracy: float,
+) -> list[str]:
+    """Return diagnostic labels for weak sample-level evaluation signals."""
+    reasons: list[str] = []
+    if context_recall < 0.45:
+        reasons.append("low_context_recall")
+    if context_precision < 0.4:
+        reasons.append("low_context_precision")
+    if answer_faithfulness < 0.35:
+        reasons.append("low_answer_faithfulness")
+    if answer_relevance < 0.7:
+        reasons.append("low_answer_relevance")
+    if grounding < 0.35:
+        reasons.append("low_grounding")
+    if multi_hop_accuracy < 0.25:
+        reasons.append("low_multi_hop_accuracy")
+    return reasons
+
+
+def _contrastive_metric_deltas(baseline_report: EvalReport, candidate_report: EvalReport) -> dict[str, float]:
+    """Return candidate-minus-baseline deltas for aggregate evaluation metrics."""
+    metrics = (
+        "context_recall",
+        "context_precision",
+        "answer_faithfulness",
+        "answer_relevance",
+        "grounding",
+        "multi_hop_accuracy",
+        "link_prediction_mrr",
+        "link_prediction_hits_at_3",
+        "link_prediction_hits_at_10",
+        "avg_latency_ms",
+        "estimated_cost_usd",
+    )
+    return {
+        metric: round(float(getattr(candidate_report, metric)) - float(getattr(baseline_report, metric)), 6) for metric in metrics
+    }
+
+
+def _contrastive_metric_buckets(metric_deltas: dict[str, float]) -> tuple[list[str], list[str], list[str]]:
+    """Partition contrastive metric deltas into improved, regressed, and unchanged sets."""
+    lower_is_better = {"avg_latency_ms", "estimated_cost_usd"}
+    improved: list[str] = []
+    regressed: list[str] = []
+    unchanged: list[str] = []
+
+    for metric, delta in metric_deltas.items():
+        if abs(delta) < 0.0001:
+            unchanged.append(metric)
+            continue
+
+        if metric in lower_is_better:
+            if delta < 0:
+                improved.append(metric)
+            else:
+                regressed.append(metric)
+            continue
+
+        if delta > 0:
+            improved.append(metric)
+        else:
+            regressed.append(metric)
+
+    return improved, regressed, unchanged
+
+
+def _contrastive_winner(improved_metrics: list[str], regressed_metrics: list[str]) -> str:
+    """Return the winner label for a contrastive evaluation artifact."""
+    if len(improved_metrics) > len(regressed_metrics):
+        return "candidate"
+    if len(regressed_metrics) > len(improved_metrics):
+        return "baseline"
+    return "tie"
+
+
+def _contrastive_per_sample_deltas(
+    baseline_rows: list[dict[str, str | float | int | list[str]]],
+    candidate_rows: list[dict[str, str | float | int | list[str]]],
+) -> list[dict[str, str | float | int | list[str]]]:
+    """Return per-sample comparison rows aligned by question."""
+    candidate_by_question = {str(row.get("question", "")): row for row in candidate_rows}
+    rows: list[dict[str, str | float | int | list[str]]] = []
+    for baseline_row in baseline_rows:
+        question = str(baseline_row.get("question", ""))
+        candidate_row = candidate_by_question.get(question, {})
+        baseline_context_recall = _row_float(baseline_row, "context_recall")
+        candidate_context_recall = _row_float(candidate_row, "context_recall")
+        baseline_answer_faithfulness = _row_float(baseline_row, "answer_faithfulness")
+        candidate_answer_faithfulness = _row_float(candidate_row, "answer_faithfulness")
+        rows.append(
+            {
+                "question": question,
+                "baseline_context_recall": baseline_context_recall,
+                "candidate_context_recall": candidate_context_recall,
+                "delta_context_recall": round(
+                    candidate_context_recall - baseline_context_recall,
+                    4,
+                ),
+                "baseline_answer_faithfulness": baseline_answer_faithfulness,
+                "candidate_answer_faithfulness": candidate_answer_faithfulness,
+                "delta_answer_faithfulness": round(
+                    candidate_answer_faithfulness - baseline_answer_faithfulness,
+                    4,
+                ),
+                "baseline_failure_reasons": _row_string_list(baseline_row, "failure_reasons"),
+                "candidate_failure_reasons": _row_string_list(candidate_row, "failure_reasons"),
+            }
+        )
+    return rows
+
+
+def _row_float(row: dict[str, str | float | int | list[str]], key: str) -> float:
+    value = row.get(key, 0.0)
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _row_string_list(row: dict[str, str | float | int | list[str]], key: str) -> list[str]:
+    value = row.get(key, [])
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    return []
 
 
 def _link_prediction_proxy(expected_terms: list[str], contexts: list[str]) -> dict[str, float]:

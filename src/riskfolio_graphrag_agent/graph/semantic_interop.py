@@ -50,6 +50,31 @@ STATO = Namespace("http://purl.obolibrary.org/obo/STATO_")
 QUDT = Namespace("http://qudt.org/schema/qudt/")
 PROV = Namespace("http://www.w3.org/ns/prov#")
 
+RELATION_PROPERTY_AXIOMS: tuple[tuple[str, URIRef | None, URIRef | None], ...] = (
+    ("MENTIONS", OWL.Thing, OWL.Thing),
+    ("IS_SUBTYPE_OF", OWL.Thing, OWL.Thing),
+    ("ALTERNATIVE_TO", OWL.Thing, OWL.Thing),
+    ("REQUIRES", OWL.Thing, OWL.Thing),
+    ("PARAMETERIZED_BY", OWL.Thing, OWL.Thing),
+    ("SUPPORTS_RISK_MEASURE", RF["PortfolioMethod"], RF["RiskMeasure"]),
+    ("USES_ESTIMATOR", RF["PortfolioMethod"], RF["Estimator"]),
+    ("HAS_PARAMETER", OWL.Thing, RF["Parameter"]),
+    ("BENCHMARKED_ON", RF["BacktestScenario"], RF["BenchmarkIndex"]),
+    ("CALIBRATED_ON", RF["Estimator"], RF["AssetClass"]),
+    ("PRECEDES", OWL.Thing, OWL.Thing),
+    ("HAS_CONSTRAINT", RF["PortfolioMethod"], RF["ConstraintType"]),
+    ("VALIDATED_AGAINST", OWL.Thing, OWL.Thing),
+    ("RELATED_TO", OWL.Thing, OWL.Thing),
+    ("DESCRIBES", OWL.Thing, OWL.Thing),
+    ("DEMONSTRATES", OWL.Thing, OWL.Thing),
+    ("VALIDATES", OWL.Thing, OWL.Thing),
+    ("IMPLEMENTS", OWL.Thing, OWL.Thing),
+)
+
+_RELATION_AXIOM_LOOKUP: dict[str, tuple[URIRef | None, URIRef | None]] = {
+    relation: (domain_cls, range_cls) for relation, domain_cls, range_cls in RELATION_PROPERTY_AXIOMS
+}
+
 
 def export_rdf_owl_from_records(
     *,
@@ -169,30 +194,10 @@ def build_rdf_graph(*, nodes: list[dict[str, Any]], edges: list[dict[str, Any]])
         graph.add((RF[label], RDFS.label, Literal(label)))
 
     # --- OWL object-property declarations with domain / range axioms ---
-    _property_axioms: list[tuple[str, URIRef | None, URIRef | None]] = [
-        ("MENTIONS", OWL.Thing, OWL.Thing),
-        ("IS_SUBTYPE_OF", OWL.Thing, OWL.Thing),
-        ("ALTERNATIVE_TO", OWL.Thing, OWL.Thing),
-        ("REQUIRES", OWL.Thing, OWL.Thing),
-        ("PARAMETERIZED_BY", OWL.Thing, OWL.Thing),
-        ("SUPPORTS_RISK_MEASURE", RF["PortfolioMethod"], RF["RiskMeasure"]),
-        ("USES_ESTIMATOR", RF["PortfolioMethod"], RF["Estimator"]),
-        ("HAS_PARAMETER", OWL.Thing, RF["Parameter"]),
-        ("BENCHMARKED_ON", RF["BacktestScenario"], RF["BenchmarkIndex"]),
-        ("CALIBRATED_ON", RF["Estimator"], RF["AssetClass"]),
-        ("PRECEDES", OWL.Thing, OWL.Thing),
-        ("HAS_CONSTRAINT", RF["PortfolioMethod"], RF["ConstraintType"]),
-        ("VALIDATED_AGAINST", OWL.Thing, OWL.Thing),
-        ("RELATED_TO", OWL.Thing, OWL.Thing),
-        ("DESCRIBES", OWL.Thing, OWL.Thing),
-        ("DEMONSTRATES", OWL.Thing, OWL.Thing),
-        ("VALIDATES", OWL.Thing, OWL.Thing),
-        ("IMPLEMENTS", OWL.Thing, OWL.Thing),
-    ]
     for relation in RELATIONSHIP_TYPES:
         graph.add((RF[relation], RDF.type, OWL.ObjectProperty))
         graph.add((RF[relation], RDFS.label, Literal(relation)))
-    for prop_name, domain_cls, range_cls in _property_axioms:
+    for prop_name, domain_cls, range_cls in RELATION_PROPERTY_AXIOMS:
         if domain_cls is not None:
             graph.add((RF[prop_name], RDFS.domain, domain_cls))
         if range_cls is not None:
@@ -337,6 +342,28 @@ def run_basic_sparql_queries(rdf_path: str | Path) -> dict[str, list[dict[str, s
     }
 
 
+def describe_relationship_semantics(relation: str) -> dict[str, str]:
+    """Return compact RDF/OWL metadata for a relationship type.
+
+    Args:
+        relation: Graph relationship type, such as ``SUPPORTS_RISK_MEASURE``.
+
+    Returns:
+        A semantic description containing a compact RDF predicate name, the
+        OWL property type, and any known domain/range constraints.
+    """
+    normalized = relation.strip()
+    domain_cls, range_cls = _RELATION_AXIOM_LOOKUP.get(normalized, (OWL.Thing, OWL.Thing))
+    return {
+        "relation": normalized,
+        "predicate": f"rf:{normalized}",
+        "predicate_uri": str(RF[normalized]),
+        "owl_type": "owl:ObjectProperty",
+        "domain": _compact_uri(domain_cls),
+        "range": _compact_uri(range_cls),
+    }
+
+
 def shacl_like_validate(
     *,
     nodes: list[dict[str, Any]],
@@ -407,3 +434,16 @@ def _slug(name: str) -> str:
 def _node_uri(name: str):
     cleaned = "_".join(name.strip().split())
     return RF[f"node/{cleaned}"]
+
+
+def _compact_uri(value: URIRef | None) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    if text.startswith(str(RF)):
+        return f"rf:{text.removeprefix(str(RF))}"
+    if text.startswith(str(OWL)):
+        return f"owl:{text.removeprefix(str(OWL))}"
+    if text.startswith(str(RDFS)):
+        return f"rdfs:{text.removeprefix(str(RDFS))}"
+    return text

@@ -81,6 +81,7 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
     assert len(citations) == 1
     assert len(graph["nodes"]) == 2
     assert len(graph["edges"]) == 1
+    assert graph["edges"][0]["semantic"]["predicate"] == "rf:SUPPORTS_RISK_MEASURE"
     assert isinstance(insights, dict)
     assert {"routing", "grounding", "graph_evidence", "governance"} <= insights.keys()
     # grounding: verified=True, citation_count=1, avg_score=0.91, entity HRP present
@@ -90,6 +91,7 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
     # graph_evidence: subgraph populated by _FakeGraphBuilder
     assert insights["graph_evidence"]["subgraph_nodes"] == 2
     assert insights["graph_evidence"]["subgraph_edges"] == 1
+    assert insights["graph_evidence"]["edge_semantics"][0]["predicate"] == "rf:SUPPORTS_RISK_MEASURE"
     # governance keys present
     assert "model" in insights["governance"]
     assert "adaptive_routing_enabled" in insights["governance"]
@@ -98,9 +100,10 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
 def test_render_routing_html_with_data():
     insights = {"routing": [{"sub_question": "What is HRP?", "mode": "graph", "confidence": 0.92, "reason": "rule_graph_intent"}]}
     html_out = _render_routing_html(insights)
-    assert "graph" in html_out
+    assert "Relationship lookup" in html_out
     assert "What is HRP?" in html_out
-    assert "0.92" in html_out
+    assert "High match" in html_out
+    assert "relationships between concepts" in html_out
 
 
 def test_render_grounding_html_verified():
@@ -113,7 +116,8 @@ def test_render_grounding_html_verified():
         }
     }
     html_out = _render_grounding_html(insights)
-    assert "Verified" in html_out
+    assert "Strong source support" in html_out
+    assert "Supporting sources" in html_out
     assert "HRP" in html_out
 
 
@@ -124,12 +128,22 @@ def test_render_graph_evidence_html_with_data():
             "unique_neighbours": ["CVaR"],
             "subgraph_nodes": 3,
             "subgraph_edges": 2,
+            "edge_semantics": [
+                {
+                    "relation": "SUPPORTS_RISK_MEASURE",
+                    "predicate": "rf:supportsRiskMeasure",
+                    "domain": "rf:PortfolioMethod",
+                    "range": "rf:RiskMeasure",
+                }
+            ],
         }
     }
     html_out = _render_graph_evidence_html(insights)
     assert "HRP" in html_out
     assert "CVaR" in html_out
     assert "3" in html_out
+    assert "rf:supportsRiskMeasure" in html_out
+    assert "rf:PortfolioMethod" in html_out
 
 
 def test_render_governance_html_with_data():
@@ -145,8 +159,8 @@ def test_render_governance_html_with_data():
     }
     html_out = _render_governance_html(insights)
     assert "gpt-4o-mini" in html_out
-    assert "hybrid_rerank" in html_out
-    assert "ON" in html_out
+    assert "Blended retrieval" in html_out
+    assert "Adaptive selection on" in html_out
     assert "What is HRP?" in html_out
 
 
@@ -161,13 +175,25 @@ def test_render_graph_svg_contains_svg_markup():
             },
             {"id": "n2", "name": "CVaR", "labels": ["RiskMeasure"], "source_path": "docs/risk.md"},
         ],
-        "edges": [{"source": "n1", "target": "n2", "type": "SUPPORTS_RISK_MEASURE"}],
+        "edges": [
+            {
+                "source": "n1",
+                "target": "n2",
+                "type": "SUPPORTS_RISK_MEASURE",
+                "semantic": {
+                    "predicate": "rf:supportsRiskMeasure",
+                    "domain": "rf:PortfolioMethod",
+                    "range": "rf:RiskMeasure",
+                },
+            }
+        ],
     }
 
     rendered = _render_graph_svg(graph)
     assert "<svg" in rendered
     assert "Hierarchical Risk Parity" in rendered
     assert "SUPPORTS_RISK_MEASURE" in rendered
+    assert "rf:supportsRiskMeasure" in rendered
 
 
 def test_render_graph_svg_empty_graph_message():

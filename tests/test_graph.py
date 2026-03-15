@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from riskfolio_graphrag_agent.graph.builder import (
     GraphBuilder,
     GraphEdge,
     GraphNode,
+    _batched_rows,
     _extract_entities,
     _extract_entities_with_llm,
+    _upsert_edges,
+    _upsert_nodes,
     emit_taxonomy_edges,
 )
 from riskfolio_graphrag_agent.ingestion.loader import Document
@@ -152,8 +157,14 @@ class _FakeResult(list):
     def single(self):
         return self[0] if self else None
 
+    def consume(self):
+        return None
+
 
 class _FakeSession:
+    def __init__(self):
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
     def __enter__(self):
         return self
 
@@ -162,6 +173,7 @@ class _FakeSession:
         return False
 
     def run(self, query: str, **params):
+        self.calls.append((query, params))
         if "RETURN [n IN nodes" in query:
             terms = params.get("terms", [])
             if not terms:
@@ -197,6 +209,58 @@ class _FakeSession:
                 ]
             )
         return _FakeResult([])
+
+
+def test_batched_rows_splits_large_payloads():
+    rows = [{"index": index} for index in range(1201)]
+
+    batches = _batched_rows(rows, batch_size=500)
+
+    assert [len(batch) for batch in batches] == [500, 500, 201]
+
+
+def test_upsert_nodes_batches_by_label():
+    session = _FakeSession()
+    nodes = [GraphNode(label="Concept", name=f"concept-{index}") for index in range(501)]
+
+    _upsert_nodes(session, nodes)
+
+    assert len(session.calls) == 2
+    assert all("MERGE (n:Concept" in query for query, _ in session.calls)
+    assert len(session.calls[0][1]["rows"]) == 500
+    assert len(session.calls[1][1]["rows"]) == 1
+
+
+def test_upsert_edges_batches_and_skips_missing_endpoints():
+    session = _FakeSession()
+    edges = [
+        GraphEdge(
+            source_name=f"source-{index}",
+            target_name=f"target-{index}",
+            relation_type="RELATED_TO",
+            source_label="Concept",
+            target_label="Concept",
+        )
+        for index in range(510)
+    ]
+    edges.append(
+        GraphEdge(
+            source_name="missing-source",
+            target_name="missing-target",
+            relation_type="RELATED_TO",
+            source_label="Concept",
+            target_label="Concept",
+        )
+    )
+    known_node_names = frozenset({edge.source_name for edge in edges[:-1]} | {edge.target_name for edge in edges[:-1]})
+
+    skipped = _upsert_edges(session, edges, known_node_names=known_node_names)
+
+    assert skipped == 1
+    assert len(session.calls) == 2
+    assert all("UNWIND $rows AS row MATCH (s:Concept {name: row.source_name})" in query for query, _ in session.calls)
+    assert len(session.calls[0][1]["rows"]) == 500
+    assert len(session.calls[1][1]["rows"]) == 10
 
 
 def test_emit_taxonomy_edges_is_subtype_of_cvar():
