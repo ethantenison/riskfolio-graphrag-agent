@@ -100,9 +100,10 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
 def test_render_routing_html_with_data():
     insights = {"routing": [{"sub_question": "What is HRP?", "mode": "graph", "confidence": 0.92, "reason": "rule_graph_intent"}]}
     html_out = _render_routing_html(insights)
-    assert "graph" in html_out
+    assert "Relationship lookup" in html_out
     assert "What is HRP?" in html_out
-    assert "0.92" in html_out
+    assert "High match" in html_out
+    assert "relationships between concepts" in html_out
 
 
 def test_render_grounding_html_verified():
@@ -115,7 +116,8 @@ def test_render_grounding_html_verified():
         }
     }
     html_out = _render_grounding_html(insights)
-    assert "Verified" in html_out
+    assert "Strong source support" in html_out
+    assert "Supporting sources" in html_out
     assert "HRP" in html_out
 
 
@@ -157,8 +159,8 @@ def test_render_governance_html_with_data():
     }
     html_out = _render_governance_html(insights)
     assert "gpt-4o-mini" in html_out
-    assert "hybrid_rerank" in html_out
-    assert "ON" in html_out
+    assert "Blended retrieval" in html_out
+    assert "Adaptive selection on" in html_out
     assert "What is HRP?" in html_out
 
 
