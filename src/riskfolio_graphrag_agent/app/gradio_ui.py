@@ -430,6 +430,9 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
     edge_y_hi: list[float | None] = []
     edge_x_lo: list[float | None] = []
     edge_y_lo: list[float | None] = []
+    edge_label_x: list[float] = []
+    edge_label_y: list[float] = []
+    edge_label_text: list[str] = []
     edge_hover_x: list[float] = []
     edge_hover_y: list[float] = []
     edge_hover_text: list[str] = []
@@ -454,6 +457,10 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
         if norm > 0:
             mx += (-dy / norm) * 0.012
             my += (dx / norm) * 0.012
+        if rel in high_signal_rel:
+            edge_label_x.append(mx)
+            edge_label_y.append(my)
+            edge_label_text.append(rel)
         edge_hover_x.append(mx)
         edge_hover_y.append(my)
         semantic = data.get("semantic", {}) if isinstance(data.get("semantic", {}), dict) else {}
@@ -494,6 +501,17 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
         marker={"size": 10, "color": "rgba(0,0,0,0)"},
         hovertext=edge_hover_text,
         hoverinfo="text",
+        showlegend=False,
+    )
+
+    edge_label_trace = go.Scatter(
+        x=edge_label_x,
+        y=edge_label_y,
+        mode="text",
+        text=edge_label_text,
+        textposition="middle center",
+        textfont={"size": 9, "color": "#475569"},
+        hoverinfo="skip",
         showlegend=False,
     )
 
@@ -543,7 +561,7 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
             )
         )
 
-    fig = go.Figure(data=[edge_trace_lo, edge_trace_hi, edge_hover_trace, *node_traces])
+    fig = go.Figure(data=[edge_trace_lo, edge_trace_hi, edge_label_trace, edge_hover_trace, *node_traces])
     fig.update_layout(
         height=height,
         paper_bgcolor=bg,
@@ -1257,7 +1275,8 @@ def create_gradio_app(
                 gr.HTML(
                     "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
                     "Concepts and relationships retrieved from the Riskfolio-Lib"
-                    " knowledge base for your query."
+                    " knowledge base for your query.\n"
+                    "(Hover over graph edges and nodes for more details.)"
                     "</p>"
                 )
                 graph_panel = gr.Plot(
