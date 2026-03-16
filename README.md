@@ -279,7 +279,6 @@ poetry run ruff format src tests
 - [x] Agent: LangGraph workflow with tool use, model-backed generation, and self-correction
 - [x] App: FastAPI endpoints + OpenAPI docs
 - [x] App: Gradio chat interface with graph visualisation
-- [x] Eval: RAGAS-style metrics
 - [x] Eval: CI evaluation regression gate
 - [x] Observability: LangSmith / OpenTelemetry tracing
 
