@@ -31,34 +31,38 @@ This is a **portfolio project** that demonstrates:
 
 ---
 
-## Role Alignment (Knowledge Graph / RAG Agentic AI)
+## Role Fit (Knowledge Graph / GraphRAG / Agentic AI)
 
-This repository is intentionally structured to demonstrate the core capabilities requested in enterprise roles such as a **Knowledge Graph / RAG Agentic AI Engineer**. 
+This repository is intentionally structured as evidence for senior roles involving knowledge graphs, GraphRAG, semantic modeling, and agentic AI systems. The mapping below is written to be reusable across similar roles rather than tailored to one company or posting.
 
-### What this project demonstrates
+### Capability-to-Evidence Mapping
 
-- **End-to-end LLM + GraphRAG architecture**: ingestion, semantic modeling, retrieval, agentic reasoning, evaluation, observability, and deployment in one workflow.
-- **Knowledge graph operations at implementation depth**: Neo4j-backed entity/relationship modeling, Cypher-driven traversal, graph enrichment, and explainable provenance.
-- **Agentic workflows with safeguards**: LangGraph orchestration with plan/retrieve/reason/verify stages and NL-to-Cypher safety controls.
-- **Hybrid retrieval and grounded answers**: vector search + graph neighborhood traversal with citation evidence, verification checks, and routing rationale.
-- **Evaluation and governance discipline**: regression gating and metrics for grounding/faithfulness/retrieval quality plus OpenTelemetry + LangSmith tracing.
-- **Production-minded engineering**: modular architecture, CLI/API/Gradio interfaces, tests, and CI.
+| Capability area | Evidence in this portfolio | Broader experience alignment |
+|---|---|---|
+| End-to-end LLM, RAG/GraphRAG, and agentic architecture with observability, governance, and cost awareness | End-to-end flow across [src/riskfolio_graphrag_agent/ingestion/loader.py](src/riskfolio_graphrag_agent/ingestion/loader.py), [src/riskfolio_graphrag_agent/graph/builder.py](src/riskfolio_graphrag_agent/graph/builder.py), [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py), [src/riskfolio_graphrag_agent/agent/workflow.py](src/riskfolio_graphrag_agent/agent/workflow.py), and [src/riskfolio_graphrag_agent/app/server.py](src/riskfolio_graphrag_agent/app/server.py); observability and SLI/SLO reporting in [src/riskfolio_graphrag_agent/observability/reporting.py](src/riskfolio_graphrag_agent/observability/reporting.py) | Aligns with prior delivery of production AI systems that required deployment discipline, monitoring, and cost-aware design |
+| Taxonomy, ontology, and semantic modeling | Ontology-aware entity and relationship extraction plus curated domain aliases in [src/riskfolio_graphrag_agent/graph/builder.py](src/riskfolio_graphrag_agent/graph/builder.py); semantic export and validation helpers in [src/riskfolio_graphrag_agent/graph/semantic_interop.py](src/riskfolio_graphrag_agent/graph/semantic_interop.py) | Aligns with prior work on typed content hierarchies, canonical concepts, and retrieval-aware information design |
+| Build and operate knowledge graphs with Neo4j, RDF/OWL, Cypher, and SPARQL-oriented workflows | Neo4j graph construction and stats in [src/riskfolio_graphrag_agent/graph/builder.py](src/riskfolio_graphrag_agent/graph/builder.py); guarded graph querying in [src/riskfolio_graphrag_agent/graph/nl2cypher_guard.py](src/riskfolio_graphrag_agent/graph/nl2cypher_guard.py); RDF/OWL-style export and SPARQL examples in [src/riskfolio_graphrag_agent/graph/semantic_interop.py](src/riskfolio_graphrag_agent/graph/semantic_interop.py) and [benchmarks/sparql_examples.rq](benchmarks/sparql_examples.rq) | Demonstrates practical graph engineering with semantic-web interoperability rather than graph storage alone |
+| Extraction and linking pipelines with disambiguation, deduplication, canonicalization, and QA | Entity-resolution pipeline in [src/riskfolio_graphrag_agent/er/pipeline.py](src/riskfolio_graphrag_agent/er/pipeline.py); supporting audit artifacts in [artifacts/er/er_audit.json](artifacts/er/er_audit.json) | Aligns with prior extraction and normalization work where content quality and canonical linking mattered operationally |
+| Production LLM and agentic workflows using frameworks such as LangGraph and related orchestration stacks | Plan-retrieve-reason-verify orchestration in [src/riskfolio_graphrag_agent/agent/workflow.py](src/riskfolio_graphrag_agent/agent/workflow.py); request orchestration in [src/riskfolio_graphrag_agent/app/server.py](src/riskfolio_graphrag_agent/app/server.py) | Aligns with broader production experience using LLM-backed workflows and orchestration patterns beyond a single demo |
+| Safe tool use, tracing, and human-in-the-loop style controls | Safe NL-to-Cypher guardrails and audit logging in [src/riskfolio_graphrag_agent/graph/nl2cypher_guard.py](src/riskfolio_graphrag_agent/graph/nl2cypher_guard.py); tracing and request lifecycle visibility in [src/riskfolio_graphrag_agent/app/server.py](src/riskfolio_graphrag_agent/app/server.py) | Shows a safety-first approach to letting models interact with structured systems |
+| Advanced retrieval blending vector, symbolic, and KG retrieval | Dense, sparse, graph, and hybrid retrieval in [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py); adaptive routing in [src/riskfolio_graphrag_agent/retrieval/router.py](src/riskfolio_graphrag_agent/retrieval/router.py) | Demonstrates hybrid retrieval design and ontology-guided search patterns rather than plain vector search |
+| Evaluation and observability for RAG/GraphRAG and graph systems | Evaluation logic in [src/riskfolio_graphrag_agent/eval/evaluator.py](src/riskfolio_graphrag_agent/eval/evaluator.py) and [src/riskfolio_graphrag_agent/eval/regression_gate.py](src/riskfolio_graphrag_agent/eval/regression_gate.py); output artifacts in [eval_results.json](eval_results.json) and [artifacts/observability/sli_report.json](artifacts/observability/sli_report.json) | Covers grounding, faithfulness, latency, drift, and operational quality in a way that supports governance discussions |
+| Strong Python and AI/ML engineering | Typed Python modules, configuration, testing, CI, and deployment-facing app surfaces across [src/riskfolio_graphrag_agent](src/riskfolio_graphrag_agent) and [tests](tests) | Complements broader ML and production engineering experience in optimization, experimentation, and platform delivery |
+| Graph ML, reranking, and multi-hop reasoning patterns | Embedding-backed retrieval, hybrid reranking, graph expansion, and multi-hop style evidence gathering in [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py) | Strong on graph-aware retrieval and reasoning; lighter on learned graph neural models specifically |
+| Communication, leadership, and stakeholder-facing system design | This repository emphasizes explainability, architectural clarity, documentation, and evidence traceability across [README.md](README.md), [docs/architecture_module_map.md](docs/architecture_module_map.md), and the app surfaces | Best paired with resume and interview examples showing mentoring, cross-functional delivery, and product influence |
 
-### Direct fit to the posted responsibilities
+### What this repository demonstrates especially well
 
-- **Semantic architecture and KG design**: ontology-aware entity and relation extraction, canonical graph representation, and graph-backed queryability.
-- **Graph + GenAI integration**: GraphRAG and agentic retrieval pipelines combining symbolic graph context with LLM generation.
-- **Observability and reliability**: traceability from user query to retrieved evidence and final answer, with measurable quality indicators.
-- **Governance and explainability**: source-linked citations, route selection visibility, and safety-first tool usage patterns.
+- **Semantic architecture and KG design** through ontology-aware extraction, canonical graph representation, and graph-backed retrieval.
+- **Graph + GenAI integration** through GraphRAG retrieval, agentic orchestration, and grounded answer generation.
+- **Governance and explainability** through citations, route visibility, NL-to-Cypher safety controls, and auditability.
+- **Evaluation and observability** through measurable quality gates, tracing, latency/cost reporting, and drift-aware operational artifacts.
 
-### Essential requirements covered by this portfolio
+### Notes on evidence scope
 
-- Strong **Python** implementation across ingestion, graph, retrieval, and agent layers.
-- Hands-on **Neo4j/Cypher** usage for graph persistence and traversal.
-- Practical **RAG/GraphRAG + multi-step agentic** system delivery using LangGraph.
-- Clear emphasis on **evaluation, error analysis mindset, and reproducibility** through scripts, artifacts, and CI checks.
-
-If useful for interview review, this README plus the `docs/` and `artifacts/` folders provide concrete evidence of architecture decisions, metrics, and execution quality.
+- This repository provides **public, inspectable implementation evidence** for the core technical areas above.
+- Some capabilities, especially **leadership, stakeholder influence, and proprietary production deployments**, are more fully demonstrated in resume and interview materials than in a public code repository.
+- For interview review, this README plus [docs/architecture_module_map.md](docs/architecture_module_map.md) and the [artifacts](artifacts) directory provide concrete evidence of architecture choices, quality measurement, and execution discipline.
 
 ---
 
