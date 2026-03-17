@@ -17,6 +17,7 @@ from riskfolio_graphrag_agent.app.gradio_ui import (
     create_gradio_app,
     run_query_with_graph,
 )
+from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
 
 
 class _FakeRetriever:
@@ -34,6 +35,26 @@ class _FakeWorkflow:
     def run(self, query: str) -> AgentState:
         return AgentState(
             question=query,
+            context=[
+                RetrievalResult(
+                    content=(
+                        "HRP uses hierarchical clustering to organize assets and then applies risk-balanced "
+                        "allocation across the resulting tree."
+                    ),
+                    source_path="/tmp/Portfolio.py",
+                    score=0.91,
+                    related_entities=["HRP", "hierarchical clustering"],
+                    graph_neighbours=["Portfolio.py::chunk:1"],
+                    metadata={
+                        "chunk_id": "Portfolio.py::chunk:0",
+                        "relative_path": "Portfolio.py",
+                        "chunk_index": 0,
+                        "section": "hrp_allocation",
+                        "line_start": 10,
+                        "line_end": 24,
+                    },
+                )
+            ],
             answer="HRP uses clustering for risk-balanced allocation.",
             citations=[
                 {
@@ -94,6 +115,8 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
     assert insights["grounding"]["verified"] is True
     assert insights["grounding"]["citation_count"] == 1
     assert "HRP" in insights["grounding"]["unique_entities"]
+    assert insights["grounding"]["evidence_excerpts"]
+    assert "hierarchical clustering" in insights["grounding"]["evidence_excerpts"][0]["excerpt"]
     # graph_evidence: subgraph populated by _FakeGraphBuilder
     assert insights["graph_evidence"]["subgraph_nodes"] == 2
     assert insights["graph_evidence"]["subgraph_edges"] == 1
@@ -121,12 +144,27 @@ def test_render_grounding_html_verified():
             "citation_count": 2,
             "avg_score": 0.85,
             "unique_entities": ["HRP", "CVaR"],
+            "evidence_excerpts": [
+                {
+                    "source_path": "Portfolio.py",
+                    "section": "hrp_allocation",
+                    "line_start": 10,
+                    "line_end": 24,
+                    "score": 0.91,
+                    "matched_entities": ["HRP", "CVaR"],
+                    "excerpt": "HRP uses hierarchical clustering and CVaR can be used as a downside risk measure.",
+                }
+            ],
         }
     }
     html_out = _render_grounding_html(insights)
     assert "Strong source support" in html_out
     assert "Supporting sources" in html_out
     assert "HRP" in html_out
+    assert "Evidence excerpts" in html_out
+    assert "hrp_allocation" in html_out
+    assert "HRP uses hierarchical clustering" in html_out
+    assert "Lines 10-24" in html_out
 
 
 def test_render_graph_evidence_html_with_data():

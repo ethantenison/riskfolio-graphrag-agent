@@ -128,6 +128,7 @@ def _compute_insights(
     for c in state.citations:
         all_entities.extend(c.get("matched_entities", []) or [])
     unique_entities = list(dict.fromkeys(str(e) for e in all_entities if e))
+    evidence_excerpts = _build_grounding_excerpts(state)
 
     # ── Graph Evidence ────────────────────────────────────────────────────────
     all_neighbours: list[str] = []
@@ -147,6 +148,7 @@ def _compute_insights(
             "citation_count": len(state.citations),
             "avg_score": avg_score,
             "unique_entities": unique_entities,
+            "evidence_excerpts": evidence_excerpts,
         },
         "graph_evidence": {
             "unique_entities": unique_entities,
@@ -198,6 +200,53 @@ def _graph_edge_semantic_summary(graph: dict[str, list[dict[str, Any]]]) -> list
     summaries = list(relation_summary.values())
     summaries.sort(key=lambda item: (-int(item.get("count", 0)), str(item.get("relation", ""))))
     return summaries
+
+
+def _build_grounding_excerpts(state: Any) -> list[dict[str, Any]]:
+    excerpts: list[dict[str, Any]] = []
+    context_items = list(getattr(state, "context", []) or [])
+    for item in context_items[:3]:
+        metadata = item.metadata if isinstance(getattr(item, "metadata", None), dict) else {}
+        source_path = str(metadata.get("relative_path") or item.source_path or "").strip()
+        section = str(metadata.get("section", "")).strip()
+        line_start = int(metadata.get("line_start", 1) or 1)
+        line_end = int(metadata.get("line_end", line_start) or line_start)
+        matched_entities = [str(entity).strip() for entity in item.related_entities if str(entity).strip()]
+        excerpts.append(
+            {
+                "source_path": source_path,
+                "section": section,
+                "line_start": line_start,
+                "line_end": line_end,
+                "score": float(item.score),
+                "matched_entities": matched_entities,
+                "excerpt": _trim_evidence_text(item.content),
+            }
+        )
+    return excerpts
+
+
+def _trim_evidence_text(text: str, max_chars: int = 260) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= max_chars:
+        return normalized
+    cutoff = normalized[:max_chars].rsplit(" ", 1)[0].strip()
+    if not cutoff:
+        cutoff = normalized[:max_chars].strip()
+    return f"{cutoff}..."
+
+
+def _highlight_excerpt_entities(text: str, entities: list[str]) -> str:
+    escaped_text = html.escape(text)
+    for entity in sorted({entity for entity in entities if len(entity) > 1}, key=len, reverse=True):
+        pattern = re.compile(re.escape(html.escape(entity)), flags=re.IGNORECASE)
+        escaped_text = pattern.sub(
+            lambda match: (
+                f"<mark style='background:#FEF3C7;color:#92400E;padding:0 2px;border-radius:3px'>{match.group(0)}</mark>"
+            ),
+            escaped_text,
+        )
+    return escaped_text
 
 
 # ── Per-node-type fill colours ───────────────────────────────────────────────
@@ -1042,6 +1091,7 @@ def _render_grounding_html(insights: dict[str, Any]) -> str:
     verified = bool(g.get("verified", False))
     citation_count = int(g.get("citation_count", 0))
     entities = list(g.get("unique_entities", []))
+    evidence_excerpts = list(g.get("evidence_excerpts", []))
 
     support_label, support_colour, support_note = _support_status(verified, citation_count)
 
@@ -1060,6 +1110,10 @@ def _render_grounding_html(insights: dict[str, Any]) -> str:
             "Matched concepts",
             (entity_chips + overflow) if entities else "<span style='color:#9CA3AF'>No specific concepts matched yet</span>",
         ),
+        (
+            "Evidence excerpts",
+            _render_grounding_excerpts(evidence_excerpts),
+        ),
     ]
     cells = "".join(
         f"<tr><td style='padding:7px 12px;color:#64748B;font-size:13px;white-space:nowrap'>{label}</td>"
@@ -1067,6 +1121,35 @@ def _render_grounding_html(insights: dict[str, Any]) -> str:
         for label, value in table_rows
     )
     return f"<table style='border-collapse:collapse;width:100%'>{cells}</table>"
+
+
+def _render_grounding_excerpts(excerpts: list[dict[str, Any]]) -> str:
+    if not excerpts:
+        return "<span style='color:#9CA3AF'>No retrieved text excerpts available yet</span>"
+
+    cards: list[str] = []
+    for excerpt in excerpts[:3]:
+        source_path = html.escape(str(excerpt.get("source_path", "")))
+        section = html.escape(str(excerpt.get("section", "")))
+        line_start = int(excerpt.get("line_start", 1) or 1)
+        line_end = int(excerpt.get("line_end", line_start) or line_start)
+        score = float(excerpt.get("score", 0.0))
+        matched_entities = [str(entity) for entity in excerpt.get("matched_entities", [])]
+        excerpt_text = _highlight_excerpt_entities(str(excerpt.get("excerpt", "")), matched_entities)
+        label_parts = [part for part in (section, source_path) if part]
+        label = " · ".join(label_parts) if label_parts else "Retrieved evidence"
+        line_label = f"Lines {line_start}-{line_end}" if line_end > line_start else f"Line {line_start}"
+        cards.append(
+            "<div style='margin:0 0 10px;padding:10px 12px;border:1px solid #E2E8F0;"
+            "border-radius:10px;background:#F8FAFC'>"
+            f"<div style='display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:6px'>"
+            f"<div style='color:#334155;font-weight:600'>{label}</div>"
+            f"<div style='color:#64748B;font-size:11px'>{line_label} · score {score:.2f}</div>"
+            "</div>"
+            f"<div style='color:#475569;line-height:1.55'>{excerpt_text}</div>"
+            "</div>"
+        )
+    return "".join(cards)
 
 
 def _render_graph_evidence_html(insights: dict[str, Any]) -> str:
