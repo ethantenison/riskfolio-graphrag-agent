@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import gradio as gr
+
 from riskfolio_graphrag_agent.agent.workflow import AgentState
 from riskfolio_graphrag_agent.app.gradio_ui import (
+    _LATEX_DELIMITERS,
+    _format_answer_markdown,
     _render_governance_html,
     _render_graph_evidence_html,
     _render_graph_svg,
     _render_grounding_html,
     _render_routing_html,
+    create_gradio_app,
     run_query_with_graph,
 )
 
@@ -199,3 +204,22 @@ def test_render_graph_svg_contains_svg_markup():
 def test_render_graph_svg_empty_graph_message():
     rendered = _render_graph_svg({"nodes": [], "edges": []})
     assert "No graph data available" in rendered
+
+
+def test_format_answer_markdown_normalizes_common_latex_patterns():
+    answer = "Non-negativity is written as ( w \\geq 0 ). Budget is written as \\( \\sum w = 1 \\)."
+
+    formatted = _format_answer_markdown(answer, [])
+
+    assert "$w \\geq 0$" in formatted
+    assert "$\\sum w = 1$" in formatted
+
+
+def test_create_gradio_app_configures_chatbot_latex_delimiters():
+    app = create_gradio_app()
+
+    chatbots = [block for block in app.blocks.values() if isinstance(block, gr.Chatbot)]
+
+    assert len(chatbots) == 1
+    assert chatbots[0].latex_delimiters == _LATEX_DELIMITERS
+    assert chatbots[0].render_markdown is True

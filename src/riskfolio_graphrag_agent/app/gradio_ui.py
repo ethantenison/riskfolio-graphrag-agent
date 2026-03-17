@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import re
 from typing import Any
 
 import gradio as gr
@@ -758,6 +759,15 @@ _MODE_LABELS: dict[str, str] = {
     "hybrid_rerank": "Blended retrieval",
 }
 
+_LATEX_DELIMITERS: list[dict[str, str | bool]] = [
+    {"left": "$$", "right": "$$", "display": True},
+    {"left": "$", "right": "$", "display": False},
+    {"left": r"\\(", "right": r"\\)", "display": False},
+    {"left": r"\\[", "right": r"\\]", "display": True},
+]
+
+_PARENTHESIZED_LATEX_PATTERN = re.compile(r"(?<!\\)\(\s*([^()\n]*\\[A-Za-z]+[^()\n]*)\s*\)")
+
 _EMPTY_ROUTING_HTML = (
     "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
     "Ask a question above to see how the system chooses the retrieval strategy for each part of your query."
@@ -1097,12 +1107,14 @@ def _render_governance_html(insights: dict[str, Any]) -> str:
 
 
 def _format_answer_markdown(answer: str, citations: list) -> str:
-    """Bold entity names from citations when the answer is plain prose."""
+    """Normalize math and lightly enrich plain-prose answers for chat rendering."""
     if not answer:
         return answer
-    # If already markdown-formatted, trust it as-is
-    if any(c in answer for c in ("**", "##", "\n- ", "\n* ", "\n1.")):
-        return answer
+
+    normalized_answer = _normalize_answer_math(answer)
+    # If already markdown-formatted, trust it as-is after math normalization.
+    if any(c in answer for c in ("**", "##", "\n- ", "\n* ", "\n1.", "$$", r"\(", r"\[")):
+        return normalized_answer
 
     entities: set[str] = set()
     for citation in citations:
@@ -1111,11 +1123,20 @@ def _format_answer_markdown(answer: str, citations: list) -> str:
             if len(entity_text) > 3:
                 entities.add(entity_text)
 
-    formatted = answer
+    formatted = normalized_answer
     for entity in sorted(entities, key=len, reverse=True):
         if entity in formatted:
             formatted = formatted.replace(entity, f"**{entity}**", 1)
     return formatted
+
+
+def _normalize_answer_math(answer: str) -> str:
+    """Convert common LLM math output patterns into Markdown/KaTeX delimiters."""
+    normalized = answer.replace(r"\[", "$$").replace(r"\]", "$$")
+    normalized = normalized.replace(r"\(", "$").replace(r"\)", "$")
+    normalized = _PARENTHESIZED_LATEX_PATTERN.sub(lambda match: f"${match.group(1).strip()}$", normalized)
+    normalized = re.sub(r"\$\s*([^$\n]+?)\s*\$", lambda match: f"${match.group(1).strip()}$", normalized)
+    return normalized
 
 
 def _render_summary_card(insights: dict, citations: list, top_k: int = 10) -> str:
@@ -1152,7 +1173,7 @@ def create_gradio_app(
 ):
     def _handle_submit(
         question: str,
-        history: list[dict[str, str]] | None,
+        history: list[dict[str, Any]] | None,
     ):
         """Generator: first yield shows loading state, second yield shows results."""
         top_k = 15
@@ -1312,6 +1333,7 @@ def create_gradio_app(
             type="messages",
             show_label=False,
             bubble_full_width=False,
+            latex_delimiters=_LATEX_DELIMITERS,
             elem_id="chatbot-panel",
         )
         gr.HTML(
