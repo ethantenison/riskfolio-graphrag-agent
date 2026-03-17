@@ -768,6 +768,22 @@ _MODE_EXPLANATIONS: dict[str, str] = {
     "hybrid_rerank": "Combines multiple retrieval signals and reranks the merged evidence when a question needs broader context.",
 }
 
+_ROUTING_SIGNAL_EXPLANATIONS: list[tuple[str, str, str]] = [
+    ("High match", "#10B981", "The router found a strong signal that this strategy fits the sub-question."),
+    ("Targeted match", "#3B82F6", "The router found a reasonably clear signal for this strategy, but with less certainty."),
+    (
+        "Heuristic match",
+        "#0F766E",
+        "The choice came from weaker pattern cues, so the strategy is a best-effort match rather than a strong one.",
+    ),
+    ("Broad fallback", "#F59E0B", "Signals were mixed or weak, so the router fell back to the broadest retrieval option."),
+    (
+        "Configured default",
+        "#1D4ED8",
+        "Adaptive routing is off, so the app used the default configured retrieval mode instead of choosing dynamically.",
+    ),
+]
+
 _LATEX_DELIMITERS: list[dict[str, str | bool]] = [
     {"left": "$$", "right": "$$", "display": True},
     {"left": "$", "right": "$", "display": False},
@@ -811,14 +827,14 @@ def _mode_explanation(mode: str) -> str:
 def _routing_signal_badge(confidence: float, reason: str) -> str:
     primary_reason = reason.split(";", 1)[0].strip()
     if primary_reason == "static_config (adaptive routing disabled)":
-        return _badge("Configured default", "#64748B")
+        return _badge("Configured default", "#1D4ED8")
     if primary_reason == "low_confidence_fallback":
         return _badge("Broad fallback", "#F59E0B")
     if confidence >= 0.75:
         return _badge("High match", "#10B981")
     if confidence >= 0.5:
         return _badge("Targeted match", "#3B82F6")
-    return _badge("Heuristic match", "#64748B")
+    return _badge("Heuristic match", "#0F766E")
 
 
 def _routing_reason_text(mode: str, reason: str) -> str:
@@ -844,28 +860,30 @@ def _routing_reason_text(mode: str, reason: str) -> str:
 
 def _render_retrieval_strategy_intro_html() -> str:
     """Explain the retrieval strategies shown in the routing panel."""
-    rows: list[str] = []
+    mode_rows: list[str] = []
     for mode in ("dense", "sparse", "graph", "hybrid_rerank"):
-        rows.append(
+        mode_rows.append(
             "<div style='display:flex;gap:10px;align-items:flex-start;margin:6px 0'>"
             f"<div style='min-width:150px'>{_badge(_mode_label(mode), _MODE_COLOURS.get(mode, '#6B7280'))}</div>"
             f"<div style='color:#475569'>{html.escape(_mode_explanation(mode))}</div>"
             "</div>"
         )
 
+    signal_rows: list[str] = []
+    for label, colour, explanation in _ROUTING_SIGNAL_EXPLANATIONS:
+        signal_rows.append(
+            "<div style='display:flex;gap:10px;align-items:flex-start;margin:6px 0'>"
+            f"<div style='min-width:150px'>{_badge(label, colour)}</div>"
+            f"<div style='color:#475569'>{html.escape(explanation)}</div>"
+            "</div>"
+        )
+
     return (
         "<div style='font-size:12px;padding:4px 0 8px'>"
-        "<div style='color:#64748B;margin-bottom:6px'>"
-        "The system breaks your question into smaller parts and chooses the "
-        "retrieval path most likely to surface useful evidence."
-        "</div>"
-        f"{''.join(rows)}"
-        "<div style='margin-top:8px;color:#64748B'>"
-        "Each row below shows one sub-question, the retrieval strategy "
-        "selected for it, and the routing signal behind that choice. "
-        "If adaptive routing is disabled, the configured default strategy is shown instead. "
-        "If the query signals are mixed, the system can fall back to the broadest option."
-        "</div>"
+        "<div style='color:#334155;font-weight:700;margin:10px 0 4px'>Retrieval strategies</div>"
+        f"{''.join(mode_rows)}"
+        "<div style='color:#334155;font-weight:700;margin:14px 0 4px'>Routing signals</div>"
+        f"{''.join(signal_rows)}"
         "</div>"
     )
 
@@ -974,7 +992,9 @@ def _badge(text: str, colour: str) -> str:
     safe = html.escape(str(text))
     return (
         f"<span style='display:inline-block;padding:2px 8px;border-radius:12px;"
-        f"background:{colour};color:white;font-size:11px;font-weight:600'>{safe}</span>"
+        f"background:{colour} !important;color:#FFFFFF !important;font-size:11px;font-weight:600;"
+        "border:1px solid rgba(15,23,42,0.08);box-shadow:inset 0 -1px 0 rgba(255,255,255,0.16)'>"
+        f"{safe}</span>"
     )
 
 
@@ -989,6 +1009,7 @@ def _render_routing_html(insights: dict[str, Any]) -> str:
         "<thead><tr style='background:#F1F5F9'>"
         "<th style='padding:6px 10px;text-align:left;border-bottom:1px solid #E2E8F0'>Sub-question</th>"
         "<th style='padding:6px 10px;text-align:center;border-bottom:1px solid #E2E8F0'>Retrieval strategy</th>"
+        "<th style='padding:6px 10px;text-align:center;border-bottom:1px solid #E2E8F0'>Routing signals</th>"
         "<th style='padding:6px 10px;text-align:left;border-bottom:1px solid #E2E8F0'>Why it was selected</th>"
         "</tr></thead><tbody>"
     )
@@ -997,15 +1018,14 @@ def _render_routing_html(insights: dict[str, Any]) -> str:
         mode = str(row.get("mode", "hybrid_rerank"))
         colour = _MODE_COLOURS.get(mode, "#6B7280")
         conf = float(row.get("confidence", 0.0))
-        strategy_cell = (
-            f"{_badge(_mode_label(mode), colour)}<br>"
-            f"<span style='display:inline-block;margin-top:4px'>{_routing_signal_badge(conf, str(row.get('reason', '')))}</span>"
-        )
+        signal_badge = _routing_signal_badge(conf, str(row.get("reason", "")))
+        strategy_cell = _badge(_mode_label(mode), colour)
         bg = "#FFFFFF" if index % 2 == 0 else "#F8FAFC"
         body_rows.append(
             f"<tr style='background:{bg}'>"
             f"<td style='padding:6px 10px;color:#334155'>{html.escape(str(row.get('sub_question', '')))}</td>"
             f"<td style='padding:6px 10px;text-align:center'>{strategy_cell}</td>"
+            f"<td style='padding:6px 10px;text-align:center'>{signal_badge}</td>"
             f"<td style='padding:6px 10px;color:#64748B'>"
             f"{html.escape(_routing_reason_text(mode, str(row.get('reason', ''))))}</td>"
             f"</tr>"
@@ -1082,7 +1102,7 @@ def _render_graph_evidence_html(insights: dict[str, Any]) -> str:
         count = int(item.get("count", 0))
         count_label = f"{count} edge" + ("" if count == 1 else "s")
         semantic_rows.append(
-            f"<div style='margin:4px 0'>{_badge(relation, '#475569')} {_badge(count_label, '#94A3B8')} "
+            f"<div style='margin:4px 0'>{_badge(relation, '#1D4ED8')} {_badge(count_label, '#0F766E')} "
             f"<span style='color:#475569'>{predicate} · {domain} → {range_name}</span></div>"
         )
     semantic_overflow = ""
@@ -1422,8 +1442,18 @@ def create_gradio_app(
                 graph_evidence_panel = gr.HTML(value=_EMPTY_GRAPH_EVIDENCE_HTML)
 
             with gr.Tab("Retrieval Strategy"):
-                gr.HTML(_render_retrieval_strategy_intro_html())
+                gr.HTML(
+                    "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
+                    "The system breaks your question into smaller parts and chooses the retrieval path most likely "
+                    "to surface useful evidence. "
+                    "Each row of the table below shows one sub-question, the retrieval strategy selected for it, "
+                    "and a separate routing signal that explains how confidently that strategy was chosen. "
+                    "If adaptive routing is disabled, the configured default strategy "
+                    "is shown instead. If the query signals are mixed, the system can fall back to the broadest option."
+                    "</p>"
+                )
                 routing_panel = gr.HTML(value=_EMPTY_ROUTING_HTML)
+                gr.HTML(_render_retrieval_strategy_intro_html())
 
             with gr.Tab("Evidence Support"):
                 gr.HTML(

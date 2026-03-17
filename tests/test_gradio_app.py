@@ -109,6 +109,8 @@ def test_render_routing_html_with_data():
     assert "Relationship lookup" in html_out
     assert "What is HRP?" in html_out
     assert "High match" in html_out
+    assert "Routing signals" in html_out
+    assert "caption-side:bottom" not in html_out
     assert "relationships between concepts" in html_out
 
 
@@ -169,7 +171,10 @@ def test_render_retrieval_strategy_intro_html_defines_all_modes():
     assert "Exact match search" in html_out
     assert "Relationship lookup" in html_out
     assert "Blended retrieval" in html_out
-    assert "adaptive routing is disabled" in html_out.lower()
+    assert "Routing signals" in html_out
+    assert "Heuristic match" in html_out
+    assert "Broad fallback" in html_out
+    assert "adaptive routing is disabled" not in html_out.lower()
 
 
 def test_render_governance_html_with_data():
