@@ -174,27 +174,29 @@ def _annotate_graph_semantics(graph: dict[str, list[dict[str, Any]]]) -> dict[st
     return {"nodes": list(graph.get("nodes", [])), "edges": edges}
 
 
-def _graph_edge_semantic_summary(graph: dict[str, list[dict[str, Any]]]) -> list[dict[str, str]]:
-    summaries: list[dict[str, str]] = []
-    seen: set[str] = set()
+def _graph_edge_semantic_summary(graph: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    relation_summary: dict[str, dict[str, Any]] = {}
     for edge in graph.get("edges", []):
         semantic = edge.get("semantic", {})
         if not isinstance(semantic, dict):
             continue
         relation = str(semantic.get("relation", "")).strip()
-        if not relation or relation in seen:
+        if not relation:
             continue
-        seen.add(relation)
-        summaries.append(
+        summary = relation_summary.setdefault(
+            relation,
             {
                 "relation": relation,
                 "predicate": str(semantic.get("predicate", "")),
                 "domain": str(semantic.get("domain", "")),
                 "range": str(semantic.get("range", "")),
-            }
+                "count": 0,
+            },
         )
-        if len(summaries) >= 4:
-            break
+        summary["count"] = int(summary["count"]) + 1
+
+    summaries = list(relation_summary.values())
+    summaries.sort(key=lambda item: (-int(item.get("count", 0)), str(item.get("relation", ""))))
     return summaries
 
 
@@ -759,6 +761,13 @@ _MODE_LABELS: dict[str, str] = {
     "hybrid_rerank": "Blended retrieval",
 }
 
+_MODE_EXPLANATIONS: dict[str, str] = {
+    "dense": "Uses embedding similarity to retrieve related explanations, definitions, and summaries.",
+    "sparse": "Uses lexical matching to find exact keywords, API names, parameters, signatures, and code references.",
+    "graph": "Traverses explicit graph relationships to surface connected concepts, dependencies, and neighbourhood structure.",
+    "hybrid_rerank": "Combines multiple retrieval signals and reranks the merged evidence when a question needs broader context.",
+}
+
 _LATEX_DELIMITERS: list[dict[str, str | bool]] = [
     {"left": "$$", "right": "$$", "display": True},
     {"left": "$", "right": "$", "display": False},
@@ -795,6 +804,10 @@ def _mode_label(mode: str) -> str:
     return _MODE_LABELS.get(mode, mode.replace("_", " ").title())
 
 
+def _mode_explanation(mode: str) -> str:
+    return _MODE_EXPLANATIONS.get(mode, "Uses the retrieval path that best matches this query pattern.")
+
+
 def _routing_signal_badge(confidence: float, reason: str) -> str:
     primary_reason = reason.split(";", 1)[0].strip()
     if primary_reason == "static_config (adaptive routing disabled)":
@@ -827,6 +840,34 @@ def _routing_reason_text(mode: str, reason: str) -> str:
     if primary_reason in reason_map:
         return reason_map[primary_reason]
     return f"This question best matched the {_mode_label(mode).lower()} pattern."
+
+
+def _render_retrieval_strategy_intro_html() -> str:
+    """Explain the retrieval strategies shown in the routing panel."""
+    rows: list[str] = []
+    for mode in ("dense", "sparse", "graph", "hybrid_rerank"):
+        rows.append(
+            "<div style='display:flex;gap:10px;align-items:flex-start;margin:6px 0'>"
+            f"<div style='min-width:150px'>{_badge(_mode_label(mode), _MODE_COLOURS.get(mode, '#6B7280'))}</div>"
+            f"<div style='color:#475569'>{html.escape(_mode_explanation(mode))}</div>"
+            "</div>"
+        )
+
+    return (
+        "<div style='font-size:12px;padding:4px 0 8px'>"
+        "<div style='color:#64748B;margin-bottom:6px'>"
+        "The system breaks your question into smaller parts and chooses the "
+        "retrieval path most likely to surface useful evidence."
+        "</div>"
+        f"{''.join(rows)}"
+        "<div style='margin-top:8px;color:#64748B'>"
+        "Each row below shows one sub-question, the retrieval strategy "
+        "selected for it, and the routing signal behind that choice. "
+        "If adaptive routing is disabled, the configured default strategy is shown instead. "
+        "If the query signals are mixed, the system can fall back to the broadest option."
+        "</div>"
+        "</div>"
+    )
 
 
 def _support_status(verified: bool, citation_count: int) -> tuple[str, str, str]:
@@ -1031,18 +1072,31 @@ def _render_graph_evidence_html(insights: dict[str, Any]) -> str:
         else ""
     )
     semantic_rows: list[str] = []
-    for item in edge_semantics[:4]:
+    for item in edge_semantics[:12]:
         if not isinstance(item, dict):
             continue
         relation = html.escape(str(item.get("relation", "")))
         predicate = html.escape(str(item.get("predicate", "")))
         domain = html.escape(str(item.get("domain", "owl:Thing")))
         range_name = html.escape(str(item.get("range", "owl:Thing")))
+        count = int(item.get("count", 0))
+        count_label = f"{count} edge" + ("" if count == 1 else "s")
         semantic_rows.append(
-            f"<div style='margin:2px 0'>{_badge(relation, '#475569')} "
+            f"<div style='margin:4px 0'>{_badge(relation, '#475569')} {_badge(count_label, '#94A3B8')} "
             f"<span style='color:#475569'>{predicate} · {domain} → {range_name}</span></div>"
         )
-    semantic_block = "".join(semantic_rows) if semantic_rows else "<span style='color:#9CA3AF'>no semantic edge details</span>"
+    semantic_overflow = ""
+    if len(edge_semantics) > 12:
+        semantic_overflow = (
+            "<div style='color:#6B7280;font-size:11px;margin-top:4px'>"
+            f"&hellip;&nbsp;{len(edge_semantics) - 12} more relation types"
+            "</div>"
+        )
+    semantic_block = (
+        "".join(semantic_rows) + semantic_overflow
+        if semantic_rows
+        else "<span style='color:#9CA3AF'>No relationship details surfaced yet</span>"
+    )
     table_rows = [
         ("Relevant concepts shown", f"<strong>{subgraph_nodes}</strong>"),
         ("Relationships shown", f"<strong>{subgraph_edges}</strong>"),
@@ -1056,7 +1110,7 @@ def _render_graph_evidence_html(insights: dict[str, Any]) -> str:
             if neighbours
             else "<span style='color:#9CA3AF'>No connected concepts surfaced yet</span>",
         ),
-        ("Relationship types surfaced", semantic_block),
+        ("Relationship details surfaced", semantic_block),
     ]
     cells = "".join(
         f"<tr><td style='padding:7px 12px;color:#64748B;font-size:13px;white-space:nowrap;vertical-align:top'>{label}</td>"
@@ -1368,16 +1422,7 @@ def create_gradio_app(
                 graph_evidence_panel = gr.HTML(value=_EMPTY_GRAPH_EVIDENCE_HTML)
 
             with gr.Tab("Retrieval Strategy"):
-                gr.HTML(
-                    "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
-                    "The system breaks your question into smaller parts and chooses the retrieval"
-                    " strategy most likely to surface useful evidence."
-                    " <em>Semantic</em> = concept similarity"
-                    " &nbsp;|&nbsp; <em>Exact match</em> = keyword or API lookup"
-                    " &nbsp;|&nbsp; <em>Relationship</em> = graph traversal"
-                    " &nbsp;|&nbsp; <em>Blended</em> = combined retrieval across sources."
-                    "</p>"
-                )
+                gr.HTML(_render_retrieval_strategy_intro_html())
                 routing_panel = gr.HTML(value=_EMPTY_ROUTING_HTML)
 
             with gr.Tab("Evidence Support"):

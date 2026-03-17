@@ -12,6 +12,7 @@ from riskfolio_graphrag_agent.app.gradio_ui import (
     _render_graph_evidence_html,
     _render_graph_svg,
     _render_grounding_html,
+    _render_retrieval_strategy_intro_html,
     _render_routing_html,
     create_gradio_app,
     run_query_with_graph,
@@ -139,7 +140,15 @@ def test_render_graph_evidence_html_with_data():
                     "predicate": "rf:supportsRiskMeasure",
                     "domain": "rf:PortfolioMethod",
                     "range": "rf:RiskMeasure",
-                }
+                    "count": 2,
+                },
+                {
+                    "relation": "USES_ESTIMATOR",
+                    "predicate": "rf:usesEstimator",
+                    "domain": "rf:PortfolioMethod",
+                    "range": "rf:Estimator",
+                    "count": 1,
+                },
             ],
         }
     }
@@ -149,6 +158,18 @@ def test_render_graph_evidence_html_with_data():
     assert "3" in html_out
     assert "rf:supportsRiskMeasure" in html_out
     assert "rf:PortfolioMethod" in html_out
+    assert "2 edges" in html_out
+    assert "USES_ESTIMATOR" in html_out
+
+
+def test_render_retrieval_strategy_intro_html_defines_all_modes():
+    html_out = _render_retrieval_strategy_intro_html()
+
+    assert "Semantic search" in html_out
+    assert "Exact match search" in html_out
+    assert "Relationship lookup" in html_out
+    assert "Blended retrieval" in html_out
+    assert "adaptive routing is disabled" in html_out.lower()
 
 
 def test_render_governance_html_with_data():
