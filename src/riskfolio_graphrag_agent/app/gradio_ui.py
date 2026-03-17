@@ -236,19 +236,6 @@ def _trim_evidence_text(text: str, max_chars: int = 260) -> str:
     return f"{cutoff}..."
 
 
-def _highlight_excerpt_entities(text: str, entities: list[str]) -> str:
-    escaped_text = html.escape(text)
-    for entity in sorted({entity for entity in entities if len(entity) > 1}, key=len, reverse=True):
-        pattern = re.compile(re.escape(html.escape(entity)), flags=re.IGNORECASE)
-        escaped_text = pattern.sub(
-            lambda match: (
-                f"<mark style='background:#FEF3C7;color:#92400E;padding:0 2px;border-radius:3px'>{match.group(0)}</mark>"
-            ),
-            escaped_text,
-        )
-    return escaped_text
-
-
 # ── Per-node-type fill colours ───────────────────────────────────────────────
 _NODE_COLOURS: dict[str, str] = {
     "PortfolioMethod": "#7C3AED",
@@ -1135,10 +1122,19 @@ def _render_grounding_excerpts(excerpts: list[dict[str, Any]]) -> str:
         line_end = int(excerpt.get("line_end", line_start) or line_start)
         score = float(excerpt.get("score", 0.0))
         matched_entities = [str(entity) for entity in excerpt.get("matched_entities", [])]
-        excerpt_text = _highlight_excerpt_entities(str(excerpt.get("excerpt", "")), matched_entities)
+        excerpt_text = html.escape(str(excerpt.get("excerpt", "")))
         label_parts = [part for part in (section, source_path) if part]
         label = " · ".join(label_parts) if label_parts else "Retrieved evidence"
         line_label = f"Lines {line_start}-{line_end}" if line_end > line_start else f"Line {line_start}"
+        matched_concepts_html = ""
+        if matched_entities:
+            matched_badges = " ".join(_badge(entity, "#D97706") for entity in matched_entities[:6])
+            matched_concepts_html = (
+                "<div style='margin-top:8px'>"
+                "<div style='color:#64748B;font-size:11px;margin-bottom:4px'>Matched concepts</div>"
+                f"<div>{matched_badges}</div>"
+                "</div>"
+            )
         cards.append(
             "<div style='margin:0 0 10px;padding:10px 12px;border:1px solid #E2E8F0;"
             "border-radius:10px;background:#F8FAFC'>"
@@ -1147,6 +1143,7 @@ def _render_grounding_excerpts(excerpts: list[dict[str, Any]]) -> str:
             f"<div style='color:#64748B;font-size:11px'>{line_label} · score {score:.2f}</div>"
             "</div>"
             f"<div style='color:#475569;line-height:1.55'>{excerpt_text}</div>"
+            f"{matched_concepts_html}"
             "</div>"
         )
     return "".join(cards)
