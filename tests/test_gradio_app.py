@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import gradio as gr
+
 from riskfolio_graphrag_agent.agent.workflow import AgentState
 from riskfolio_graphrag_agent.app.gradio_ui import (
+    _LATEX_DELIMITERS,
+    _format_answer_markdown,
     _render_governance_html,
     _render_graph_evidence_html,
     _render_graph_svg,
     _render_grounding_html,
+    _render_retrieval_strategy_intro_html,
     _render_routing_html,
+    create_gradio_app,
     run_query_with_graph,
 )
+from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
 
 
 class _FakeRetriever:
@@ -28,6 +35,26 @@ class _FakeWorkflow:
     def run(self, query: str) -> AgentState:
         return AgentState(
             question=query,
+            context=[
+                RetrievalResult(
+                    content=(
+                        "HRP uses hierarchical clustering to organize assets and then applies risk-balanced "
+                        "allocation across the resulting tree."
+                    ),
+                    source_path="/tmp/Portfolio.py",
+                    score=0.91,
+                    related_entities=["HRP", "hierarchical clustering"],
+                    graph_neighbours=["Portfolio.py::chunk:1"],
+                    metadata={
+                        "chunk_id": "Portfolio.py::chunk:0",
+                        "relative_path": "Portfolio.py",
+                        "chunk_index": 0,
+                        "section": "hrp_allocation",
+                        "line_start": 10,
+                        "line_end": 24,
+                    },
+                )
+            ],
             answer="HRP uses clustering for risk-balanced allocation.",
             citations=[
                 {
@@ -88,6 +115,8 @@ def test_run_query_with_graph_returns_answer_citations_and_graph(monkeypatch):
     assert insights["grounding"]["verified"] is True
     assert insights["grounding"]["citation_count"] == 1
     assert "HRP" in insights["grounding"]["unique_entities"]
+    assert insights["grounding"]["evidence_excerpts"]
+    assert "hierarchical clustering" in insights["grounding"]["evidence_excerpts"][0]["excerpt"]
     # graph_evidence: subgraph populated by _FakeGraphBuilder
     assert insights["graph_evidence"]["subgraph_nodes"] == 2
     assert insights["graph_evidence"]["subgraph_edges"] == 1
@@ -103,6 +132,8 @@ def test_render_routing_html_with_data():
     assert "Relationship lookup" in html_out
     assert "What is HRP?" in html_out
     assert "High match" in html_out
+    assert "Routing signals" in html_out
+    assert "caption-side:bottom" not in html_out
     assert "relationships between concepts" in html_out
 
 
@@ -113,12 +144,27 @@ def test_render_grounding_html_verified():
             "citation_count": 2,
             "avg_score": 0.85,
             "unique_entities": ["HRP", "CVaR"],
+            "evidence_excerpts": [
+                {
+                    "source_path": "Portfolio.py",
+                    "section": "hrp_allocation",
+                    "line_start": 10,
+                    "line_end": 24,
+                    "score": 0.91,
+                    "matched_entities": ["HRP", "CVaR"],
+                    "excerpt": "HRP uses hierarchical clustering and CVaR can be used as a downside risk measure.",
+                }
+            ],
         }
     }
     html_out = _render_grounding_html(insights)
     assert "Strong source support" in html_out
     assert "Supporting sources" in html_out
     assert "HRP" in html_out
+    assert "Evidence excerpts" in html_out
+    assert "hrp_allocation" in html_out
+    assert "HRP uses hierarchical clustering" in html_out
+    assert "Lines 10-24" in html_out
 
 
 def test_render_graph_evidence_html_with_data():
@@ -134,7 +180,15 @@ def test_render_graph_evidence_html_with_data():
                     "predicate": "rf:supportsRiskMeasure",
                     "domain": "rf:PortfolioMethod",
                     "range": "rf:RiskMeasure",
-                }
+                    "count": 2,
+                },
+                {
+                    "relation": "USES_ESTIMATOR",
+                    "predicate": "rf:usesEstimator",
+                    "domain": "rf:PortfolioMethod",
+                    "range": "rf:Estimator",
+                    "count": 1,
+                },
             ],
         }
     }
@@ -144,6 +198,21 @@ def test_render_graph_evidence_html_with_data():
     assert "3" in html_out
     assert "rf:supportsRiskMeasure" in html_out
     assert "rf:PortfolioMethod" in html_out
+    assert "2 edges" in html_out
+    assert "USES_ESTIMATOR" in html_out
+
+
+def test_render_retrieval_strategy_intro_html_defines_all_modes():
+    html_out = _render_retrieval_strategy_intro_html()
+
+    assert "Semantic search" in html_out
+    assert "Exact match search" in html_out
+    assert "Relationship lookup" in html_out
+    assert "Blended retrieval" in html_out
+    assert "Routing signals" in html_out
+    assert "Heuristic match" in html_out
+    assert "Broad fallback" in html_out
+    assert "adaptive routing is disabled" not in html_out.lower()
 
 
 def test_render_governance_html_with_data():
@@ -199,3 +268,22 @@ def test_render_graph_svg_contains_svg_markup():
 def test_render_graph_svg_empty_graph_message():
     rendered = _render_graph_svg({"nodes": [], "edges": []})
     assert "No graph data available" in rendered
+
+
+def test_format_answer_markdown_normalizes_common_latex_patterns():
+    answer = "Non-negativity is written as ( w \\geq 0 ). Budget is written as \\( \\sum w = 1 \\)."
+
+    formatted = _format_answer_markdown(answer, [])
+
+    assert "$w \\geq 0$" in formatted
+    assert "$\\sum w = 1$" in formatted
+
+
+def test_create_gradio_app_configures_chatbot_latex_delimiters():
+    app = create_gradio_app()
+
+    chatbots = [block for block in app.blocks.values() if isinstance(block, gr.Chatbot)]
+
+    assert len(chatbots) == 1
+    assert chatbots[0].latex_delimiters == _LATEX_DELIMITERS
+    assert chatbots[0].render_markdown is True

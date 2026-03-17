@@ -232,6 +232,78 @@ def create_app() -> FastAPI:
     _configure_tracing(settings)
     initialize_ssl_truststore_once()
     app = FastAPI(title="riskfolio-graphrag-agent", version="0.1.0")
+    ssl_context = _build_ssl_context()
+    embedding_provider = resolve_embedding_provider(
+        provider_name=settings.embedding_provider,
+        embedding_dim=settings.embedding_dim,
+        openai_api_key=settings.openai_api_key,
+        openai_embedding_model=settings.embedding_model,
+        openai_base_url=settings.openai_base_url,
+        openai_timeout_seconds=settings.openai_timeout_seconds,
+        ssl_context=ssl_context,
+    ).provider
+    llm_generate = None
+    if settings.openai_enable_generation and settings.openai_api_key.strip():
+        llm_generate = _make_openai_llm_generate(settings)
+
+    query_router = None
+    if settings.adaptive_tool_routing_enabled:
+        query_router = QueryToolRouter(
+            min_confidence=settings.adaptive_tool_routing_min_confidence,
+        )
+
+    shared_graph_builder: GraphBuilder | None = None
+    retrievers_by_top_k: dict[int, HybridRetriever] = {}
+    workflows_by_top_k: dict[int, AgentWorkflow] = {}
+
+    def _get_graph_builder() -> GraphBuilder:
+        nonlocal shared_graph_builder
+        if shared_graph_builder is None:
+            shared_graph_builder = GraphBuilder(
+                neo4j_uri=settings.neo4j_uri,
+                neo4j_user=settings.neo4j_user,
+                neo4j_password=settings.neo4j_password,
+            )
+        return shared_graph_builder
+
+    def _get_retriever(top_k: int) -> HybridRetriever:
+        normalized_top_k = max(1, int(top_k))
+        retriever = retrievers_by_top_k.get(normalized_top_k)
+        if retriever is None:
+            retriever = HybridRetriever(
+                neo4j_uri=settings.neo4j_uri,
+                neo4j_user=settings.neo4j_user,
+                neo4j_password=settings.neo4j_password,
+                top_k=normalized_top_k,
+                vector_store_backend=settings.vector_store_backend,
+                chroma_persist_dir=settings.chroma_persist_dir,
+                embedding_provider=embedding_provider,
+                retrieval_mode=settings.retrieval_mode,
+            )
+            retrievers_by_top_k[normalized_top_k] = retriever
+        return retriever
+
+    def _get_workflow(top_k: int) -> AgentWorkflow:
+        normalized_top_k = max(1, int(top_k))
+        workflow = workflows_by_top_k.get(normalized_top_k)
+        if workflow is None:
+            workflow = AgentWorkflow(
+                retriever=_get_retriever(normalized_top_k),
+                model_name=settings.openai_model,
+                llm_generate=llm_generate,
+                query_router=query_router,
+            )
+            workflows_by_top_k[normalized_top_k] = workflow
+        return workflow
+
+    @app.on_event("shutdown")
+    def _close_shared_resources() -> None:
+        for retriever in retrievers_by_top_k.values():
+            retriever.close()
+        retrievers_by_top_k.clear()
+        workflows_by_top_k.clear()
+        if shared_graph_builder is not None:
+            shared_graph_builder.close()
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -245,62 +317,18 @@ def create_app() -> FastAPI:
 
     @app.get("/graph/stats")
     def graph_stats() -> dict[str, int | dict[str, int]]:
-        settings = Settings()
-        builder = GraphBuilder(
-            neo4j_uri=settings.neo4j_uri,
-            neo4j_user=settings.neo4j_user,
-            neo4j_password=settings.neo4j_password,
-        )
         try:
-            return builder.get_stats()
+            return _get_graph_builder().get_stats()
         except Exception as exc:
             logger.exception("Failed to retrieve graph stats")
             raise HTTPException(status_code=503, detail=f"Neo4j unavailable: {exc}") from exc
-        finally:
-            builder.close()
 
     @app.post("/query", response_model=QueryResponse)
     def query(payload: QueryRequest) -> QueryResponse:
-        settings = Settings()
         tokens = _extract_query_tokens(payload.question)
         if not tokens:
             raise HTTPException(status_code=400, detail="Question must contain searchable text.")
-
-        retriever = HybridRetriever(
-            neo4j_uri=settings.neo4j_uri,
-            neo4j_user=settings.neo4j_user,
-            neo4j_password=settings.neo4j_password,
-            top_k=payload.top_k,
-            vector_store_backend=settings.vector_store_backend,
-            chroma_persist_dir=settings.chroma_persist_dir,
-            embedding_provider=resolve_embedding_provider(
-                provider_name=settings.embedding_provider,
-                embedding_dim=settings.embedding_dim,
-                openai_api_key=settings.openai_api_key,
-                openai_embedding_model=settings.embedding_model,
-                openai_base_url=settings.openai_base_url,
-                openai_timeout_seconds=settings.openai_timeout_seconds,
-                ssl_context=_build_ssl_context(),
-            ).provider,
-            retrieval_mode=settings.retrieval_mode,
-        )
-
-        llm_generate = None
-        if settings.openai_enable_generation and settings.openai_api_key.strip():
-            llm_generate = _make_openai_llm_generate(settings)
-
-        query_router = None
-        if settings.adaptive_tool_routing_enabled:
-            query_router = QueryToolRouter(
-                min_confidence=settings.adaptive_tool_routing_min_confidence,
-            )
-
-        workflow = AgentWorkflow(
-            retriever=retriever,
-            model_name=settings.openai_model,
-            llm_generate=llm_generate,
-            query_router=query_router,
-        )
+        workflow = _get_workflow(payload.top_k)
 
         tracer = trace.get_tracer("riskfolio-graphrag-agent")
         with tracer.start_as_current_span("api.query") as span:
@@ -316,8 +344,6 @@ def create_app() -> FastAPI:
             except Exception as exc:
                 logger.exception("Failed to execute query endpoint")
                 raise HTTPException(status_code=503, detail=f"Neo4j unavailable: {exc}") from exc
-            finally:
-                retriever.close()
 
             estimated_cost = max(0.0, len(payload.question.split()) * 0.000001)
             span.set_attribute("cost.estimated_usd", estimated_cost)

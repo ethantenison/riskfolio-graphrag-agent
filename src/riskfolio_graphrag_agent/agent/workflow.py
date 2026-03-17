@@ -299,10 +299,14 @@ def _plan(state: AgentState) -> AgentState:
     """
     trace.get_current_span().set_attribute("workflow.stage", "plan")
     focus_terms = _extract_focus_terms(state.question)
+    lowered_question = state.question.lower()
     state.sub_questions = [state.question]
-    if focus_terms:
+
+    should_add_detail_query = len(focus_terms) >= 2 or len(state.question.split()) >= 9
+    if should_add_detail_query and focus_terms:
         state.sub_questions.append(f"Riskfolio details on {' '.join(focus_terms[:4])}")
-    if "how" in state.question.lower() or "why" in state.question.lower():
+
+    if any(keyword in lowered_question for keyword in ("how", "why", "compare", "difference", "versus", "vs")):
         state.sub_questions.append(f"methodology evidence for: {state.question}")
 
     deduped: list[str] = []
@@ -313,7 +317,7 @@ def _plan(state: AgentState) -> AgentState:
             continue
         seen.add(normalized)
         deduped.append(sub_question.strip())
-    state.sub_questions = deduped[:3]
+    state.sub_questions = deduped[:2]
     return state
 
 
@@ -389,7 +393,7 @@ def _reason(
         return state
 
     generated_answer = ""
-    if llm_generate is not None:
+    if llm_generate is not None and _should_call_llm(state.question, state.context):
         try:
             generated_answer = llm_generate(
                 question=state.question,
@@ -437,6 +441,38 @@ def _fallback_reason_answer(state: AgentState) -> str:
     if section_preview:
         answer += f" Relevant sections include: {section_preview}."
     return answer
+
+
+def _should_call_llm(question: str, context: list[RetrievalResult]) -> bool:
+    """Return whether a question needs model generation instead of the fallback answer."""
+    lowered = question.strip().lower()
+    synthesis_markers = (
+        "how",
+        "why",
+        "compare",
+        "difference",
+        "versus",
+        " vs ",
+        "trade-off",
+        "tradeoff",
+        "pros",
+        "cons",
+        "steps",
+        "workflow",
+        "example",
+    )
+    if any(marker in lowered for marker in synthesis_markers):
+        return True
+
+    if len(context) >= 4:
+        return True
+
+    unique_entities = {entity for item in context for entity in item.related_entities if entity}
+    if len(unique_entities) >= 4:
+        return True
+
+    # Simple definition and lookup questions are usually well-served by the deterministic fallback.
+    return False
 
 
 def _verify(state: AgentState) -> AgentState:

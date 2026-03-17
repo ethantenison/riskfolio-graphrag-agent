@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import re
 from typing import Any
 
 import gradio as gr
@@ -127,6 +128,7 @@ def _compute_insights(
     for c in state.citations:
         all_entities.extend(c.get("matched_entities", []) or [])
     unique_entities = list(dict.fromkeys(str(e) for e in all_entities if e))
+    evidence_excerpts = _build_grounding_excerpts(state)
 
     # ── Graph Evidence ────────────────────────────────────────────────────────
     all_neighbours: list[str] = []
@@ -146,6 +148,7 @@ def _compute_insights(
             "citation_count": len(state.citations),
             "avg_score": avg_score,
             "unique_entities": unique_entities,
+            "evidence_excerpts": evidence_excerpts,
         },
         "graph_evidence": {
             "unique_entities": unique_entities,
@@ -173,28 +176,64 @@ def _annotate_graph_semantics(graph: dict[str, list[dict[str, Any]]]) -> dict[st
     return {"nodes": list(graph.get("nodes", [])), "edges": edges}
 
 
-def _graph_edge_semantic_summary(graph: dict[str, list[dict[str, Any]]]) -> list[dict[str, str]]:
-    summaries: list[dict[str, str]] = []
-    seen: set[str] = set()
+def _graph_edge_semantic_summary(graph: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    relation_summary: dict[str, dict[str, Any]] = {}
     for edge in graph.get("edges", []):
         semantic = edge.get("semantic", {})
         if not isinstance(semantic, dict):
             continue
         relation = str(semantic.get("relation", "")).strip()
-        if not relation or relation in seen:
+        if not relation:
             continue
-        seen.add(relation)
-        summaries.append(
+        summary = relation_summary.setdefault(
+            relation,
             {
                 "relation": relation,
                 "predicate": str(semantic.get("predicate", "")),
                 "domain": str(semantic.get("domain", "")),
                 "range": str(semantic.get("range", "")),
+                "count": 0,
+            },
+        )
+        summary["count"] = int(summary["count"]) + 1
+
+    summaries = list(relation_summary.values())
+    summaries.sort(key=lambda item: (-int(item.get("count", 0)), str(item.get("relation", ""))))
+    return summaries
+
+
+def _build_grounding_excerpts(state: Any) -> list[dict[str, Any]]:
+    excerpts: list[dict[str, Any]] = []
+    context_items = list(getattr(state, "context", []) or [])
+    for item in context_items[:3]:
+        metadata = item.metadata if isinstance(getattr(item, "metadata", None), dict) else {}
+        source_path = str(metadata.get("relative_path") or item.source_path or "").strip()
+        section = str(metadata.get("section", "")).strip()
+        line_start = int(metadata.get("line_start", 1) or 1)
+        line_end = int(metadata.get("line_end", line_start) or line_start)
+        matched_entities = [str(entity).strip() for entity in item.related_entities if str(entity).strip()]
+        excerpts.append(
+            {
+                "source_path": source_path,
+                "section": section,
+                "line_start": line_start,
+                "line_end": line_end,
+                "score": float(item.score),
+                "matched_entities": matched_entities,
+                "excerpt": _trim_evidence_text(item.content),
             }
         )
-        if len(summaries) >= 4:
-            break
-    return summaries
+    return excerpts
+
+
+def _trim_evidence_text(text: str, max_chars: int = 260) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= max_chars:
+        return normalized
+    cutoff = normalized[:max_chars].rsplit(" ", 1)[0].strip()
+    if not cutoff:
+        cutoff = normalized[:max_chars].strip()
+    return f"{cutoff}..."
 
 
 # ── Per-node-type fill colours ───────────────────────────────────────────────
@@ -373,20 +412,20 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
 
     # Spread dense graphs more aggressively to reduce node/label collisions.
     if density > 4:
-        k_value = 3.0 / max(node_count**0.5, 1)
-        iterations = 550
+        k_value = 2.2 / max(node_count**0.5, 1)
+        iterations = 170
     elif density > 2:
-        k_value = 2.4 / max(node_count**0.5, 1)
-        iterations = 430
+        k_value = 1.9 / max(node_count**0.5, 1)
+        iterations = 130
     else:
-        k_value = 1.8 / max(node_count**0.5, 1)
-        iterations = 320
+        k_value = 1.5 / max(node_count**0.5, 1)
+        iterations = 90
     pos = nx.spring_layout(graph_nx, seed=7, k=k_value, iterations=iterations)
 
     # Simple deterministic collision-repulsion pass to enforce minimum spacing.
     node_ids = list(graph_nx.nodes())
     min_sep = 0.11 if node_count >= 30 else 0.085
-    for _ in range(12):
+    for _ in range(5):
         moved = False
         for i, a in enumerate(node_ids):
             xa, ya = pos[a]
@@ -758,6 +797,38 @@ _MODE_LABELS: dict[str, str] = {
     "hybrid_rerank": "Blended retrieval",
 }
 
+_MODE_EXPLANATIONS: dict[str, str] = {
+    "dense": "Uses embedding similarity to retrieve related explanations, definitions, and summaries.",
+    "sparse": "Uses lexical matching to find exact keywords, API names, parameters, signatures, and code references.",
+    "graph": "Traverses explicit graph relationships to surface connected concepts, dependencies, and neighbourhood structure.",
+    "hybrid_rerank": "Combines multiple retrieval signals and reranks the merged evidence when a question needs broader context.",
+}
+
+_ROUTING_SIGNAL_EXPLANATIONS: list[tuple[str, str, str]] = [
+    ("High match", "#10B981", "The router found a strong signal that this strategy fits the sub-question."),
+    ("Targeted match", "#3B82F6", "The router found a reasonably clear signal for this strategy, but with less certainty."),
+    (
+        "Heuristic match",
+        "#0F766E",
+        "The choice came from weaker pattern cues, so the strategy is a best-effort match rather than a strong one.",
+    ),
+    ("Broad fallback", "#F59E0B", "Signals were mixed or weak, so the router fell back to the broadest retrieval option."),
+    (
+        "Configured default",
+        "#1D4ED8",
+        "Adaptive routing is off, so the app used the default configured retrieval mode instead of choosing dynamically.",
+    ),
+]
+
+_LATEX_DELIMITERS: list[dict[str, str | bool]] = [
+    {"left": "$$", "right": "$$", "display": True},
+    {"left": "$", "right": "$", "display": False},
+    {"left": r"\\(", "right": r"\\)", "display": False},
+    {"left": r"\\[", "right": r"\\]", "display": True},
+]
+
+_PARENTHESIZED_LATEX_PATTERN = re.compile(r"(?<!\\)\(\s*([^()\n]*\\[A-Za-z]+[^()\n]*)\s*\)")
+
 _EMPTY_ROUTING_HTML = (
     "<p style='color:#9CA3AF;font-size:13px;padding:8px'>"
     "Ask a question above to see how the system chooses the retrieval strategy for each part of your query."
@@ -785,17 +856,21 @@ def _mode_label(mode: str) -> str:
     return _MODE_LABELS.get(mode, mode.replace("_", " ").title())
 
 
+def _mode_explanation(mode: str) -> str:
+    return _MODE_EXPLANATIONS.get(mode, "Uses the retrieval path that best matches this query pattern.")
+
+
 def _routing_signal_badge(confidence: float, reason: str) -> str:
     primary_reason = reason.split(";", 1)[0].strip()
     if primary_reason == "static_config (adaptive routing disabled)":
-        return _badge("Configured default", "#64748B")
+        return _badge("Configured default", "#1D4ED8")
     if primary_reason == "low_confidence_fallback":
         return _badge("Broad fallback", "#F59E0B")
     if confidence >= 0.75:
         return _badge("High match", "#10B981")
     if confidence >= 0.5:
         return _badge("Targeted match", "#3B82F6")
-    return _badge("Heuristic match", "#64748B")
+    return _badge("Heuristic match", "#0F766E")
 
 
 def _routing_reason_text(mode: str, reason: str) -> str:
@@ -817,6 +892,36 @@ def _routing_reason_text(mode: str, reason: str) -> str:
     if primary_reason in reason_map:
         return reason_map[primary_reason]
     return f"This question best matched the {_mode_label(mode).lower()} pattern."
+
+
+def _render_retrieval_strategy_intro_html() -> str:
+    """Explain the retrieval strategies shown in the routing panel."""
+    mode_rows: list[str] = []
+    for mode in ("dense", "sparse", "graph", "hybrid_rerank"):
+        mode_rows.append(
+            "<div style='display:flex;gap:10px;align-items:flex-start;margin:6px 0'>"
+            f"<div style='min-width:150px'>{_badge(_mode_label(mode), _MODE_COLOURS.get(mode, '#6B7280'))}</div>"
+            f"<div style='color:#475569'>{html.escape(_mode_explanation(mode))}</div>"
+            "</div>"
+        )
+
+    signal_rows: list[str] = []
+    for label, colour, explanation in _ROUTING_SIGNAL_EXPLANATIONS:
+        signal_rows.append(
+            "<div style='display:flex;gap:10px;align-items:flex-start;margin:6px 0'>"
+            f"<div style='min-width:150px'>{_badge(label, colour)}</div>"
+            f"<div style='color:#475569'>{html.escape(explanation)}</div>"
+            "</div>"
+        )
+
+    return (
+        "<div style='font-size:12px;padding:4px 0 8px'>"
+        "<div style='color:#334155;font-weight:700;margin:10px 0 4px'>Retrieval strategies</div>"
+        f"{''.join(mode_rows)}"
+        "<div style='color:#334155;font-weight:700;margin:14px 0 4px'>Routing signals</div>"
+        f"{''.join(signal_rows)}"
+        "</div>"
+    )
 
 
 def _support_status(verified: bool, citation_count: int) -> tuple[str, str, str]:
@@ -923,7 +1028,9 @@ def _badge(text: str, colour: str) -> str:
     safe = html.escape(str(text))
     return (
         f"<span style='display:inline-block;padding:2px 8px;border-radius:12px;"
-        f"background:{colour};color:white;font-size:11px;font-weight:600'>{safe}</span>"
+        f"background:{colour} !important;color:#FFFFFF !important;font-size:11px;font-weight:600;"
+        "border:1px solid rgba(15,23,42,0.08);box-shadow:inset 0 -1px 0 rgba(255,255,255,0.16)'>"
+        f"{safe}</span>"
     )
 
 
@@ -938,6 +1045,7 @@ def _render_routing_html(insights: dict[str, Any]) -> str:
         "<thead><tr style='background:#F1F5F9'>"
         "<th style='padding:6px 10px;text-align:left;border-bottom:1px solid #E2E8F0'>Sub-question</th>"
         "<th style='padding:6px 10px;text-align:center;border-bottom:1px solid #E2E8F0'>Retrieval strategy</th>"
+        "<th style='padding:6px 10px;text-align:center;border-bottom:1px solid #E2E8F0'>Routing signals</th>"
         "<th style='padding:6px 10px;text-align:left;border-bottom:1px solid #E2E8F0'>Why it was selected</th>"
         "</tr></thead><tbody>"
     )
@@ -946,15 +1054,14 @@ def _render_routing_html(insights: dict[str, Any]) -> str:
         mode = str(row.get("mode", "hybrid_rerank"))
         colour = _MODE_COLOURS.get(mode, "#6B7280")
         conf = float(row.get("confidence", 0.0))
-        strategy_cell = (
-            f"{_badge(_mode_label(mode), colour)}<br>"
-            f"<span style='display:inline-block;margin-top:4px'>{_routing_signal_badge(conf, str(row.get('reason', '')))}</span>"
-        )
+        signal_badge = _routing_signal_badge(conf, str(row.get("reason", "")))
+        strategy_cell = _badge(_mode_label(mode), colour)
         bg = "#FFFFFF" if index % 2 == 0 else "#F8FAFC"
         body_rows.append(
             f"<tr style='background:{bg}'>"
             f"<td style='padding:6px 10px;color:#334155'>{html.escape(str(row.get('sub_question', '')))}</td>"
             f"<td style='padding:6px 10px;text-align:center'>{strategy_cell}</td>"
+            f"<td style='padding:6px 10px;text-align:center'>{signal_badge}</td>"
             f"<td style='padding:6px 10px;color:#64748B'>"
             f"{html.escape(_routing_reason_text(mode, str(row.get('reason', ''))))}</td>"
             f"</tr>"
@@ -971,6 +1078,7 @@ def _render_grounding_html(insights: dict[str, Any]) -> str:
     verified = bool(g.get("verified", False))
     citation_count = int(g.get("citation_count", 0))
     entities = list(g.get("unique_entities", []))
+    evidence_excerpts = list(g.get("evidence_excerpts", []))
 
     support_label, support_colour, support_note = _support_status(verified, citation_count)
 
@@ -989,6 +1097,10 @@ def _render_grounding_html(insights: dict[str, Any]) -> str:
             "Matched concepts",
             (entity_chips + overflow) if entities else "<span style='color:#9CA3AF'>No specific concepts matched yet</span>",
         ),
+        (
+            "Evidence excerpts",
+            _render_grounding_excerpts(evidence_excerpts),
+        ),
     ]
     cells = "".join(
         f"<tr><td style='padding:7px 12px;color:#64748B;font-size:13px;white-space:nowrap'>{label}</td>"
@@ -996,6 +1108,45 @@ def _render_grounding_html(insights: dict[str, Any]) -> str:
         for label, value in table_rows
     )
     return f"<table style='border-collapse:collapse;width:100%'>{cells}</table>"
+
+
+def _render_grounding_excerpts(excerpts: list[dict[str, Any]]) -> str:
+    if not excerpts:
+        return "<span style='color:#9CA3AF'>No retrieved text excerpts available yet</span>"
+
+    cards: list[str] = []
+    for excerpt in excerpts[:3]:
+        source_path = html.escape(str(excerpt.get("source_path", "")))
+        section = html.escape(str(excerpt.get("section", "")))
+        line_start = int(excerpt.get("line_start", 1) or 1)
+        line_end = int(excerpt.get("line_end", line_start) or line_start)
+        score = float(excerpt.get("score", 0.0))
+        matched_entities = [str(entity) for entity in excerpt.get("matched_entities", [])]
+        excerpt_text = html.escape(str(excerpt.get("excerpt", "")))
+        label_parts = [part for part in (section, source_path) if part]
+        label = " · ".join(label_parts) if label_parts else "Retrieved evidence"
+        line_label = f"Lines {line_start}-{line_end}" if line_end > line_start else f"Line {line_start}"
+        matched_concepts_html = ""
+        if matched_entities:
+            matched_badges = " ".join(_badge(entity, "#D97706") for entity in matched_entities[:6])
+            matched_concepts_html = (
+                "<div style='margin-top:8px'>"
+                "<div style='color:#64748B;font-size:11px;margin-bottom:4px'>Matched concepts</div>"
+                f"<div>{matched_badges}</div>"
+                "</div>"
+            )
+        cards.append(
+            "<div style='margin:0 0 10px;padding:10px 12px;border:1px solid #E2E8F0;"
+            "border-radius:10px;background:#F8FAFC'>"
+            f"<div style='display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:6px'>"
+            f"<div style='color:#334155;font-weight:600'>{label}</div>"
+            f"<div style='color:#64748B;font-size:11px'>{line_label} · score {score:.2f}</div>"
+            "</div>"
+            f"<div style='color:#475569;line-height:1.55'>{excerpt_text}</div>"
+            f"{matched_concepts_html}"
+            "</div>"
+        )
+    return "".join(cards)
 
 
 def _render_graph_evidence_html(insights: dict[str, Any]) -> str:
@@ -1021,18 +1172,31 @@ def _render_graph_evidence_html(insights: dict[str, Any]) -> str:
         else ""
     )
     semantic_rows: list[str] = []
-    for item in edge_semantics[:4]:
+    for item in edge_semantics[:12]:
         if not isinstance(item, dict):
             continue
         relation = html.escape(str(item.get("relation", "")))
         predicate = html.escape(str(item.get("predicate", "")))
         domain = html.escape(str(item.get("domain", "owl:Thing")))
         range_name = html.escape(str(item.get("range", "owl:Thing")))
+        count = int(item.get("count", 0))
+        count_label = f"{count} edge" + ("" if count == 1 else "s")
         semantic_rows.append(
-            f"<div style='margin:2px 0'>{_badge(relation, '#475569')} "
+            f"<div style='margin:4px 0'>{_badge(relation, '#1D4ED8')} {_badge(count_label, '#0F766E')} "
             f"<span style='color:#475569'>{predicate} · {domain} → {range_name}</span></div>"
         )
-    semantic_block = "".join(semantic_rows) if semantic_rows else "<span style='color:#9CA3AF'>no semantic edge details</span>"
+    semantic_overflow = ""
+    if len(edge_semantics) > 12:
+        semantic_overflow = (
+            "<div style='color:#6B7280;font-size:11px;margin-top:4px'>"
+            f"&hellip;&nbsp;{len(edge_semantics) - 12} more relation types"
+            "</div>"
+        )
+    semantic_block = (
+        "".join(semantic_rows) + semantic_overflow
+        if semantic_rows
+        else "<span style='color:#9CA3AF'>No relationship details surfaced yet</span>"
+    )
     table_rows = [
         ("Relevant concepts shown", f"<strong>{subgraph_nodes}</strong>"),
         ("Relationships shown", f"<strong>{subgraph_edges}</strong>"),
@@ -1046,7 +1210,7 @@ def _render_graph_evidence_html(insights: dict[str, Any]) -> str:
             if neighbours
             else "<span style='color:#9CA3AF'>No connected concepts surfaced yet</span>",
         ),
-        ("Relationship types surfaced", semantic_block),
+        ("Relationship details surfaced", semantic_block),
     ]
     cells = "".join(
         f"<tr><td style='padding:7px 12px;color:#64748B;font-size:13px;white-space:nowrap;vertical-align:top'>{label}</td>"
@@ -1097,12 +1261,14 @@ def _render_governance_html(insights: dict[str, Any]) -> str:
 
 
 def _format_answer_markdown(answer: str, citations: list) -> str:
-    """Bold entity names from citations when the answer is plain prose."""
+    """Normalize math and lightly enrich plain-prose answers for chat rendering."""
     if not answer:
         return answer
-    # If already markdown-formatted, trust it as-is
-    if any(c in answer for c in ("**", "##", "\n- ", "\n* ", "\n1.")):
-        return answer
+
+    normalized_answer = _normalize_answer_math(answer)
+    # If already markdown-formatted, trust it as-is after math normalization.
+    if any(c in answer for c in ("**", "##", "\n- ", "\n* ", "\n1.", "$$", r"\(", r"\[")):
+        return normalized_answer
 
     entities: set[str] = set()
     for citation in citations:
@@ -1111,11 +1277,20 @@ def _format_answer_markdown(answer: str, citations: list) -> str:
             if len(entity_text) > 3:
                 entities.add(entity_text)
 
-    formatted = answer
+    formatted = normalized_answer
     for entity in sorted(entities, key=len, reverse=True):
         if entity in formatted:
             formatted = formatted.replace(entity, f"**{entity}**", 1)
     return formatted
+
+
+def _normalize_answer_math(answer: str) -> str:
+    """Convert common LLM math output patterns into Markdown/KaTeX delimiters."""
+    normalized = answer.replace(r"\[", "$$").replace(r"\]", "$$")
+    normalized = normalized.replace(r"\(", "$").replace(r"\)", "$")
+    normalized = _PARENTHESIZED_LATEX_PATTERN.sub(lambda match: f"${match.group(1).strip()}$", normalized)
+    normalized = re.sub(r"\$\s*([^$\n]+?)\s*\$", lambda match: f"${match.group(1).strip()}$", normalized)
+    return normalized
 
 
 def _render_summary_card(insights: dict, citations: list, top_k: int = 10) -> str:
@@ -1150,12 +1325,87 @@ def create_gradio_app(
     graph_max_nodes: int = 40,
     graph_max_edges: int = 80,
 ):
+    settings = Settings()
+    provider_resolution = resolve_embedding_provider(
+        provider_name=settings.embedding_provider,
+        embedding_dim=settings.embedding_dim,
+        openai_api_key=settings.openai_api_key,
+        openai_embedding_model=settings.embedding_model,
+        openai_base_url=settings.openai_base_url,
+        openai_timeout_seconds=settings.openai_timeout_seconds,
+    )
+
+    query_router = None
+    if settings.adaptive_tool_routing_enabled:
+        query_router = QueryToolRouter(
+            min_confidence=settings.adaptive_tool_routing_min_confidence,
+        )
+
+    llm_generate = None
+    if settings.openai_enable_generation and settings.openai_api_key.strip():
+        from riskfolio_graphrag_agent.app.server import _make_openai_llm_generate
+
+        llm_generate = _make_openai_llm_generate(settings)
+
+    graph_builder = GraphBuilder(
+        neo4j_uri=settings.neo4j_uri,
+        neo4j_user=settings.neo4j_user,
+        neo4j_password=settings.neo4j_password,
+    )
+    retrievers_by_top_k: dict[int, HybridRetriever] = {}
+    workflows_by_top_k: dict[int, AgentWorkflow] = {}
+
+    def _get_workflow(top_k: int) -> AgentWorkflow:
+        normalized_top_k = max(1, int(top_k))
+        workflow = workflows_by_top_k.get(normalized_top_k)
+        if workflow is None:
+            retriever = retrievers_by_top_k.get(normalized_top_k)
+            if retriever is None:
+                retriever = HybridRetriever(
+                    neo4j_uri=settings.neo4j_uri,
+                    neo4j_user=settings.neo4j_user,
+                    neo4j_password=settings.neo4j_password,
+                    top_k=normalized_top_k,
+                    vector_store_backend=settings.vector_store_backend,
+                    chroma_persist_dir=settings.chroma_persist_dir,
+                    embedding_provider=provider_resolution.provider,
+                    retrieval_mode=settings.retrieval_mode,
+                )
+                retrievers_by_top_k[normalized_top_k] = retriever
+            workflow = AgentWorkflow(
+                retriever=retriever,
+                model_name=settings.openai_model,
+                llm_generate=llm_generate,
+                query_router=query_router,
+            )
+            workflows_by_top_k[normalized_top_k] = workflow
+        return workflow
+
+    def _run_query_with_graph_cached(
+        question: str,
+        top_k: int,
+    ) -> tuple[str, list[dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, Any]]:
+        normalized_question = question.strip()
+        if not normalized_question:
+            return "Please enter a question.", [], {"nodes": [], "edges": []}, {}
+
+        state = _get_workflow(top_k).run(normalized_question)
+        try:
+            graph = graph_builder.get_query_subgraph(normalized_question)
+        except Exception:
+            graph = {"nodes": [], "edges": []}
+
+        graph = _annotate_graph_semantics(graph)
+        answer = state.answer or "I could not find matching graph context for that question yet."
+        insights = _compute_insights(state, graph, settings, query_router)
+        return answer, state.citations, graph, insights
+
     def _handle_submit(
         question: str,
-        history: list[dict[str, str]] | None,
+        history: list[dict[str, Any]] | None,
     ):
         """Generator: first yield shows loading state, second yield shows results."""
-        top_k = 15
+        top_k = max(1, int(top_k_default))
         normalized = question.strip()
         if not normalized:
             return
@@ -1177,11 +1427,9 @@ def create_gradio_app(
         )
 
         # ── Run the full pipeline ─────────────────────────────────────────
-        answer, citations, graph, insights = run_query_with_graph(
+        answer, citations, graph, insights = _run_query_with_graph_cached(
             normalized,
             top_k=top_k,
-            graph_max_nodes=graph_max_nodes,
-            graph_max_edges=graph_max_edges,
         )
         formatted_answer = _format_answer_markdown(answer, citations)
         final_history = list(history or []) + [
@@ -1312,6 +1560,7 @@ def create_gradio_app(
             type="messages",
             show_label=False,
             bubble_full_width=False,
+            latex_delimiters=_LATEX_DELIMITERS,
             elem_id="chatbot-panel",
         )
         gr.HTML(
@@ -1348,15 +1597,16 @@ def create_gradio_app(
             with gr.Tab("Retrieval Strategy"):
                 gr.HTML(
                     "<p style='color:#64748B;font-size:12px;padding:4px 0 8px'>"
-                    "The system breaks your question into smaller parts and chooses the retrieval"
-                    " strategy most likely to surface useful evidence."
-                    " <em>Semantic</em> = concept similarity"
-                    " &nbsp;|&nbsp; <em>Exact match</em> = keyword or API lookup"
-                    " &nbsp;|&nbsp; <em>Relationship</em> = graph traversal"
-                    " &nbsp;|&nbsp; <em>Blended</em> = combined retrieval across sources."
+                    "The system breaks your question into smaller parts and chooses the retrieval path most likely "
+                    "to surface useful evidence. "
+                    "Each row of the table below shows one sub-question, the retrieval strategy selected for it, "
+                    "and a separate routing signal that explains how confidently that strategy was chosen. "
+                    "If adaptive routing is disabled, the configured default strategy "
+                    "is shown instead. If the query signals are mixed, the system can fall back to the broadest option."
                     "</p>"
                 )
                 routing_panel = gr.HTML(value=_EMPTY_ROUTING_HTML)
+                gr.HTML(_render_retrieval_strategy_intro_html())
 
             with gr.Tab("Evidence Support"):
                 gr.HTML(
