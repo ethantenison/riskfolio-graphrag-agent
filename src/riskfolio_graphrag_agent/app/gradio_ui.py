@@ -376,20 +376,20 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
 
     # Spread dense graphs more aggressively to reduce node/label collisions.
     if density > 4:
-        k_value = 3.0 / max(node_count**0.5, 1)
-        iterations = 550
+        k_value = 2.2 / max(node_count**0.5, 1)
+        iterations = 170
     elif density > 2:
-        k_value = 2.4 / max(node_count**0.5, 1)
-        iterations = 430
+        k_value = 1.9 / max(node_count**0.5, 1)
+        iterations = 130
     else:
-        k_value = 1.8 / max(node_count**0.5, 1)
-        iterations = 320
+        k_value = 1.5 / max(node_count**0.5, 1)
+        iterations = 90
     pos = nx.spring_layout(graph_nx, seed=7, k=k_value, iterations=iterations)
 
     # Simple deterministic collision-repulsion pass to enforce minimum spacing.
     node_ids = list(graph_nx.nodes())
     min_sep = 0.11 if node_count >= 30 else 0.085
-    for _ in range(12):
+    for _ in range(5):
         moved = False
         for i, a in enumerate(node_ids):
             xa, ya = pos[a]
@@ -1245,12 +1245,87 @@ def create_gradio_app(
     graph_max_nodes: int = 40,
     graph_max_edges: int = 80,
 ):
+    settings = Settings()
+    provider_resolution = resolve_embedding_provider(
+        provider_name=settings.embedding_provider,
+        embedding_dim=settings.embedding_dim,
+        openai_api_key=settings.openai_api_key,
+        openai_embedding_model=settings.embedding_model,
+        openai_base_url=settings.openai_base_url,
+        openai_timeout_seconds=settings.openai_timeout_seconds,
+    )
+
+    query_router = None
+    if settings.adaptive_tool_routing_enabled:
+        query_router = QueryToolRouter(
+            min_confidence=settings.adaptive_tool_routing_min_confidence,
+        )
+
+    llm_generate = None
+    if settings.openai_enable_generation and settings.openai_api_key.strip():
+        from riskfolio_graphrag_agent.app.server import _make_openai_llm_generate
+
+        llm_generate = _make_openai_llm_generate(settings)
+
+    graph_builder = GraphBuilder(
+        neo4j_uri=settings.neo4j_uri,
+        neo4j_user=settings.neo4j_user,
+        neo4j_password=settings.neo4j_password,
+    )
+    retrievers_by_top_k: dict[int, HybridRetriever] = {}
+    workflows_by_top_k: dict[int, AgentWorkflow] = {}
+
+    def _get_workflow(top_k: int) -> AgentWorkflow:
+        normalized_top_k = max(1, int(top_k))
+        workflow = workflows_by_top_k.get(normalized_top_k)
+        if workflow is None:
+            retriever = retrievers_by_top_k.get(normalized_top_k)
+            if retriever is None:
+                retriever = HybridRetriever(
+                    neo4j_uri=settings.neo4j_uri,
+                    neo4j_user=settings.neo4j_user,
+                    neo4j_password=settings.neo4j_password,
+                    top_k=normalized_top_k,
+                    vector_store_backend=settings.vector_store_backend,
+                    chroma_persist_dir=settings.chroma_persist_dir,
+                    embedding_provider=provider_resolution.provider,
+                    retrieval_mode=settings.retrieval_mode,
+                )
+                retrievers_by_top_k[normalized_top_k] = retriever
+            workflow = AgentWorkflow(
+                retriever=retriever,
+                model_name=settings.openai_model,
+                llm_generate=llm_generate,
+                query_router=query_router,
+            )
+            workflows_by_top_k[normalized_top_k] = workflow
+        return workflow
+
+    def _run_query_with_graph_cached(
+        question: str,
+        top_k: int,
+    ) -> tuple[str, list[dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, Any]]:
+        normalized_question = question.strip()
+        if not normalized_question:
+            return "Please enter a question.", [], {"nodes": [], "edges": []}, {}
+
+        state = _get_workflow(top_k).run(normalized_question)
+        try:
+            graph = graph_builder.get_query_subgraph(normalized_question)
+        except Exception:
+            graph = {"nodes": [], "edges": []}
+
+        graph = _annotate_graph_semantics(graph)
+        answer = state.answer or "I could not find matching graph context for that question yet."
+        insights = _compute_insights(state, graph, settings, query_router)
+        return answer, state.citations, graph, insights
+
     def _handle_submit(
         question: str,
         history: list[dict[str, Any]] | None,
     ):
         """Generator: first yield shows loading state, second yield shows results."""
-        top_k = 15
+        top_k = max(1, int(top_k_default))
         normalized = question.strip()
         if not normalized:
             return
@@ -1272,11 +1347,9 @@ def create_gradio_app(
         )
 
         # ── Run the full pipeline ─────────────────────────────────────────
-        answer, citations, graph, insights = run_query_with_graph(
+        answer, citations, graph, insights = _run_query_with_graph_cached(
             normalized,
             top_k=top_k,
-            graph_max_nodes=graph_max_nodes,
-            graph_max_edges=graph_max_edges,
         )
         formatted_answer = _format_answer_markdown(answer, citations)
         final_history = list(history or []) + [

@@ -8,6 +8,7 @@ from riskfolio_graphrag_agent.agent.workflow import (
     _plan,
     _reason,
     _retrieve,
+    _should_call_llm,
     _verify,
     is_langgraph_enabled,
 )
@@ -51,6 +52,7 @@ def test_plan_populates_sub_questions():
     state = AgentState(question="Explain Sharpe ratio.")
     state = _plan(state)
     assert len(state.sub_questions) >= 1
+    assert len(state.sub_questions) <= 2
 
 
 def test_retrieve_stub():
@@ -69,11 +71,14 @@ def test_reason_stub():
 
 
 def test_reason_uses_llm_generate_when_available():
-    state = AgentState(question="What is HRP?", sub_questions=["What is HRP?"])
+    state = AgentState(
+        question="How does HRP compare to Risk Parity?",
+        sub_questions=["How does HRP compare to Risk Parity?"],
+    )
     state = _retrieve(state, retriever=_FakeRetriever())
 
     def _fake_llm_generate(*, question: str, context: list[RetrievalResult], model_name: str) -> str:
-        assert question == "What is HRP?"
+        assert question == "How does HRP compare to Risk Parity?"
         assert context
         assert model_name == "gpt-4o-mini"
         return "HRP uses hierarchical clustering and risk-budgeting constraints."
@@ -81,6 +86,31 @@ def test_reason_uses_llm_generate_when_available():
     state = _reason(state, llm_generate=_fake_llm_generate, model_name="gpt-4o-mini")
     assert state.answer.startswith("HRP uses hierarchical clustering")
     assert state.citations
+
+
+def test_reason_skips_llm_for_simple_lookup_questions():
+    state = AgentState(question="What is HRP?", sub_questions=["What is HRP?"])
+    state = _retrieve(state, retriever=_FakeRetriever())
+
+    def _fail_if_called(*, question: str, context: list[RetrievalResult], model_name: str) -> str:
+        raise AssertionError("llm_generate should not be called for simple lookup questions")
+
+    state = _reason(state, llm_generate=_fail_if_called, model_name="gpt-4o-mini")
+
+    assert "retrieved evidence indicates key concepts" in state.answer
+    assert state.citations
+
+
+def test_should_call_llm_for_synthesis_question():
+    context = _FakeRetriever().retrieve("How does HRP compare to CVaR?")
+
+    assert _should_call_llm("How does HRP compare to CVaR?", context) is True
+
+
+def test_should_not_call_llm_for_simple_definition_question():
+    context = _FakeRetriever().retrieve("What is HRP?")
+
+    assert _should_call_llm("What is HRP?", context) is False
 
 
 def test_verify_stub():
