@@ -10,16 +10,21 @@ projects call `docs/copilot_architecture.md`.
 
 ```mermaid
 flowchart LR
-  A[CLI / FastAPI / Gradio] --> B[Agent Workflow]
-  B --> C[Retriever Orchestrator]
-  C --> D[Dense Vector Search]
-  C --> E[Sparse Cypher Search]
-  C --> F[Graph Expansion]
+  GR[Gradio UI] -- "1 · run question" --> WF[Agent Workflow]
+  WF --> HR[HybridRetriever]
+  HR --> D[Dense Vector Search]
+  HR --> E[Sparse Cypher Search]
+  HR --> F[Graph Expansion]
   D --> G[Embedding Provider]
+  D --> VS[(Vector Store / Chroma)]
   E --> H[(Neo4j)]
   F --> H
+  WF -- "answer + citations" --> GR
+  GR -- "2 · get_query_subgraph" --> GB[GraphBuilder]
+  GB --> H
+  GB -- "graph viz" --> GR
   I[Ingestion] --> J[Chunk Documents]
-  J --> D
+  J --> VS
   J --> K[Graph Builder]
   K --> H
   H --> L[RDF/OWL Export]
