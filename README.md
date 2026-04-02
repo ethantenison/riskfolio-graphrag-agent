@@ -69,36 +69,53 @@ This repository is intentionally structured as evidence for senior roles involvi
 ## Architecture
 
 ```
-┌─────────────┐    ┌────────────────┐    ┌─────────────────┐
-│  CLI / API  │───▶│  Agent (plan,  │───▶│  LLM (OpenAI /  │
-│  (Typer /   │    │  retrieve,     │    │  compatible)    │
-│  FastAPI)   │    │  reason,       │    └─────────────────┘
-└─────────────┘    │  verify)       │
-                   └───────┬────────┘
-                           │
-              ┌────────────┴────────────┐
-              ▼                         ▼
-   ┌─────────────────┐       ┌──────────────────┐
-   │  Vector Store   │       │  Neo4j Knowledge │
-   │  (Chroma /      │       │  Graph           │
-   │  Qdrant)        │       │  (entities,      │
-   └────────┬────────┘       │   relations)     │
-            │                └────────┬─────────┘
-            └─────────────────────────┘
-                     ▲
-                     │ embed + upsert
-              ┌──────┴──────┐
-              │  Ingestion  │
-              │  (chunker,  │
-              │   extractor)│
-              └──────┬──────┘
-                     │
-              ┌──────┴──────┐
-              │ Riskfolio-  │
-              │ Lib source  │
-              │ + docs      │
-              └─────────────┘
+┌──────────────────┐   ┌────────────────┐   ┌─────────────────┐
+│  Gradio UI /     │──▶│  Query Router  │──▶│  Agent (plan,   │
+│  CLI / FastAPI   │   │  (dense/sparse │   │  retrieve,      │
+└──────────────────┘   │   /graph/      │   │  reason,        │
+                       │   hybrid)      │   │  verify/retry)  │
+                       └────────────────┘   └────────┬────────┘
+                                                     │
+                                    ┌────────────────┼────────────────┐
+                                    ▼                ▼                ▼
+                         ┌──────────────┐  ┌──────────────┐  ┌────────────┐
+                         │  Dense:      │  │  Sparse:     │  │  Graph:    │
+                         │  Embedding   │  │  Neo4j       │  │  Neo4j     │
+                         │  Provider +  │  │  Cypher      │  │  1-hop     │
+                         │  Vector Store│  │  lexical     │  │  expansion │
+                         └──────┬───────┘  └──────┬───────┘  └─────┬──────┘
+                                │                  │                │
+                                └──────────────────┴────────────────┘
+                                                   │
+                                    ┌──────────────▼──────────────┐
+                                    │  LLM (OpenAI / compatible)  │
+                                    │  reason step → answer +     │
+                                    │  citations                  │
+                                    └─────────────────────────────┘
+                                    ▲
+                                    │ embed + upsert
+                             ┌──────┴──────┐
+                             │  Ingestion  │
+                             │  (chunker,  │
+                             │   extractor)│
+                             └──────┬──────┘
+                                    │
+                             ┌──────┴──────┐
+                             │ Riskfolio-  │
+                             │ Lib source  │
+                             │ + docs      │
+                             └─────────────┘
 ```
+
+The **Query Router** (`retrieval/router.py`) inspects each question with
+rule-based intent detection and lightweight embedding similarity to pick the
+best retrieval mode before the agent workflow begins.  The **Agent Workflow**
+(`agent/workflow.py`) is a four-node LangGraph state machine: *plan* decomposes
+the question into sub-questions; *retrieve* calls `HybridRetriever`; *reason*
+generates the answer via the LLM; *verify* checks grounding and retries the
+reason step up to twice if needed.  The Gradio UI additionally issues a
+`GraphBuilder.get_query_subgraph()` call after the workflow to populate the
+interactive graph visualisation panel.
 
 
 ### Observability & Tracing
@@ -159,10 +176,12 @@ This demonstrates advanced governance, explainability, and observability—match
 | `config/` | Pydantic-Settings based configuration from env/`.env` |
 | `ingestion/` | Walk source dirs, chunk files, produce `Document` objects |
 | `graph/` | Extract entities from chunks, upsert nodes/edges to Neo4j |
-| `retrieval/` | Hybrid vector + graph search returning cited `RetrievalResult` |
-| `agent/` | LangGraph workflow: plan → retrieve → reason → verify |
+| `retrieval/retriever.py` | Hybrid vector + graph search returning cited `RetrievalResult` |
+| `retrieval/router.py` | Adaptive query routing: selects `dense`, `sparse`, `graph`, or `hybrid_rerank` per question |
+| `agent/` | LangGraph workflow: plan → retrieve → reason → verify (with self-correction retry) |
 | `eval/` | Evaluation harness (context recall, faithfulness, relevance) |
-| `app/` | FastAPI server exposing `/health`, `/query`, `/graph/stats` |
+| `app/server.py` | FastAPI endpoints (`/health`, `/query`, `/graph/stats`) with OTel tracing |
+| `app/gradio_ui.py` | Gradio chat UI, interactive graph visualisation panel, and insight displays |
 
 ---
 

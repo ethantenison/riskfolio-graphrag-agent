@@ -8,23 +8,36 @@ projects call `docs/copilot_architecture.md`.
 
 ## System Diagram
 
+The diagram below traces the complete path from a user question in the Gradio UI
+through retrieval, reasoning, verification, and graph visualisation.  The lower
+half shows the offline ingestion/build pipeline and quality layers that populate
+the stores queried at runtime.
+
 ```mermaid
 flowchart LR
-  GR[Gradio UI] -- "1 · run question" --> WF[Agent Workflow]
-  WF --> HR[HybridRetriever]
-  HR --> D[Dense Vector Search]
-  HR --> E[Sparse Cypher Search]
-  HR --> F[Graph Expansion]
+  A[Gradio UI] --> QR[Query Router]
+  A2[CLI / FastAPI] --> QR
+  QR --> B[Agent Workflow]
+  B --> PL[1 · plan]
+  PL --> RET[2 · retrieve]
+  RET --> RSN[3 · reason]
+  RSN --> VER[4 · verify]
+  VER -- retry --> RSN
+  VER -- done --> A
+  RET --> C[HybridRetriever]
+  C --> D[Dense Vector Search]
+  C --> E[Sparse Cypher Search]
+  C --> F[Graph Expansion]
   D --> G[Embedding Provider]
   D --> VS[(Vector Store / Chroma)]
   E --> H[(Neo4j)]
   F --> H
-  WF -- "answer + citations" --> GR
-  GR -- "2 · get_query_subgraph" --> GB[GraphBuilder]
-  GB --> H
-  GB -- "graph viz" --> GR
+  RSN --> LLM[OpenAI / LLM]
+  A -- graph viz --> GV[GraphBuilder Subgraph]
+  GV --> H
   I[Ingestion] --> J[Chunk Documents]
-  J --> VS
+  J --> VS[Vector Store]
+  VS --> D
   J --> K[Graph Builder]
   K --> H
   H --> L[RDF/OWL Export]
@@ -32,6 +45,36 @@ flowchart LR
   N[Entity Resolution] --> O[ER Audit + Metrics]
   P[Evaluator + Regression Gate] --> Q[Trend + Observability Reports]
 ```
+
+**Reading the Q&A path (top half):**
+
+1. The Gradio UI (or CLI/FastAPI) passes the question to the **Query Router**
+   (`retrieval/router.py`), which combines rule-based intent detection with
+   lightweight embedding similarity to select a retrieval mode (`dense`,
+   `sparse`, `graph`, or `hybrid_rerank`).
+2. The **Agent Workflow** (`agent/workflow.py`) is a LangGraph state machine
+   with four sequential nodes:
+   - **plan** – decomposes the question into up to two retrievable sub-questions.
+   - **retrieve** – calls `HybridRetriever` for each sub-question using the
+     mode chosen by the router, then deduplicates and ranks results.
+   - **reason** – generates an answer via the OpenAI-compatible LLM if the
+     question warrants synthesis; falls back to a deterministic template
+     otherwise.
+   - **verify** – checks token overlap between the answer and retrieved
+     evidence.  If grounding is insufficient the workflow retries the reason
+     step (up to two times) before returning the final `AgentState`.
+3. After the workflow returns, the Gradio UI issues a separate
+   `GraphBuilder.get_query_subgraph()` call to Neo4j to populate the
+   interactive graph visualisation panel.
+
+**Retrieval modes (middle):**
+
+| Mode | Backend | When selected |
+|---|---|---|
+| `dense` | `EmbeddingProvider` → `Vector Store (Chroma)` | Conceptual / definition questions |
+| `sparse` | Neo4j Cypher lexical match | API / code / keyword look-ups (default) |
+| `graph` | Neo4j entity-seeded + 1-hop expansion | Relationship / dependency questions |
+| `hybrid_rerank` | Dense + sparse merged, graph-boosted | Multi-hop / comparative questions |
 
 ## How To Read This Repository
 
