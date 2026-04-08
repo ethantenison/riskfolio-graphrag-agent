@@ -1,0 +1,4 @@
+- source: dell_graphrag_proposal_revealjs.qmd
+  quarto-pub:
+    - id: 70bfaa37-1262-4030-ba14-8dcf1c3200e8
+      url: https://ethan-tenison.quarto.pub/graphrag-for-intelligent-service-resolution

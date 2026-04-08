@@ -1,0 +1,213 @@
+---
+title: "GraphRAG for Intelligent Service Resolution"
+subtitle: "Proposed Architecture for Dell Support AI"
+author: "Ethan Tenison"
+format:
+  revealjs:
+    theme: simple
+    slide-number: true
+    incremental: false
+    smaller: true
+    scrollable: true
+    center-title-slide: true
+    transition: fade
+    controls: true
+    progress: true
+    preview-links: auto
+    chalkboard: false
+execute:
+  echo: false
+---
+
+## Problem and Goal
+
+### The challenge
+
+Dell support must reason across:
+
+- Tickets, emails, and transcripts
+- Manuals, KBs, and repair history
+- Device telemetry and configuration
+- Fast-changing products and dependencies
+
+### The goal
+
+Build a trustworthy AI system that can:
+
+- Surface likely root causes
+- Recommend validated next steps
+- Scale expert support
+- Enable self-service over time
+
+::: {.notes}
+Position the problem as reasoning over heterogeneous evidence, not just search.
+:::
+
+## Why GraphRAG
+
+### Support problems are relational
+
+**Symptoms → Causes → Components → Fixes**
+
+Pure text retrieval often misses:
+
+- Cross-component links
+- Version constraints
+- Repeat failure patterns
+- Proven fixes
+
+### Proposed retrieval approach
+
+- **Vector** for semantic match
+- **Keyword** for exact terms
+- **Graph traversal** for dependencies
+- **Telemetry filters** for device context
+
+### Result
+
+More precise, explainable recommendations.
+
+## Architecture Overview
+
+```{mermaid}
+%%| fig-width: 8
+%%{init: {'themeVariables': {'fontSize': '11px'}, 'flowchart': {'nodeSpacing': 16, 'rankSpacing': 24, 'padding': 8}}}%%
+flowchart TB
+  classDef layer fill:#F7FAFC,stroke:#4C78A8,color:#16324A,stroke-width:1.5px;
+  classDef process fill:#FFF4DB,stroke:#B7791F,color:#4A3410,stroke-width:1.5px;
+  classDef govern fill:#FDECEF,stroke:#C65B7C,color:#5A1F30,stroke-width:1.5px;
+  classDef store fill:#E8F7EE,stroke:#3A7D44,color:#17351F,stroke-width:1.5px;
+  classDef source fill:#EAF4FF,stroke:#4C78A8,color:#16324A,stroke-width:1.5px;
+
+  U["<div style='text-align:center;'><b>User / Tooling Layer</b><br/>(console, copilots, APIs)</div>"]:::layer
+  O["<div style='text-align:center;'><b>Agent Layer</b><br/>(parse, plan, retrieve, reason, verify)</div>"]:::process
+
+  subgraph MIDDLE [" "]
+    direction LR
+    R["<div style='text-align:center;'><b>Hybrid Retrieval</b><br/>(dense, sparse, graph, rerank)</div>"]:::process
+    S["<div style='text-align:center;'><b>Safety / Governance</b><br/>(policy, audit, HITL)</div>"]:::govern
+  end
+
+  subgraph STORES [" "]
+    direction LR
+    V["<div style='text-align:center;'><b>Vector DB</b><br/>(embeddings)</div>"]:::store
+    K["<div style='text-align:center;'><b>Knowledge Graph</b><br/>(Neo4j)</div>"]:::store
+    X["<div style='text-align:center;'><b>Operational Indexes</b><br/>(KB, cases, telemetry)</div>"]:::store
+  end
+
+  I["<div style='text-align:center;'><b>Ingestion Layer</b><br/>(extract, link, QA, enrich)</div>"]:::process
+  D["<div style='text-align:center;'><b>Enterprise Data</b><br/>(tickets, manuals, telemetry, outcomes)</div>"]:::source
+
+  style MIDDLE fill:transparent,stroke:transparent
+  style STORES fill:transparent,stroke:transparent
+
+  U --> O
+  O --> R
+  O --> S
+  R --> V
+  R --> K
+  R --> X
+  V --> I
+  K --> I
+  X --> I
+  D --> I
+```
+
+## Agentic Resolution Workflow
+
+### Diagnostic loop
+
+1. Interpret the issue description
+2. Add device context
+3. Form hypotheses
+4. Retrieve evidence
+5. Recommend next steps
+6. Check confidence and safety
+7. Escalate if needed
+
+### Why use an agent pattern
+
+- Handles multi-step diagnosis
+- Makes retrieval explicit
+- Improves traceability
+- Supports safer actions
+
+## Safety, Governance, and Evaluation
+
+### Safety and governance
+
+- Policy-constrained actions
+- Human review for high-risk cases
+- Auditability and traceability
+- Tool and query guardrails
+
+### Evaluation priorities
+
+- Faithfulness
+- Multi-hop accuracy
+- Retrieval quality
+- Latency and cost
+- Drift over time
+
+### Design principle
+
+**Reliable support AI emerges from architecture, governance, and evaluation — not model choice alone.**
+
+## Business Value and Roadmap
+
+### Near-term value
+
+- Faster resolution
+- More consistent guidance
+- Better knowledge reuse
+- Lower support burden
+
+### Longer-term roadmap
+
+- Customer self-service
+- Learning from outcomes
+- Smarter device diagnostics
+- Broader workflow support
+
+**Combine AI understanding with structured knowledge for reliable, explainable support.**
+
+## First 90 Days — Deliver a Credible Pilot
+
+### Deliver a high-value pilot, not a broad platform
+
+**1. Start with one high-frequency incident category**
+
+- Choose a well-scoped support issue with measurable impact  
+  (e.g., startup failures, performance issues, connectivity)
+- Design the ontology, retrieval, and agent workflow to extend across adjacent categories
+
+**2. Stand up ingestion and normalization**
+
+- Curated KB, historical cases, telemetry summaries
+- Entity linking and canonicalization
+
+**3. Build the first governed knowledge graph**
+
+- Device → component → symptom → cause → action
+
+## First 90 Days (continued)
+
+**4. Implement hybrid retrieval + constrained agent**
+
+- Dense, sparse, graph, metadata filters
+- Diagnostic loop with safety checks
+
+**5. Establish evaluation and observability**
+
+- Retrieval quality, faithfulness, latency
+- Real usage telemetry from day one
+
+**6. Pilot with one support team**
+
+- Capture acceptance/rejection signals
+- Iterate on ontology and ranking
+
+### Outcome
+
+Demonstrate measurable resolution improvement  
+while minimizing organizational and technical risk.

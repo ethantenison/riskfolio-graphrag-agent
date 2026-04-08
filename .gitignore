@@ -215,3 +215,8 @@ chroma/
 *.chroma
 *.chroma-wal
 .gradio/certificate.pem
+
+
+#MISC
+scripts/riskfolio_graphrag_system_slides/
+scripts/dell_graphrag_proposal_revealjs_files/
