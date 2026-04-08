@@ -11,12 +11,12 @@ retrieval layer, and optional runtime metadata. Outputs are ``EvalReport`` and
 benchmarking, and trend tracking.
 
 Key implementation decisions:
-- default metrics are heuristic but structured to resemble RAG-style evaluation
-    dimensions so the artifact remains easy to interpret;
+- default metrics are heuristic overlap and support proxies intended for
+  regression tracking and relative comparisons;
 - answer synthesis is intentionally context-grounded because faithfulness is
-    measured against retrieved evidence rather than an LLM judge;
+  measured against retrieved evidence rather than an LLM judge;
 - evaluation tolerates retriever failures and records degraded results instead
-    of aborting the full report.
+  of aborting the full report.
 
 This module does not own CI pass-fail policy, ingestion, graph construction, or
 user-facing API handling.
@@ -127,7 +127,7 @@ class EvalReport:
     estimated_cost_usd: float = 0.0
     retrieval_mode: str = "hybrid_rerank"
     embedding_provider: str = "hash"
-    metric_profile: str = "ragas-style"
+    metric_profile: str = "heuristic-overlap"
     per_sample: list[dict[str, str | float | int | list[str]]] = field(default_factory=list)
 
 
@@ -173,7 +173,7 @@ class Evaluator:
         self,
         samples: list[EvalSample],
         retriever: HybridRetriever | None = None,
-        metric_profile: Literal["ragas-style", "heuristic"] = "ragas-style",
+        metric_profile: Literal["heuristic-overlap", "ragas-style", "heuristic"] = "heuristic-overlap",
         runtime_config: dict[str, str] | None = None,
         er_metrics: dict[str, float] | None = None,
     ) -> None:
@@ -183,13 +183,19 @@ class Evaluator:
             samples: Evaluation samples to score.
             retriever: Optional retriever used to gather evidence for each sample.
             metric_profile: Metric family used for context and answer scoring.
+                Legacy aliases ``ragas-style`` and ``heuristic`` are accepted
+                for backward compatibility and normalized to
+                ``heuristic-overlap``.
             runtime_config: Run metadata such as retrieval mode or embedding backend.
             er_metrics: Optional entity-resolution summary metrics to include in
                 the final report.
         """
         self._samples = samples
         self._retriever = retriever
-        self._metric_profile = metric_profile
+        normalized_metric_profile = metric_profile.strip().lower()
+        if normalized_metric_profile in {"ragas-style", "heuristic"}:
+            normalized_metric_profile = "heuristic-overlap"
+        self._metric_profile = normalized_metric_profile
         self._runtime_config = runtime_config or {}
         self._er_metrics = er_metrics or {}
 
@@ -223,23 +229,17 @@ class Evaluator:
             sample.generated_answer = _synthesize_answer(sample.question, results)
 
             expected_terms = sample.expected_context_terms or _fallback_expected_terms(sample)
-            if self._metric_profile == "heuristic":
-                recall = _context_recall(expected_terms, sample.retrieved_contexts)
-                precision = _context_precision(expected_terms, sample.retrieved_contexts)
-                faithfulness = _answer_faithfulness(sample.generated_answer, sample.retrieved_contexts)
-                relevance = _answer_relevance(sample.question, sample.generated_answer)
-            else:
-                recall = _ragas_style_context_recall(expected_terms, sample.retrieved_contexts)
-                precision = _ragas_style_context_precision(
-                    sample.question,
-                    expected_terms,
-                    sample.retrieved_contexts,
-                )
-                faithfulness = _ragas_style_faithfulness(
-                    sample.generated_answer,
-                    sample.retrieved_contexts,
-                )
-                relevance = _ragas_style_answer_relevance(sample.question, sample.generated_answer)
+            recall = _ragas_style_context_recall(expected_terms, sample.retrieved_contexts)
+            precision = _ragas_style_context_precision(
+                sample.question,
+                expected_terms,
+                sample.retrieved_contexts,
+            )
+            faithfulness = _ragas_style_faithfulness(
+                sample.generated_answer,
+                sample.retrieved_contexts,
+            )
+            relevance = _ragas_style_answer_relevance(sample.question, sample.generated_answer)
 
             grounding = _grounding_score(sample.generated_answer, sample.retrieved_contexts)
             multi_hop = _multi_hop_accuracy(sample.question, results)
@@ -409,62 +409,239 @@ class Evaluator:
 
 DEFAULT_EVAL_SAMPLES: list[EvalSample] = [
     EvalSample(
-        question="What is Hierarchical Risk Parity (HRP)?",
-        reference_answer="HRP is a hierarchical portfolio allocation method based on clustering and risk budgeting.",
-        expected_context_terms=["hrp", "hierarchical risk parity", "clustering", "risk parity"],
-        domain="portfolio-construction",
-        difficulty="easy",
-        retrieval_type="hybrid",
-        tags=["hrp", "clustering", "risk-measure"],
+        question='What is Hierarchical Risk Parity (HRP)?',
+        reference_answer='HRP is a hierarchical portfolio allocation method based on clustering and risk budgeting.',
+        expected_context_terms=['hrp', 'hierarchical risk parity', 'clustering', 'risk parity'],
+        domain='portfolio-construction',
+        difficulty='easy',
+        retrieval_type='hybrid',
+        tags=['definition', 'hrp', 'graph-helpful'],
     ),
     EvalSample(
-        question="How does Riskfolio compute CVaR-based optimization?",
-        reference_answer=(
-            "Riskfolio supports CVaR as a risk measure and can optimize portfolios under CVaR objectives/constraints."
-        ),
-        expected_context_terms=["cvar", "value at risk", "risk measure", "optimization"],
-        domain="risk-measures",
-        difficulty="medium",
-        retrieval_type="hybrid",
-        tags=["cvar", "optimization", "constraints"],
+        question='How does Riskfolio compute CVaR-based optimization?',
+        reference_answer='Riskfolio supports CVaR as a risk measure and can optimize portfolios under CVaR objectives or constraints.',
+        expected_context_terms=['cvar', 'value at risk', 'risk measure', 'optimization'],
+        domain='risk-measures',
+        difficulty='medium',
+        retrieval_type='hybrid',
+        tags=['optimization', 'cvar', 'graph-maybe'],
     ),
     EvalSample(
-        question="Which estimators are used for covariance in Riskfolio?",
-        reference_answer="Riskfolio documents multiple estimators, including historical and shrinkage-style estimators.",
-        expected_context_terms=["historical", "ledoit", "shrinkage", "covariance"],
-        domain="estimation",
-        difficulty="medium",
-        retrieval_type="dense",
-        tags=["covariance", "estimators", "shrinkage"],
+        question='Which estimators are used for covariance in Riskfolio?',
+        reference_answer='Riskfolio documents multiple covariance estimators including historical and shrinkage-based approaches.',
+        expected_context_terms=['historical', 'ledoit', 'shrinkage', 'covariance'],
+        domain='estimation',
+        difficulty='medium',
+        retrieval_type='dense',
+        tags=['estimators', 'covariance', 'shrinkage'],
     ),
     EvalSample(
-        question="What constraints can be applied in Riskfolio optimization?",
-        reference_answer=(
-            "Riskfolio supports multiple portfolio constraints such as budget, leverage, and risk-related constraints."
-        ),
-        expected_context_terms=["constraint", "budget", "leverage", "risk contribution"],
-        domain="optimization",
-        difficulty="medium",
-        retrieval_type="graph",
-        tags=["constraints", "budget", "leverage"],
+        question='What constraints can be applied in Riskfolio optimization?',
+        reference_answer='Riskfolio supports portfolio constraints such as budget, leverage, and risk-related constraints.',
+        expected_context_terms=['constraint', 'budget', 'leverage', 'risk contribution'],
+        domain='optimization',
+        difficulty='medium',
+        retrieval_type='graph',
+        tags=['constraints', 'optimization', 'graph-helpful'],
     ),
     EvalSample(
-        question="How do examples demonstrate portfolio reports and plots?",
-        reference_answer="Examples and docs show plotting/reporting workflows for frontier, allocations, and risk contributions.",
-        expected_context_terms=["examples", "report", "plot", "efficient frontier"],
-        domain="reporting",
-        difficulty="easy",
-        retrieval_type="sparse",
-        tags=["plots", "reports", "examples"],
+        question='How do examples demonstrate portfolio reports and plots?',
+        reference_answer='Examples and docs show plotting and reporting workflows for frontiers, allocations, and risk contributions.',
+        expected_context_terms=['examples', 'report', 'plot', 'efficient frontier'],
+        domain='reporting',
+        difficulty='easy',
+        retrieval_type='sparse',
+        tags=['examples', 'plots', 'lexical'],
+    ),
+    EvalSample(
+        question='What does Riskfolio use to represent portfolio constraints?',
+        reference_answer='Riskfolio represents constraints through portfolio optimization APIs and documented constraint parameters.',
+        expected_context_terms=['constraints', 'portfolio', 'parameters', 'optimization'],
+        domain='optimization',
+        difficulty='easy',
+        retrieval_type='sparse',
+        tags=['api-lookup', 'constraints'],
+    ),
+    EvalSample(
+        question='How is mean return estimation described in the documentation?',
+        reference_answer='The documentation describes mean return estimation as part of portfolio input estimation and optimization setup.',
+        expected_context_terms=['mean', 'return', 'estimation', 'optimization'],
+        domain='estimation',
+        difficulty='easy',
+        retrieval_type='dense',
+        tags=['definition', 'estimation'],
+    ),
+    EvalSample(
+        question='Which risk measures are mentioned alongside CVaR?',
+        reference_answer='Riskfolio documentation mentions multiple risk measures alongside CVaR, including VaR and related downside measures.',
+        expected_context_terms=['cvar', 'var', 'risk measure', 'downside'],
+        domain='risk-measures',
+        difficulty='medium',
+        retrieval_type='graph',
+        tags=['comparison', 'risk-measures', 'graph-helpful'],
+    ),
+    EvalSample(
+        question='How do examples connect allocation outputs to reporting visuals?',
+        reference_answer='Examples connect portfolio allocation outputs to plotting and reporting utilities for visual inspection.',
+        expected_context_terms=['allocation', 'plot', 'examples', 'optimization'],
+        domain='reporting',
+        difficulty='medium',
+        retrieval_type='graph',
+        tags=['multi-hop', 'examples', 'graph-helpful'],
+    ),
+    EvalSample(
+        question='What does the documentation say about leverage constraints?',
+        reference_answer='The documentation describes leverage as one of the supported optimization constraints.',
+        expected_context_terms=['leverage', 'constraint', 'optimization', 'budget'],
+        domain='optimization',
+        difficulty='easy',
+        retrieval_type='sparse',
+        tags=['constraint', 'lookup'],
+    ),
+    EvalSample(
+        question='Which sections mention covariance shrinkage?',
+        reference_answer='Covariance shrinkage is discussed in estimator-related documentation sections.',
+        expected_context_terms=['covariance', 'shrinkage', 'estimator', 'ledoit'],
+        domain='estimation',
+        difficulty='medium',
+        retrieval_type='dense',
+        tags=['section-lookup', 'estimators'],
+    ),
+    EvalSample(
+        question='How are efficient frontier plots presented in examples?',
+        reference_answer='Examples present efficient frontier plots as visual outputs tied to portfolio optimization workflows.',
+        expected_context_terms=['efficient frontier', 'plot', 'examples', 'optimization'],
+        domain='reporting',
+        difficulty='easy',
+        retrieval_type='sparse',
+        tags=['examples', 'plots'],
+    ),
+    EvalSample(
+        question='What concepts are linked to HRP in the graph-oriented retrieval path?',
+        reference_answer='The graph-oriented retrieval path links HRP to clustering, allocation, and related portfolio construction concepts.',
+        expected_context_terms=['hrp', 'clustering', 'allocation', 'portfolio'],
+        domain='portfolio-construction',
+        difficulty='hard',
+        retrieval_type='graph',
+        tags=['graph-only', 'multi-hop', 'graph-helpful'],
+    ),
+    EvalSample(
+        question='How does Riskfolio describe downside risk in relation to CVaR?',
+        reference_answer='Riskfolio describes CVaR as a downside-oriented risk measure used in optimization workflows.',
+        expected_context_terms=['downside', 'cvar', 'risk', 'optimization'],
+        domain='risk-measures',
+        difficulty='medium',
+        retrieval_type='hybrid',
+        tags=['risk-measures', 'definition'],
+    ),
+    EvalSample(
+        question='Which examples mention risk contribution charts?',
+        reference_answer='Examples mention risk contribution charts as part of portfolio analysis and reporting outputs.',
+        expected_context_terms=['risk contribution', 'chart', 'plot', 'examples'],
+        domain='reporting',
+        difficulty='medium',
+        retrieval_type='sparse',
+        tags=['examples', 'charts'],
+    ),
+    EvalSample(
+        question='What input parameters are associated with optimization objectives?',
+        reference_answer='Optimization objectives are associated with documented API parameters controlling risk, return, and constraints.',
+        expected_context_terms=['parameters', 'objective', 'optimization', 'risk'],
+        domain='optimization',
+        difficulty='medium',
+        retrieval_type='dense',
+        tags=['api', 'parameters'],
+    ),
+    EvalSample(
+        question='How is clustering described across HRP-related material?',
+        reference_answer='Clustering is described as a core component of HRP-style portfolio construction.',
+        expected_context_terms=['clustering', 'hrp', 'hierarchical', 'portfolio'],
+        domain='portfolio-construction',
+        difficulty='medium',
+        retrieval_type='graph',
+        tags=['hrp', 'clustering', 'graph-helpful'],
+    ),
+    EvalSample(
+        question='Which estimator names appear near covariance documentation?',
+        reference_answer='Covariance documentation includes estimator names such as historical and shrinkage-based approaches.',
+        expected_context_terms=['estimator', 'historical', 'shrinkage', 'covariance'],
+        domain='estimation',
+        difficulty='easy',
+        retrieval_type='sparse',
+        tags=['estimators', 'lookup'],
+    ),
+    EvalSample(
+        question='How are portfolio reports linked to optimization results?',
+        reference_answer='Portfolio reports are linked to optimization results through examples and reporting utilities that visualize allocations and risk.',
+        expected_context_terms=['report', 'optimization', 'allocation', 'risk'],
+        domain='reporting',
+        difficulty='hard',
+        retrieval_type='graph',
+        tags=['multi-hop', 'reporting', 'graph-helpful'],
+    ),
+    EvalSample(
+        question='What does the documentation say about budget constraints?',
+        reference_answer='Budget constraints are documented as a supported class of optimization constraints.',
+        expected_context_terms=['budget', 'constraint', 'optimization', 'portfolio'],
+        domain='optimization',
+        difficulty='easy',
+        retrieval_type='sparse',
+        tags=['constraint', 'lookup'],
+    ),
+    EvalSample(
+        question='How are shrinkage estimators positioned relative to historical estimators?',
+        reference_answer='Shrinkage estimators are positioned as alternatives to historical estimators for covariance estimation.',
+        expected_context_terms=['shrinkage', 'historical', 'estimator', 'covariance'],
+        domain='estimation',
+        difficulty='hard',
+        retrieval_type='dense',
+        tags=['comparison', 'estimators'],
+    ),
+    EvalSample(
+        question='Which graph-linked concepts appear around leverage and budget constraints?',
+        reference_answer='Graph-linked retrieval should surface concepts around leverage, budget, and related optimization constraints.',
+        expected_context_terms=['leverage', 'budget', 'constraint', 'optimization'],
+        domain='optimization',
+        difficulty='hard',
+        retrieval_type='graph',
+        tags=['graph-only', 'constraints', 'graph-helpful'],
+    ),
+    EvalSample(
+        question='How do docs describe the relationship between risk measures and optimization?',
+        reference_answer='The docs describe risk measures as key inputs to optimization objectives and constraints.',
+        expected_context_terms=['risk measure', 'optimization', 'constraint', 'objective'],
+        domain='risk-measures',
+        difficulty='medium',
+        retrieval_type='hybrid',
+        tags=['relationship', 'graph-maybe'],
+    ),
+    EvalSample(
+        question='Which examples are about plotting allocations rather than estimators?',
+        reference_answer='Allocation plotting examples focus on visualizing portfolio outputs rather than estimator internals.',
+        expected_context_terms=['allocation', 'plot', 'examples', 'portfolio'],
+        domain='reporting',
+        difficulty='medium',
+        retrieval_type='sparse',
+        tags=['negative-control', 'graph-not-needed'],
+    ),
+    EvalSample(
+        question='What does Riskfolio say about tail-risk measures beyond variance?',
+        reference_answer='Riskfolio discusses tail-risk measures such as CVaR as alternatives to variance-based risk treatment.',
+        expected_context_terms=['tail', 'risk', 'cvar', 'variance'],
+        domain='risk-measures',
+        difficulty='hard',
+        retrieval_type='hybrid',
+        tags=['comparison', 'risk-measures'],
     ),
 ]
 
 
 def build_default_eval_samples() -> list[EvalSample]:
-    """Return a fresh copy of the built-in evaluation sample set.
+    """Return a fresh copy of the expanded built-in evaluation sample set.
 
     Returns:
-        Default ``EvalSample`` records suitable for demos, smoke tests, and CI.
+        Default ``EvalSample`` records suitable for demos, smoke tests, CI, and
+        small benchmark comparisons.
     """
     return [
         EvalSample(

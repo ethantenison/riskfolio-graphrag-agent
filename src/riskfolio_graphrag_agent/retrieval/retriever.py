@@ -254,7 +254,7 @@ class ChromaVectorStore:
         return hits
 
 
-class Neo4jChunkVectorStore:
+class Neo4jLexicalStore:
     """Neo4j-backed fallback retrieval implementation.
 
     Despite the name, this class currently behaves as a lexical fallback over
@@ -280,6 +280,9 @@ class Neo4jChunkVectorStore:
 
     def search(self, query: str, top_k: int) -> list[VectorHit]:
         return _sparse_query_hits(self._driver, query, top_k=top_k)
+
+
+Neo4jChunkVectorStore = Neo4jLexicalStore
 
 
 class HybridRetriever:
@@ -449,11 +452,11 @@ def _build_default_vector_store(
             )
         except Exception as exc:
             logger.warning(
-                "Falling back to Neo4jChunkVectorStore because Chroma is unavailable: %s",
+                "Falling back to Neo4jLexicalStore because Chroma is unavailable: %s",
                 exc,
             )
 
-    return Neo4jChunkVectorStore(
+    return Neo4jLexicalStore(
         neo4j_uri=neo4j_uri,
         neo4j_user=neo4j_user,
         neo4j_password=neo4j_password,
