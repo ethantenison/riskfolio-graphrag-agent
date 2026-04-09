@@ -507,7 +507,7 @@ def eval_command(
             },
         )
         report = evaluator.run()
-        evaluator.save(output_file)
+        evaluator.save(output_file, report)
     finally:
         retriever.close()
 
