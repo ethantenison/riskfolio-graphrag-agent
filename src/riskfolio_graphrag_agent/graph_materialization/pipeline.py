@@ -79,10 +79,14 @@ class GraphMaterializationPipeline:
                     label="Chunk",
                     properties={
                         "source_path": extraction.chunk.source_path,
+                        "relative_path": str(extraction.chunk.metadata.get("relative_path", "")),
+                        "chunk_index": extraction.chunk.chunk_index,
+                        "chunk_kind": str(extraction.chunk.metadata.get("chunk_kind", extraction.chunk.section or "")),
                         "section": extraction.chunk.section,
                         "line_start": extraction.chunk.line_start,
                         "line_end": extraction.chunk.line_end,
                         "content_hash": extraction.chunk.content_hash,
+                        "content": extraction.chunk.content,
                     },
                 )
             )

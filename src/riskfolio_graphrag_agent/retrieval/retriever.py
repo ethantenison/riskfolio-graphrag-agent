@@ -9,14 +9,15 @@ the agent workflow. In the overall architecture, it sits between:
 - the agent workflow, which requests grounded context before answer generation
 
 Package fit:
-    - `riskfolio_graphrag_agent.ingestion.loader` creates the chunked documents
-      that can be upserted into a vector backend.
-    - `riskfolio_graphrag_agent.graph.builder` provides domain aliases used for
-      graph-oriented concept expansion.
-    - `riskfolio_graphrag_agent.retrieval.router` may choose which retrieval
-      mode to use per query.
-    - `riskfolio_graphrag_agent.agent.workflow` consumes `RetrievalResult`
-      objects as evidence for reasoning and citation building.
+        - `riskfolio_graphrag_agent.ingestion.loader` creates the chunked documents
+            that can be upserted into a vector backend.
+        - `riskfolio_graphrag_agent.kg_pipeline` and
+            `riskfolio_graphrag_agent.graph_materialization` provide the promoted
+            graph shape consumed by graph retrieval.
+        - `riskfolio_graphrag_agent.retrieval.router` may choose which retrieval
+            mode to use per query.
+        - `riskfolio_graphrag_agent.agent.workflow` consumes `RetrievalResult`
+            objects as evidence for reasoning and citation building.
 
 This module supports four retrieval modes:
 
@@ -47,10 +48,10 @@ Non-obvious design decisions:
       flow can work with either Chroma or a Neo4j-backed fallback.
     - Hybrid merging uses fixed weights rather than a learned reranker to keep
       the system deterministic, lightweight, and testable.
-    - Graph expansion is intentionally shallow. It augments retrieval with local
-      entity and chunk context, but does not attempt deep graph reasoning.
-    - Domain-concept expansion uses curated aliases from the graph builder
-      rather than arbitrary NLP extraction at query time.
+        - Graph expansion is intentionally shallow. It augments retrieval with local
+            entity and chunk context, but does not attempt deep graph reasoning.
+        - Retrieval now prefers the promoted assertion-aware graph shape and falls
+            back to legacy graph patterns when promoted nodes are unavailable.
 
 What this module does not do:
     - It does not chunk source files or create `Document` objects.
@@ -73,7 +74,6 @@ from typing import Any, Literal, Protocol, cast
 
 from neo4j import Driver, GraphDatabase
 
-from riskfolio_graphrag_agent.graph.builder import DOMAIN_ALIASES
 from riskfolio_graphrag_agent.ingestion.loader import Document as IngestDocument
 from riskfolio_graphrag_agent.retrieval.embeddings import EmbeddingProvider, HashEmbeddingProvider, hash_embedding
 
@@ -86,6 +86,23 @@ _QUERY_ONLY_CONCEPT_ALIASES: dict[str, tuple[str, ...]] = {
     "RG": ("rg", "vrg"),
     "ADD": ("add",),
 }
+
+
+def _load_legacy_domain_aliases() -> dict[str, dict[str, tuple[str, ...]]]:
+    """Load legacy domain aliases lazily for compatibility fallback.
+
+    Returns:
+        Legacy domain alias registry, or an empty dictionary when unavailable.
+    """
+    try:
+        from riskfolio_graphrag_agent.graph.builder import DOMAIN_ALIASES
+
+        return DOMAIN_ALIASES
+    except Exception:  # pragma: no cover - defensive import fallback
+        return {}
+
+
+_LEGACY_DOMAIN_ALIASES = _load_legacy_domain_aliases()
 
 RetrievalMode = Literal["dense", "sparse", "graph", "hybrid_rerank"]
 
@@ -213,8 +230,8 @@ class ChromaVectorStore:
         self._collection.upsert(
             ids=ids,
             documents=texts,
-            embeddings=embeddings,
-            metadatas=metadatas,
+            embeddings=cast(Any, embeddings),
+            metadatas=cast(Any, metadatas),
         )
         return len(ids)
 
@@ -250,16 +267,43 @@ class ChromaVectorStore:
                     score=score,
                     metadata={
                         "relative_path": str(metadata.get("relative_path", "")),
-                        "chunk_index": int(metadata.get("chunk_index", 0)),
+                        "chunk_index": _as_int(metadata.get("chunk_index", 0), default=0),
                         "chunk_kind": str(metadata.get("chunk_kind", "")),
                         "section": str(metadata.get("section", "")),
-                        "line_start": int(metadata.get("line_start", 1)),
-                        "line_end": int(metadata.get("line_end", 1)),
+                        "line_start": _as_int(metadata.get("line_start", 1), default=1),
+                        "line_end": _as_int(metadata.get("line_end", 1), default=1),
                         "content_hash": str(metadata.get("content_hash", "")),
                     },
                 )
             )
         return hits
+
+
+def _as_int(value: object, *, default: int) -> int:
+    """Convert mixed metadata values into an integer with fallback.
+
+    Args:
+        value: Metadata value from a backend payload.
+        default: Default integer used when conversion fails.
+
+    Returns:
+        Coerced integer value.
+    """
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return default
+        try:
+            return int(float(stripped))
+        except ValueError:
+            return default
+    return default
 
 
 class Neo4jLexicalStore:
@@ -398,9 +442,14 @@ class HybridRetriever:
         elif retrieval_mode == "sparse":
             hits = _sparse_query_hits(self._driver, query, top_k=self._top_k)
         elif retrieval_mode == "graph":
-            hits = _graph_seed_hits(self._driver, query, top_k=self._top_k)
-            # Domain-concept graph-hop expansion: traverse IS_SUBTYPE_OF, ALTERNATIVE_TO, REQUIRES.
-            hop_hits = _graph_hop_expansion(self._driver, query, top_k=self._top_k)
+            # Prefer promoted assertion-aware traversal, fallback to legacy graph seeds.
+            hits = _promoted_graph_seed_hits(self._driver, query, top_k=self._top_k)
+            if not hits:
+                hits = _graph_seed_hits(self._driver, query, top_k=self._top_k)
+
+            hop_hits = _promoted_graph_hop_expansion(self._driver, query, top_k=self._top_k)
+            if not hop_hits:
+                hop_hits = _graph_hop_expansion(self._driver, query, top_k=self._top_k)
             if hop_hits:
                 hits = _merge_hits(hits, hop_hits, top_k=self._top_k * 2)[: self._top_k]
         else:
@@ -504,7 +553,20 @@ def _graph_expand(hit_or_result, session=None):
     if session is None:
         raise ValueError("session is required when expanding a VectorHit")
 
-    neighbour_cypher = (
+    promoted_cypher = (
+        "MATCH (c:Chunk) "
+        "WHERE coalesce(c.node_id, c.name) = $chunk_id "
+        "OPTIONAL MATCH (a:Assertion)-[:SUPPORTED_BY]->(c) "
+        "OPTIONAL MATCH (a)-[:ASSERTS_SUBJECT]->(s:CanonicalEntity) "
+        "OPTIONAL MATCH (a)-[:ASSERTS_OBJECT]->(o:CanonicalEntity) "
+        "OPTIONAL MATCH (d:SourceDocument)-[:HAS_CHUNK]->(c) "
+        "OPTIONAL MATCH (d)-[:HAS_CHUNK]->(near:Chunk) "
+        "WHERE coalesce(near.node_id, near.name) <> coalesce(c.node_id, c.name) "
+        "RETURN collect(DISTINCT s.preferred_label)[0..20] AS subject_entities, "
+        "collect(DISTINCT o.preferred_label)[0..20] AS object_entities, "
+        "collect(DISTINCT coalesce(near.node_id, near.name))[0..10] AS neighbour_chunks"
+    )
+    legacy_cypher = (
         "MATCH (c:Chunk {name: $chunk_id}) "
         "OPTIONAL MATCH (c)-[:MENTIONS]->(e) "
         "OPTIONAL MATCH (src)-[:HAS_CHUNK]->(c) "
@@ -513,9 +575,16 @@ def _graph_expand(hit_or_result, session=None):
         "collect(DISTINCT near.name)[0..10] AS neighbour_chunks"
     )
 
-    row = session.run(neighbour_cypher, chunk_id=hit.chunk_id).single()
-    entities = [str(item) for item in (row["entities"] if row else []) if item]
+    row = session.run(promoted_cypher, chunk_id=hit.chunk_id).single()
+    subject_entities = [str(item) for item in (row["subject_entities"] if row else []) if item]
+    object_entities = [str(item) for item in (row["object_entities"] if row else []) if item]
     neighbour_chunks = [str(item) for item in (row["neighbour_chunks"] if row else []) if item]
+
+    entities = sorted(set(subject_entities + object_entities))
+    if not entities and not neighbour_chunks:
+        row = session.run(legacy_cypher, chunk_id=hit.chunk_id).single()
+        entities = [str(item) for item in (row["entities"] if row else []) if item]
+        neighbour_chunks = [str(item) for item in (row["neighbour_chunks"] if row else []) if item]
 
     combined_neighbours = sorted(set(entities + neighbour_chunks))
     score = hit.score + (0.05 * len(entities)) + (0.02 * len(neighbour_chunks))
@@ -543,12 +612,21 @@ def _sparse_query_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit
 
     cypher = (
         "MATCH (c:Chunk) "
-        "WITH c, [t IN $tokens WHERE toLower(c.content) CONTAINS t] AS matched "
+        "WITH c, "
+        "toLower(coalesce(c.content, '')) + ' ' + "
+        "toLower(coalesce(c.section, '')) + ' ' + "
+        "toLower(coalesce(c.title, '')) AS haystack "
+        "WITH c, [t IN $tokens WHERE haystack CONTAINS t] AS matched "
         "WITH c, matched, size(matched) AS score "
         "WHERE score > 0 "
-        "RETURN c.name AS chunk_id, c.content AS content, c.source_path AS source_path, "
-        "c.relative_path AS relative_path, c.chunk_index AS chunk_index, "
-        "c.chunk_kind AS chunk_kind, c.line_start AS line_start, c.line_end AS line_end, score "
+        "RETURN coalesce(c.node_id, c.name) AS chunk_id, "
+        "coalesce(c.content, '') AS content, "
+        "coalesce(c.source_path, '') AS source_path, "
+        "coalesce(c.relative_path, c.source_path, '') AS relative_path, "
+        "coalesce(c.chunk_index, 0) AS chunk_index, "
+        "coalesce(c.chunk_kind, c.section, '') AS chunk_kind, "
+        "coalesce(c.line_start, 1) AS line_start, "
+        "coalesce(c.line_end, 1) AS line_end, score "
         "ORDER BY score DESC LIMIT $top_k"
     )
 
@@ -559,14 +637,14 @@ def _sparse_query_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit
     for row in rows:
         hits.append(
             VectorHit(
-                chunk_id=str(row["chunk_id"]),
-                content=str(row["content"]),
-                source_path=str(row["source_path"]),
+                chunk_id=str(row["chunk_id"] or ""),
+                content=str(row["content"] or ""),
+                source_path=str(row["source_path"] or ""),
                 score=float(row["score"]),
                 metadata={
-                    "relative_path": str(row["relative_path"]),
-                    "chunk_index": int(row["chunk_index"]),
-                    "chunk_kind": str(row["chunk_kind"]),
+                    "relative_path": str(row["relative_path"] or ""),
+                    "chunk_index": int(row["chunk_index"] or 0),
+                    "chunk_kind": str(row["chunk_kind"] or ""),
                     "section": "",
                     "line_start": int(row["line_start"] or 1),
                     "line_end": int(row["line_end"] or 1),
@@ -626,7 +704,7 @@ def _find_domain_concepts(query: str) -> list[str]:
     """Return canonical concept names whose aliases appear in *query*."""
     lowered = query.lower()
     matched: list[str] = []
-    for concepts in DOMAIN_ALIASES.values():
+    for concepts in _LEGACY_DOMAIN_ALIASES.values():
         for canonical_name, aliases in concepts.items():
             candidate_aliases = tuple(alias.lower() for alias in aliases) + _QUERY_ONLY_CONCEPT_ALIASES.get(
                 canonical_name,
@@ -635,6 +713,109 @@ def _find_domain_concepts(query: str) -> list[str]:
             if canonical_name.lower() in lowered or any(alias in lowered for alias in candidate_aliases):
                 matched.append(canonical_name)
     return matched
+
+
+def _promoted_graph_seed_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
+    """Seed graph hits from promoted canonical entities and assertions."""
+    tokens = _query_tokens(query)
+    if not tokens:
+        return []
+
+    cypher = (
+        "MATCH (e:CanonicalEntity) "
+        "WHERE any(t IN $tokens WHERE toLower(e.preferred_label) CONTAINS t "
+        "OR toLower(coalesce(e.normalized_label, '')) CONTAINS t) "
+        "OPTIONAL MATCH (a:Assertion)-[:ASSERTS_SUBJECT|ASSERTS_OBJECT]->(e) "
+        "OPTIONAL MATCH (a)-[:SUPPORTED_BY]->(c:Chunk) "
+        "WITH c, max(coalesce(a.confidence, 0.0)) AS score "
+        "WHERE c IS NOT NULL "
+        "RETURN coalesce(c.node_id, c.name) AS chunk_id, "
+        "coalesce(c.content, '') AS content, "
+        "coalesce(c.source_path, '') AS source_path, "
+        "coalesce(c.relative_path, c.source_path, '') AS relative_path, "
+        "coalesce(c.chunk_index, 0) AS chunk_index, "
+        "coalesce(c.chunk_kind, c.section, '') AS chunk_kind, "
+        "coalesce(c.line_start, 1) AS line_start, "
+        "coalesce(c.line_end, 1) AS line_end, score "
+        "ORDER BY score DESC LIMIT $top_k"
+    )
+
+    with driver.session() as session:
+        rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
+
+    hits: list[VectorHit] = []
+    for row in rows:
+        hits.append(
+            VectorHit(
+                chunk_id=str(row["chunk_id"] or ""),
+                content=str(row["content"] or ""),
+                source_path=str(row["source_path"] or ""),
+                score=float(row["score"]),
+                metadata={
+                    "relative_path": str(row["relative_path"] or ""),
+                    "chunk_index": int(row["chunk_index"] or 0),
+                    "chunk_kind": str(row["chunk_kind"] or ""),
+                    "section": "",
+                    "line_start": int(row["line_start"] or 1),
+                    "line_end": int(row["line_end"] or 1),
+                    "content_hash": "",
+                },
+            )
+        )
+    return hits
+
+
+def _promoted_graph_hop_expansion(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
+    """Expand graph hits through ontology class neighborhoods in promoted graph."""
+    tokens = _query_tokens(query)
+    if not tokens:
+        return []
+
+    cypher = (
+        "MATCH (oc:OntologyClass)<-[:INSTANCE_OF]-(e:CanonicalEntity) "
+        "WHERE any(t IN $tokens WHERE toLower(oc.label) CONTAINS t "
+        "OR toLower(coalesce(oc.definition, '')) CONTAINS t) "
+        "MATCH (a:Assertion)-[:ASSERTS_SUBJECT|ASSERTS_OBJECT]->(e) "
+        "MATCH (a)-[:SUPPORTED_BY]->(c:Chunk) "
+        "RETURN coalesce(c.node_id, c.name) AS chunk_id, "
+        "coalesce(c.content, '') AS content, "
+        "coalesce(c.source_path, '') AS source_path, "
+        "coalesce(c.relative_path, c.source_path, '') AS relative_path, "
+        "coalesce(c.chunk_index, 0) AS chunk_index, "
+        "coalesce(c.chunk_kind, c.section, '') AS chunk_kind, "
+        "coalesce(c.line_start, 1) AS line_start, "
+        "coalesce(c.line_end, 1) AS line_end, "
+        "max(coalesce(a.confidence, 0.0)) AS score "
+        "ORDER BY score DESC LIMIT $top_k"
+    )
+
+    try:
+        with driver.session() as session:
+            rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
+    except Exception as exc:
+        logger.debug("Promoted graph-hop expansion query failed: %s", exc)
+        return []
+
+    hits: list[VectorHit] = []
+    for row in rows:
+        hits.append(
+            VectorHit(
+                chunk_id=str(row["chunk_id"] or ""),
+                content=str(row["content"] or ""),
+                source_path=str(row["source_path"] or ""),
+                score=float(row["score"]),
+                metadata={
+                    "relative_path": str(row["relative_path"] or ""),
+                    "chunk_index": int(row["chunk_index"] or 0),
+                    "chunk_kind": str(row["chunk_kind"] or ""),
+                    "section": "",
+                    "line_start": int(row["line_start"] or 1),
+                    "line_end": int(row["line_end"] or 1),
+                    "content_hash": "",
+                },
+            )
+        )
+    return hits
 
 
 def _graph_hop_expansion(driver: Driver, query: str, top_k: int) -> list[VectorHit]:

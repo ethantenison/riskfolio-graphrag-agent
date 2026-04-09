@@ -72,18 +72,56 @@ class QueryResponse(BaseModel):
     citations: list[dict[str, str | int | float | list[str]]]
 
 
+class GraphStatsResponse(BaseModel):
+    """Graph statistics response payload.
+
+    Attributes:
+        nodes: Total node count in the active graph layer.
+        relationships: Total relationship count.
+        node_counts_by_label: Per-label node counts.
+        relationship_counts_by_type: Per-type relationship counts.
+        promoted_mode: True when stats are drawn from the promoted
+            assertion-aware graph; False when using legacy graph labels.
+    """
+
+    nodes: int = 0
+    relationships: int = 0
+    node_counts_by_label: dict[str, int] = Field(default_factory=dict)
+    relationship_counts_by_type: dict[str, int] = Field(default_factory=dict)
+    promoted_mode: bool = False
+
+
 class NLToCypherRequest(BaseModel):
     question: str = Field(min_length=1)
     tenant_id: str = Field(default="demo-tenant")
 
 
 class NLToCypherResponse(BaseModel):
+    """Response payload for the NL-to-Cypher translation endpoint.
+
+    Attributes:
+        status: Guard decision: ``safe``, ``blocked``, or ``warn``.
+        reason: Human-readable explanation from the guard.
+        requires_human_review: Whether a human must approve before execution.
+        cypher: Generated Cypher statement (empty when blocked).
+        params: Named parameters bound to the Cypher statement.
+        rows: Result rows returned after executing a safe query.
+        graph_mode: Schema mode detected at execution time.
+            ``promoted`` when CanonicalEntity nodes are present,
+            ``legacy`` when only the legacy label set is found,
+            ``unknown`` when the query was not executed.
+    """
+
     status: str
     reason: str
     requires_human_review: bool
     cypher: str = ""
     params: dict[str, str] = Field(default_factory=dict)
     rows: list[dict[str, str | int | float]] = Field(default_factory=list)
+    graph_mode: str = Field(
+        default="unknown",
+        description="Graph schema mode: 'promoted', 'legacy', or 'unknown'.",
+    )
 
 
 def _extract_query_tokens(question: str) -> list[str]:
@@ -315,10 +353,11 @@ def create_app() -> FastAPI:
         tracer = trace.get_tracer("riskfolio-graphrag-agent")
         return {"tracer": str(tracer), "provider": str(trace.get_tracer_provider())}
 
-    @app.get("/graph/stats")
-    def graph_stats() -> dict[str, int | dict[str, int]]:
+    @app.get("/graph/stats", response_model=GraphStatsResponse)
+    def graph_stats() -> GraphStatsResponse:
         try:
-            return _get_graph_builder().get_stats()
+            raw = _get_graph_builder().get_stats()
+            return GraphStatsResponse(**raw)
         except Exception as exc:
             logger.exception("Failed to retrieve graph stats")
             raise HTTPException(status_code=503, detail=f"Neo4j unavailable: {exc}") from exc
@@ -385,8 +424,11 @@ def create_app() -> FastAPI:
         from neo4j import GraphDatabase
 
         driver = GraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password))
+        graph_mode = "unknown"
         try:
             with driver.session() as session:
+                promoted_probe = session.run("MATCH (n:CanonicalEntity) RETURN count(n) AS count LIMIT 1").single()
+                graph_mode = "promoted" if (promoted_probe and int(promoted_probe["count"]) > 0) else "legacy"
                 records = list(session.run(decision.cypher, **(decision.params or {})))
                 rows = [dict(row.data()) for row in records]
         except Exception as exc:
@@ -401,6 +443,7 @@ def create_app() -> FastAPI:
             cypher=decision.cypher,
             params=decision.params or {},
             rows=rows,
+            graph_mode=graph_mode,
         )
 
     return app

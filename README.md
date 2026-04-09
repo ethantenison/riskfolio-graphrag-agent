@@ -56,7 +56,7 @@ That separation matters because it keeps provenance, confidence, and review stat
 | [src/riskfolio_graphrag_agent/semantic_export/pipeline.py](src/riskfolio_graphrag_agent/semantic_export/pipeline.py) | Export ontology and instance/provenance Turtle views using OWL, SKOS, and PROV-O |
 | [src/riskfolio_graphrag_agent/evaluation/graph_quality.py](src/riskfolio_graphrag_agent/evaluation/graph_quality.py) | Score graph-quality metrics such as compression, promotion yield, and schema support |
 | [src/riskfolio_graphrag_agent/kg_pipeline.py](src/riskfolio_graphrag_agent/kg_pipeline.py) | Orchestrate the end-to-end redesigned KG pipeline and artifact generation |
-| [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py) | Existing retrieval stack, pending deeper migration onto the promoted graph |
+| [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py) | Retrieval stack with promoted-graph-aware seeding/expansion plus legacy fallback |
 | [src/riskfolio_graphrag_agent/agent/workflow.py](src/riskfolio_graphrag_agent/agent/workflow.py) | Existing plan-retrieve-reason-verify orchestration |
 
 ## Architecture
@@ -202,7 +202,7 @@ poetry run ruff format src tests
 ## Known Limitations
 
 - The redesigned pipeline currently includes a structurally honest heuristic open extractor as the default vertical slice, not a production extraction model.
-- Retrieval and UI surfaces still consume parts of the legacy graph path and need further migration onto the promoted graph.
+- Retrieval now supports promoted-graph-aware graph mode with legacy fallback, but UI and some runtime surfaces still require deeper migration.
 - Semantic export is cleaner than the old direct registry dump, but it does not yet enforce SHACL validation or claim full ontology rigor.
 
 ## License

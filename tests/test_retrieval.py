@@ -17,6 +17,9 @@ from riskfolio_graphrag_agent.retrieval.retriever import (
     _find_domain_concepts,
     _graph_expand,
     _hash_embedding,
+    _promoted_graph_hop_expansion,
+    _promoted_graph_seed_hits,
+    _sparse_query_hits,
     _vector_search,
 )
 
@@ -76,6 +79,34 @@ class _FakeVectorStore:
     def search(self, query: str, top_k: int) -> list[VectorHit]:
         _ = query, top_k
         return []
+
+
+class _Row(dict):
+    pass
+
+
+class _SessionCtx:
+    def __init__(self, rows: list[_Row]) -> None:
+        self._rows = rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        _ = exc_type, exc_val, exc_tb
+        return False
+
+    def run(self, cypher: str, **params):
+        _ = cypher, params
+        return self._rows
+
+
+class _DriverCtx:
+    def __init__(self, rows: list[_Row]) -> None:
+        self._rows = rows
+
+    def session(self):
+        return _SessionCtx(self._rows)
 
 
 def _l2_distance(left: list[float], right: list[float]) -> float:
@@ -207,3 +238,77 @@ def test_find_domain_concepts_matches_short_risk_measure_aliases():
     assert "EVRG" in concepts
     assert "MV" in concepts
     assert "CDaR" in concepts
+
+
+def test_sparse_query_hits_supports_node_id_chunks():
+    rows = [
+        _Row(
+            {
+                "chunk_id": "chunk:abc",
+                "content": "CVaR can be used for tail-risk control.",
+                "source_path": "docs/risk.md",
+                "relative_path": "docs/risk.md",
+                "chunk_index": 4,
+                "chunk_kind": "section",
+                "line_start": 11,
+                "line_end": 24,
+                "score": 2,
+            }
+        )
+    ]
+    driver = _DriverCtx(rows)
+
+    hits = _sparse_query_hits(driver, "cvar tail risk", top_k=3)
+
+    assert len(hits) == 1
+    assert hits[0].chunk_id == "chunk:abc"
+    assert hits[0].metadata["relative_path"] == "docs/risk.md"
+
+
+def test_promoted_graph_seed_hits_reads_assertion_backed_chunks():
+    rows = [
+        _Row(
+            {
+                "chunk_id": "chunk:seed",
+                "content": "Hierarchical Risk Parity uses CVaR.",
+                "source_path": "docs/risk.md",
+                "relative_path": "docs/risk.md",
+                "chunk_index": 0,
+                "chunk_kind": "section",
+                "line_start": 1,
+                "line_end": 1,
+                "score": 0.72,
+            }
+        )
+    ]
+    driver = _DriverCtx(rows)
+
+    hits = _promoted_graph_seed_hits(driver, "hierarchical risk parity", top_k=5)
+
+    assert len(hits) == 1
+    assert hits[0].chunk_id == "chunk:seed"
+    assert hits[0].score == 0.72
+
+
+def test_promoted_graph_hop_expansion_returns_hits():
+    rows = [
+        _Row(
+            {
+                "chunk_id": "chunk:hop",
+                "content": "CVaR belongs to tail-risk measures.",
+                "source_path": "docs/risk.md",
+                "relative_path": "docs/risk.md",
+                "chunk_index": 1,
+                "chunk_kind": "section",
+                "line_start": 2,
+                "line_end": 3,
+                "score": 0.61,
+            }
+        )
+    ]
+    driver = _DriverCtx(rows)
+
+    hits = _promoted_graph_hop_expansion(driver, "tail risk class", top_k=5)
+
+    assert len(hits) == 1
+    assert hits[0].chunk_id == "chunk:hop"

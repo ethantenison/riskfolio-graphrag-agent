@@ -619,20 +619,51 @@ class GraphBuilder:
     def get_stats(self) -> dict[str, int | dict[str, int]]:
         """Return aggregate counts for the current graph.
 
+        The read path prefers the promoted assertion-aware graph labels and
+        falls back to legacy labels when promoted labels are absent.
+
         Returns:
             A dictionary containing total node and relationship counts plus
             per-label and per-relationship-type breakdowns.
         """
         driver = self._ensure_driver()
         with driver.session() as session:
-            node_count = session.run("MATCH (n) RETURN count(n) AS count").single()
-            relationship_count = session.run("MATCH ()-[r]->() RETURN count(r) AS count").single()
-            label_rows = list(
-                session.run("MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS count ORDER BY count DESC")
-            )
-            relationship_rows = list(
-                session.run("MATCH ()-[r]->() RETURN type(r) AS relationship_type, count(*) AS count ORDER BY count DESC")
-            )
+            promoted_total = session.run("MATCH (n:CanonicalEntity) RETURN count(n) AS count").single()
+            promoted_available = bool(promoted_total and int(promoted_total["count"]) > 0)
+
+            if promoted_available:
+                node_count = session.run(
+                    "MATCH (n) WHERE any(label IN labels(n) WHERE label IN $labels) RETURN count(n) AS count",
+                    labels=[
+                        "SourceDocument",
+                        "Chunk",
+                        "Mention",
+                        "EvidenceSpan",
+                        "CanonicalEntity",
+                        "Assertion",
+                        "EventMention",
+                        "OntologyClass",
+                        "OntologyProperty",
+                        "ConceptScheme",
+                        "Concept",
+                    ],
+                ).single()
+                relationship_count = session.run("MATCH ()-[r]->() RETURN count(r) AS count").single()
+                label_rows = list(
+                    session.run("MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS count ORDER BY count DESC")
+                )
+                relationship_rows = list(
+                    session.run("MATCH ()-[r]->() RETURN type(r) AS relationship_type, count(*) AS count ORDER BY count DESC")
+                )
+            else:
+                node_count = session.run("MATCH (n) RETURN count(n) AS count").single()
+                relationship_count = session.run("MATCH ()-[r]->() RETURN count(r) AS count").single()
+                label_rows = list(
+                    session.run("MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS count ORDER BY count DESC")
+                )
+                relationship_rows = list(
+                    session.run("MATCH ()-[r]->() RETURN type(r) AS relationship_type, count(*) AS count ORDER BY count DESC")
+                )
 
         node_counts_by_label = {str(row["label"]): int(row["count"]) for row in label_rows}
         relationship_counts_by_type = {str(row["relationship_type"]): int(row["count"]) for row in relationship_rows}
@@ -642,6 +673,7 @@ class GraphBuilder:
             "relationships": int(relationship_count["count"]) if relationship_count is not None else 0,
             "node_counts_by_label": node_counts_by_label,
             "relationship_counts_by_type": relationship_counts_by_type,
+            "promoted_mode": promoted_available,
         }
 
     def get_query_subgraph(
@@ -652,9 +684,9 @@ class GraphBuilder:
     ) -> dict[str, list[dict[str, str | list[str]]]]:
         """Return a bounded one-hop subgraph relevant to a text query.
 
-        The method matches seed nodes by lexical overlap on common textual
-        properties, expands one hop, and returns node/edge dictionaries suitable
-        for UI visualization.
+        The method first attempts promoted graph entities and assertion
+        neighborhoods, then falls back to the legacy lexical one-hop traversal
+        for compatibility.
 
         Args:
             query: User text used to select lexical seed nodes.
@@ -669,6 +701,106 @@ class GraphBuilder:
         if not terms:
             return {"nodes": [], "edges": []}
 
+        promoted = self._get_query_subgraph_promoted(
+            terms=terms,
+            max_seed_nodes=max_seed_nodes,
+            max_nodes=max_nodes,
+        )
+        if promoted["nodes"]:
+            return promoted
+
+        return self._get_query_subgraph_legacy(
+            terms=terms,
+            max_seed_nodes=max_seed_nodes,
+            max_nodes=max_nodes,
+        )
+
+    def _get_query_subgraph_promoted(
+        self,
+        *,
+        terms: list[str],
+        max_seed_nodes: int,
+        max_nodes: int,
+    ) -> dict[str, list[dict[str, str | list[str]]]]:
+        """Return promoted graph neighborhood for query terms."""
+        driver = self._ensure_driver()
+        with driver.session() as session:
+            nodes_result = session.run(
+                (
+                    "MATCH (seed:CanonicalEntity) "
+                    "WHERE any(t IN $terms WHERE "
+                    "toLower(seed.preferred_label) CONTAINS t OR "
+                    "toLower(coalesce(seed.normalized_label, '')) CONTAINS t) "
+                    "WITH collect(DISTINCT seed)[0..$max_seed_nodes] AS seeds "
+                    "UNWIND seeds AS seed "
+                    "OPTIONAL MATCH (seed)<-[:ASSERTS_SUBJECT|ASSERTS_OBJECT]-(a:Assertion) "
+                    "OPTIONAL MATCH (a)-[:SUPPORTED_BY]->(c:Chunk) "
+                    "OPTIONAL MATCH (seed)-[:INSTANCE_OF]->(oc:OntologyClass) "
+                    "OPTIONAL MATCH (a)-[:ASSERTS_SUBJECT]->(subject:CanonicalEntity) "
+                    "OPTIONAL MATCH (a)-[:ASSERTS_OBJECT]->(object:CanonicalEntity) "
+                    "WITH collect(DISTINCT seed) + collect(DISTINCT a) + collect(DISTINCT c) + "
+                    "collect(DISTINCT oc) + collect(DISTINCT subject) + collect(DISTINCT object) AS raw_nodes "
+                    "WITH [n IN raw_nodes WHERE n IS NOT NULL][0..$max_nodes] AS nodes "
+                    "RETURN [n IN nodes | {"
+                    "id: elementId(n), "
+                    "name: coalesce(n.preferred_label, coalesce(n.node_id, coalesce(n.name, ''))), "
+                    "labels: labels(n), "
+                    "source_path: coalesce(n.relative_path, coalesce(n.source_path, ''))"
+                    "}] AS nodes"
+                ),
+                terms=terms,
+                max_seed_nodes=max(1, max_seed_nodes),
+                max_nodes=max(1, max_nodes),
+            ).single()
+
+            nodes: list[dict[str, str | list[str]]] = []
+            if nodes_result is not None:
+                raw_nodes = nodes_result.get("nodes", [])
+                if isinstance(raw_nodes, list):
+                    nodes = [
+                        {
+                            "id": str(node.get("id", "")),
+                            "name": str(node.get("name", "")),
+                            "labels": [str(label) for label in node.get("labels", [])],
+                            "source_path": str(node.get("source_path", "")),
+                        }
+                        for node in raw_nodes
+                        if isinstance(node, dict)
+                    ]
+
+            if not nodes:
+                return {"nodes": [], "edges": []}
+
+            node_ids = [str(node["id"]) for node in nodes if str(node.get("id", ""))]
+            edge_rows = list(
+                session.run(
+                    (
+                        "MATCH (a)-[r]->(b) "
+                        "WHERE elementId(a) IN $node_ids AND elementId(b) IN $node_ids "
+                        "RETURN elementId(a) AS source, elementId(b) AS target, type(r) AS type"
+                    ),
+                    node_ids=node_ids,
+                )
+            )
+
+        edges: list[dict[str, str | list[str]]] = [
+            {
+                "source": str(row["source"]),
+                "target": str(row["target"]),
+                "type": str(row["type"]),
+            }
+            for row in edge_rows
+        ]
+        return {"nodes": nodes, "edges": edges}
+
+    def _get_query_subgraph_legacy(
+        self,
+        *,
+        terms: list[str],
+        max_seed_nodes: int,
+        max_nodes: int,
+    ) -> dict[str, list[dict[str, str | list[str]]]]:
+        """Return legacy lexical subgraph neighborhood for query terms."""
         driver = self._ensure_driver()
         with driver.session() as session:
             nodes_result = session.run(
@@ -704,7 +836,7 @@ class GraphBuilder:
                 max_nodes=max(1, max_nodes),
             ).single()
 
-            nodes = []
+            nodes: list[dict[str, str | list[str]]] = []
             if nodes_result is not None:
                 raw_nodes = nodes_result.get("nodes", [])
                 if isinstance(raw_nodes, list):

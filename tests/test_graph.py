@@ -352,3 +352,52 @@ def test_graph_builder_get_query_subgraph_empty_for_blank_query(monkeypatch):
 
     graph = builder.get_query_subgraph("  ")
     assert graph == {"nodes": [], "edges": []}
+
+
+def test_graph_builder_get_query_subgraph_prefers_promoted(monkeypatch):
+    builder = GraphBuilder(
+        neo4j_uri="bolt://localhost:7687",
+        neo4j_user="neo4j",
+        neo4j_password="password",
+    )
+
+    monkeypatch.setattr(
+        builder,
+        "_get_query_subgraph_promoted",
+        lambda **kwargs: {
+            "nodes": [{"id": "p1", "name": "CVaR", "labels": ["CanonicalEntity"], "source_path": "docs/risk.md"}],
+            "edges": [{"source": "p1", "target": "p1", "type": "RELATED_TO"}],
+        },
+    )
+
+    def _unexpected_legacy(**kwargs):
+        _ = kwargs
+        raise AssertionError("legacy fallback should not run when promoted graph returned nodes")
+
+    monkeypatch.setattr(builder, "_get_query_subgraph_legacy", _unexpected_legacy)
+
+    graph = builder.get_query_subgraph("What is CVaR?")
+    assert len(graph["nodes"]) == 1
+    assert graph["nodes"][0]["labels"] == ["CanonicalEntity"]
+
+
+def test_graph_builder_get_query_subgraph_falls_back_to_legacy(monkeypatch):
+    builder = GraphBuilder(
+        neo4j_uri="bolt://localhost:7687",
+        neo4j_user="neo4j",
+        neo4j_password="password",
+    )
+
+    monkeypatch.setattr(builder, "_get_query_subgraph_promoted", lambda **kwargs: {"nodes": [], "edges": []})
+    monkeypatch.setattr(
+        builder,
+        "_get_query_subgraph_legacy",
+        lambda **kwargs: {
+            "nodes": [{"id": "l1", "name": "HRP", "labels": ["PortfolioMethod"], "source_path": "docs/hrp.md"}],
+            "edges": [],
+        },
+    )
+
+    graph = builder.get_query_subgraph("What is HRP?")
+    assert len(graph["nodes"]) == 1
+    assert graph["nodes"][0]["labels"] == ["PortfolioMethod"]

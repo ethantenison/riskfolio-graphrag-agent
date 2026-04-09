@@ -5,7 +5,13 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from riskfolio_graphrag_agent.agent.workflow import AgentState
-from riskfolio_graphrag_agent.app.server import _build_background_hint, _is_definition_question, create_app
+from riskfolio_graphrag_agent.app.server import (
+    GraphStatsResponse,
+    NLToCypherResponse,
+    _build_background_hint,
+    _is_definition_question,
+    create_app,
+)
 from riskfolio_graphrag_agent.graph.builder import GraphBuilder
 
 
@@ -58,7 +64,32 @@ def test_graph_stats_endpoint(monkeypatch):
     client = TestClient(create_app())
     response = client.get("/graph/stats")
     assert response.status_code == 200
-    assert response.json()["nodes"] == 10
+    body = response.json()
+    assert body["nodes"] == 10
+    # promoted_mode defaults False when not returned by get_stats mock
+    assert body["promoted_mode"] is False
+
+
+def test_graph_stats_endpoint_promoted_mode(monkeypatch):
+    monkeypatch.setattr(
+        GraphBuilder,
+        "get_stats",
+        lambda self: {
+            "nodes": 42,
+            "relationships": 20,
+            "node_counts_by_label": {"CanonicalEntity": 30},
+            "relationship_counts_by_type": {"ASSERTS_SUBJECT": 20},
+            "promoted_mode": True,
+        },
+    )
+
+    client = TestClient(create_app())
+    response = client.get("/graph/stats")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["nodes"] == 42
+    assert body["promoted_mode"] is True
+    assert "CanonicalEntity" in body["node_counts_by_label"]
 
 
 def test_query_endpoint_returns_citations(monkeypatch):
@@ -128,6 +159,26 @@ def test_nl2cypher_endpoint_blocks_unsafe_query():
     body = response.json()
     assert body["status"] == "blocked"
     assert body["requires_human_review"] is True
+    # graph_mode is unknown for blocked queries that never reach Neo4j
+    assert body["graph_mode"] == "unknown"
+
+
+def test_graph_stats_response_model_defaults():
+    """GraphStatsResponse should expose promoted_mode with False default."""
+    stats = GraphStatsResponse(nodes=5, relationships=3)
+    assert stats.promoted_mode is False
+
+    promoted_stats = GraphStatsResponse(nodes=10, relationships=8, promoted_mode=True)
+    assert promoted_stats.promoted_mode is True
+
+
+def test_nl2cypher_response_model_defaults():
+    """NLToCypherResponse graph_mode should default to 'unknown'."""
+    resp = NLToCypherResponse(status="safe", reason="ok", requires_human_review=False)
+    assert resp.graph_mode == "unknown"
+
+    resp_promoted = NLToCypherResponse(status="safe", reason="ok", requires_human_review=False, graph_mode="promoted")
+    assert resp_promoted.graph_mode == "promoted"
 
 
 def test_definition_question_detection():
