@@ -1,10 +1,10 @@
 {
   "status": "healthy",
-  "generated_at_utc": "2026-04-09T16:48:22.635842+00:00",
+  "generated_at_utc": "2026-04-09T17:23:15.491779+00:00",
   "sli": {
-    "answer_faithfulness": 1.0,
+    "answer_faithfulness": 0.84,
     "grounding": 0.7829,
-    "avg_latency_ms": 258.8245,
+    "avg_latency_ms": 273.7337,
     "estimated_cost_usd": 0.0002,
     "drift_score": 0.08,
     "data_freshness_hours": 6.0
