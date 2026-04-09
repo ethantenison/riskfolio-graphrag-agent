@@ -22,8 +22,8 @@
     },
     {
       "question": "Which estimators are used for covariance in Riskfolio?",
-      "reference_answer": "Riskfolio documents multiple covariance estimators including historical and shrinkage-style estimators.",
-      "expected_context_terms": ["historical", "ledoit", "shrinkage", "covariance"],
+      "reference_answer": "Riskfolio’s covar_matrix supports historical, semi‑covariance, two EWMA variants, several scikit‑learn shrinkage estimators (Ledoit–Wolf, OAS, Shrunk), Graphical Lasso, and the network‑based j‑LoGo estimator. It also includes three random‑matrix denoising methods (fixed, spectral, shrink) and two Gerber‑statistic‑based robust covariance estimators (gerber1, gerber2).",
+      "expected_context_terms": ["historical", "ledoit", "shrinkage", "EWMA", "graphical lasso", "j‑LoGo", "random-matrix", "gerber"],
       "domain": "estimation",
       "difficulty": "medium",
       "retrieval_type": "dense",
@@ -31,8 +31,8 @@
     },
     {
       "question": "What constraints can be applied in Riskfolio optimization?",
-      "reference_answer": "Riskfolio supports portfolio constraints such as budget, leverage, and risk-related constraints.",
-      "expected_context_terms": ["constraint", "budget", "leverage", "risk contribution"],
+      "reference_answer": "Riskfolio supports linear weight constraints (assets, groups, classes), factor‑exposure constraints, and Black–Litterman view constraints, plus optional graph‑ and clustering‑based structural constraints on weights.",
+      "expected_context_terms": ["constraint", "linear", "factor-exposure", "black-litterman", "graph", "clustering", "risk contribution"],
       "domain": "optimization",
       "difficulty": "medium",
       "retrieval_type": "graph",
@@ -49,8 +49,8 @@
     },
     {
       "question": "What does Riskfolio use to represent portfolio constraints?",
-      "reference_answer": "Riskfolio represents constraints through portfolio optimization APIs and documented constraint parameters.",
-      "expected_context_terms": ["constraints", "portfolio", "parameters", "optimization"],
+      "reference_answer": "Riskfolio represents portfolio constraints as linear equations and inequalities on the weight vector, built using its constraints helper functions.",
+      "expected_context_terms": ["constraints", "portfolio", "linear", "inequalities", "weight vector", "optimization"],
       "domain": "optimization",
       "difficulty": "easy",
       "retrieval_type": "sparse",
@@ -66,9 +66,9 @@
       "tags": ["definition", "estimation"]
     },
     {
-      "question": "Which risk measures are mentioned alongside CVaR?",
-      "reference_answer": "Riskfolio documentation mentions multiple risk measures alongside CVaR, including VaR and related downside measures.",
-      "expected_context_terms": ["cvar", "var", "risk measure", "downside"],
+      "question": "Which risk measures are related to CVaR?",
+      "reference_answer": "CVaR (Conditional Value at Risk) is the expected loss given that the loss has exceeded the VaR at a chosen confidence level, so it focuses on the severity of tail events. Risk measures related to CVaR in Riskfolio are VaR, Tail Gini (TG), EVaR, RLVaR, and their corresponding range versions VRG, CVRG, TGRG, EVRG, and RVRG.",
+      "expected_context_terms": ["cvar", "var", "tail gini", "tg", "evar", "rlvar", "vrg", "cvrg", "tgrg", "evrg", "rvrg"],
       "domain": "risk-measures",
       "difficulty": "medium",
       "retrieval_type": "graph",
@@ -84,9 +84,9 @@
       "tags": ["multi-hop", "examples", "graph-helpful"]
     },
     {
-      "question": "What does the documentation say about leverage constraints?",
-      "reference_answer": "The documentation describes leverage as one of the supported optimization constraints.",
-      "expected_context_terms": ["leverage", "constraint", "optimization", "budget"],
+      "question": "How can you do a leverage constraint?",
+      "reference_answer": "You constrain leverage by setting port.budget (for total net exposure) together with port.sht, port.budgetsht, port.upperlng, and port.uppersht to bound both total and per‑asset long/short exposure.",
+      "expected_context_terms": ["leverage", "constraint", "budget", "short", "long", "budgetsht", "upperlng", "uppersht", "per-asset"],
       "domain": "optimization",
       "difficulty": "easy",
       "retrieval_type": "sparse",
@@ -94,8 +94,8 @@
     },
     {
       "question": "Which sections mention covariance shrinkage?",
-      "reference_answer": "Covariance shrinkage is discussed in estimator-related documentation sections.",
-      "expected_context_terms": ["covariance", "shrinkage", "estimator", "ledoit"],
+      "reference_answer": "Covariance shrinkage is documented in the Parameters Estimation section and referenced where covariance method options are used in Portfolio Optimization and Hierarchical Clustering Portfolio Optimization.",
+      "expected_context_terms": ["covariance", "shrinkage", "estimator", "Hierarchical", "clustering", "parameters"],
       "domain": "estimation",
       "difficulty": "medium",
       "retrieval_type": "dense",
@@ -138,9 +138,9 @@
       "tags": ["examples", "charts"]
     },
     {
-      "question": "What input parameters are associated with optimization objectives?",
-      "reference_answer": "Optimization objectives are associated with documented API parameters controlling risk, return, and constraints.",
-      "expected_context_terms": ["parameters", "objective", "optimization", "risk"],
+      "question": "What parameters are associated with optimization objectives in Riskfolio?",
+      "reference_answer": "The parameters associated with optimization objectives in Riskfolio are the objective type obj ('MinRisk', 'Utility', 'Sharpe', 'MaxRet') and l (risk‑aversion for the Utility objective).",
+      "expected_context_terms": ["parameters", "objective", "MinRisk", "Utility", "Sharpe", "MaxRet", "risk‑aversion"],
       "domain": "optimization",
       "difficulty": "medium",
       "retrieval_type": "dense",
@@ -219,9 +219,9 @@
       "tags": ["negative-control", "graph-not-needed"]
     },
     {
-      "question": "What does Riskfolio say about tail-risk measures beyond variance?",
-      "reference_answer": "Riskfolio discusses tail-risk measures such as CVaR as alternatives to variance-based risk treatment.",
-      "expected_context_terms": ["tail", "risk", "cvar", "variance"],
+      "question": "What tail-risk measures are there beyond variance?",
+      "reference_answer": "Tail‑risk measures beyond variance in Riskfolio are CVaR, Tail Gini (TG), EVaR, RLVaR, Worst Realization (WR), and their range versions CVRG, TGRG, EVRG, and RVRG.",
+      "expected_context_terms": ["tail", "risk", "cvar", "worst", "tail", "range"],
       "domain": "risk-measures",
       "difficulty": "hard",
       "retrieval_type": "hybrid",
