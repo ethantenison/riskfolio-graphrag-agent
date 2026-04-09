@@ -11,7 +11,7 @@ pinned: false
 
 # riskfolio-graphrag-agent
 
-> **Explainable GraphRAG + Agentic AI demo** over the [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) codebase and documentation.
+> **GraphRAG / hybrid retrieval demo and evaluation scaffold** over the [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) codebase and documentation.
 
 [![CI](https://github.com/ethantenison/riskfolio-graphrag-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ethantenison/riskfolio-graphrag-agent/actions/workflows/ci.yml)
 
@@ -25,7 +25,7 @@ This is a **portfolio project** that demonstrates:
 - **Hybrid retrieval (GraphRAG)** – queries combine vector similarity search with graph-neighbourhood traversal for richer, more precise context.
 - **Agentic workflow** – a LangGraph-based multi-step agent plans, retrieves, reasons, and verifies before answering.
 - **Explainability & provenance** – every answer is accompanied by citations linking back to the original source files and graph nodes.
-- **Evaluation** – a built-in evaluation suite measures context recall, precision, faithfulness, and answer relevance.
+- **Evaluation** – a built-in evaluation suite uses heuristic overlap/support metrics for regression tracking and small benchmark comparisons.
 
 > **Disclaimer:** This project is a technical demo only. It does not provide financial advice.
 
@@ -126,7 +126,7 @@ This project is instrumented with OpenTelemetry and LangSmith for full agent wor
 - LangSmith tracing decorates agentic workflow for step-level inspection.
 - FastAPI exposes `/trace` endpoint for trace status and demo.
 - Evaluation suite includes faithfulness, grounding, precision/recall, and multi-hop metrics.
-- All code is modular and production-ready for enterprise KG/RAG/agentic AI deployment.
+- Retrieval includes a lexical Neo4j fallback for deterministic local runs; this repository should be treated as a demo scaffold rather than a production-ready deployment package.
 
 #### OpenTelemetry + Jaeger Setup
 
@@ -167,7 +167,7 @@ export LANGCHAIN_PROJECT=RiskfolioGraphRAG
 ```
 Restart your app and view traces in your LangSmith dashboard.
 
-This demonstrates advanced governance, explainability, and observability—matching enterprise requirements for roles like Dell’s Knowledge Graph / RAG Agentic AI Expert.
+This demonstrates observability and governance patterns that are useful for portfolio review, while still leaving substantial validation and hardening work for any production setting.
 
 ### Module Map
 
@@ -304,6 +304,12 @@ poetry run ruff format src tests
 - [x] App: Gradio chat interface with graph visualisation
 - [x] Eval: CI evaluation regression gate
 - [x] Observability: LangSmith / OpenTelemetry tracing
+
+---
+
+## Known Limitations
+
+For a more comprehensive benchmark set, see [benchmarks/eval_samples_v1.json](benchmarks/eval_samples_v1.json). For more details on current limitations, see [docs/limitations.md](docs/limitations.md).
 
 ---
 

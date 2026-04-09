@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from riskfolio_graphrag_agent.eval.evaluator import (
     ContrastiveEvalReport,
     EvalReport,
@@ -12,6 +14,7 @@ from riskfolio_graphrag_agent.eval.evaluator import (
     _answer_faithfulness,
     _grounding_score,
     _multi_hop_accuracy,
+    build_default_eval_samples,
 )
 from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
 
@@ -74,7 +77,7 @@ def test_evaluator_run_stub():
     assert report.num_samples == 5
 
 
-def test_evaluator_default_profile_is_ragas_style():
+def test_evaluator_default_profile_is_heuristic_overlap():
     samples = [
         EvalSample(
             question="What is Hierarchical Risk Parity?",
@@ -86,7 +89,7 @@ def test_evaluator_default_profile_is_ragas_style():
     evaluator = Evaluator(samples=samples, retriever=_StubRetriever())
     report = evaluator.run()
 
-    assert report.metric_profile == "ragas-style"
+    assert report.metric_profile == "heuristic-overlap"
     assert report.num_samples == 1
     assert 0.0 <= report.context_recall <= 1.0
     assert 0.0 <= report.context_precision <= 1.0
@@ -110,8 +113,37 @@ def test_evaluator_accepts_heuristic_profile():
     )
     report = evaluator.run()
 
-    assert report.metric_profile == "heuristic"
+    assert report.metric_profile == "heuristic-overlap"
     assert report.num_samples == 1
+
+
+
+
+def test_evaluator_legacy_ragas_style_alias_normalizes():
+    samples = [
+        EvalSample(
+            question="What is Hierarchical Risk Parity?",
+            reference_answer="HRP uses clustering and risk parity.",
+            expected_context_terms=["hierarchical", "risk parity", "clustering"],
+        )
+    ]
+
+    evaluator = Evaluator(samples=samples, retriever=_StubRetriever(), metric_profile="ragas-style")
+    report = evaluator.run()
+
+    assert report.metric_profile == "heuristic-overlap"
+
+def test_evaluator_unknown_metric_profile_raises():
+    samples = [
+        EvalSample(
+            question="What is Hierarchical Risk Parity?",
+            reference_answer="HRP uses clustering and risk parity.",
+            expected_context_terms=["hierarchical", "risk parity"],
+        )
+    ]
+
+    with pytest.raises(ValueError, match="Unknown metric_profile"):
+        Evaluator(samples=samples, metric_profile="foo-bar")
 
 
 def test_evaluator_save(tmp_path):
@@ -240,3 +272,11 @@ def test_evaluator_save_contrastive_writes_json(tmp_path):
     assert data["candidate_label"] == "candidate"
     assert "metric_deltas" in data
     assert "per_sample_deltas" in data
+
+
+def test_build_default_eval_samples():
+    samples = build_default_eval_samples()
+    assert len(samples) >= 25
+    assert any(s.difficulty == "easy" for s in samples)
+    assert any(s.difficulty == "hard" for s in samples)
+    assert any(s.tags and "negative-control" in s.tags for s in samples)

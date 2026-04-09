@@ -16,6 +16,7 @@ from riskfolio_graphrag_agent.retrieval.retriever import (
     _hash_embedding,
     _vector_search,
 )
+from riskfolio_graphrag_agent.retrieval.retriever import Neo4jLexicalStore, Neo4jChunkVectorStore
 
 
 class _FakeCollection:
@@ -191,3 +192,7 @@ def test_hash_embedding_is_deterministic():
     first = _hash_embedding("risk parity", dim=64)
     second = _hash_embedding("risk parity", dim=64)
     assert first == second
+
+
+def test_neo4j_lexical_store_alias():
+    assert Neo4jChunkVectorStore is Neo4jLexicalStore

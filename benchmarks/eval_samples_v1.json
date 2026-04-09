@@ -1,0 +1,231 @@
+{
+  "version": "v1",
+  "description": "Expanded evaluation benchmark for riskfolio-graphrag-agent. This set is intentionally broader than the default demo set and includes query classes where graph retrieval may or may not help.",
+  "samples": [
+    {
+      "question": "What is Hierarchical Risk Parity (HRP)?",
+      "reference_answer": "HRP is a hierarchical portfolio allocation method based on clustering and risk budgeting.",
+      "expected_context_terms": ["hrp", "hierarchical risk parity", "clustering", "risk parity"],
+      "domain": "portfolio-construction",
+      "difficulty": "easy",
+      "retrieval_type": "hybrid",
+      "tags": ["definition", "hrp", "graph-helpful"]
+    },
+    {
+      "question": "How does Riskfolio compute CVaR-based optimization?",
+      "reference_answer": "Riskfolio supports CVaR as a risk measure and can optimize portfolios under CVaR objectives or constraints.",
+      "expected_context_terms": ["cvar", "value at risk", "risk measure", "optimization"],
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "hybrid",
+      "tags": ["optimization", "cvar", "graph-maybe"]
+    },
+    {
+      "question": "Which estimators are used for covariance in Riskfolio?",
+      "reference_answer": "Riskfolio documents multiple covariance estimators including historical and shrinkage-style estimators.",
+      "expected_context_terms": ["historical", "ledoit", "shrinkage", "covariance"],
+      "domain": "estimation",
+      "difficulty": "medium",
+      "retrieval_type": "dense",
+      "tags": ["estimators", "covariance", "lookup"]
+    },
+    {
+      "question": "What constraints can be applied in Riskfolio optimization?",
+      "reference_answer": "Riskfolio supports portfolio constraints such as budget, leverage, and risk-related constraints.",
+      "expected_context_terms": ["constraint", "budget", "leverage", "risk contribution"],
+      "domain": "optimization",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "tags": ["constraints", "optimization", "graph-helpful"]
+    },
+    {
+      "question": "How do examples demonstrate portfolio reports and plots?",
+      "reference_answer": "Examples and docs show plotting and reporting workflows for frontiers, allocations, and risk contributions.",
+      "expected_context_terms": ["examples", "report", "plot", "efficient frontier"],
+      "domain": "reporting",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": ["examples", "plots", "lexical"]
+    },
+    {
+      "question": "What does Riskfolio use to represent portfolio constraints?",
+      "reference_answer": "Riskfolio represents constraints through portfolio optimization APIs and documented constraint parameters.",
+      "expected_context_terms": ["constraints", "portfolio", "parameters", "optimization"],
+      "domain": "optimization",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": ["api-lookup", "constraints"]
+    },
+    {
+      "question": "How is mean return estimation described in the documentation?",
+      "reference_answer": "The documentation describes mean return estimation as part of portfolio input estimation and optimization setup.",
+      "expected_context_terms": ["mean", "return", "estimation", "optimization"],
+      "domain": "estimation",
+      "difficulty": "easy",
+      "retrieval_type": "dense",
+      "tags": ["definition", "estimation"]
+    },
+    {
+      "question": "Which risk measures are mentioned alongside CVaR?",
+      "reference_answer": "Riskfolio documentation mentions multiple risk measures alongside CVaR, including VaR and related downside measures.",
+      "expected_context_terms": ["cvar", "var", "risk measure", "downside"],
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "tags": ["comparison", "risk-measures", "graph-helpful"]
+    },
+    {
+      "question": "How do examples connect allocation outputs to reporting visuals?",
+      "reference_answer": "Examples connect portfolio allocation outputs to plotting and reporting utilities for visual inspection.",
+      "expected_context_terms": ["allocation", "plot", "report", "examples"],
+      "domain": "reporting",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "tags": ["multi-hop", "examples", "graph-helpful"]
+    },
+    {
+      "question": "What does the documentation say about leverage constraints?",
+      "reference_answer": "The documentation describes leverage as one of the supported optimization constraints.",
+      "expected_context_terms": ["leverage", "constraint", "optimization", "budget"],
+      "domain": "optimization",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": ["constraint", "lookup"]
+    },
+    {
+      "question": "Which sections mention covariance shrinkage?",
+      "reference_answer": "Covariance shrinkage is discussed in estimator-related documentation sections.",
+      "expected_context_terms": ["covariance", "shrinkage", "estimator", "ledoit"],
+      "domain": "estimation",
+      "difficulty": "medium",
+      "retrieval_type": "dense",
+      "tags": ["section-lookup", "estimators"]
+    },
+    {
+      "question": "How are efficient frontier plots presented in examples?",
+      "reference_answer": "Examples present efficient frontier plots as visual outputs tied to portfolio optimization workflows.",
+      "expected_context_terms": ["efficient frontier", "plot", "examples", "optimization"],
+      "domain": "reporting",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": ["examples", "plots"]
+    },
+    {
+      "question": "What concepts are linked to HRP in the graph-oriented retrieval path?",
+      "reference_answer": "The graph-oriented retrieval path links HRP to clustering, allocation, and related portfolio construction concepts.",
+      "expected_context_terms": ["hrp", "clustering", "allocation", "portfolio"],
+      "domain": "portfolio-construction",
+      "difficulty": "hard",
+      "retrieval_type": "graph",
+      "tags": ["graph-only", "multi-hop", "graph-helpful"]
+    },
+    {
+      "question": "How does Riskfolio describe downside risk in relation to CVaR?",
+      "reference_answer": "Riskfolio describes CVaR as a downside-oriented risk measure used in optimization workflows.",
+      "expected_context_terms": ["downside", "cvar", "risk", "optimization"],
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "hybrid",
+      "tags": ["risk-measures", "definition"]
+    },
+    {
+      "question": "Which examples mention risk contribution charts?",
+      "reference_answer": "Examples mention risk contribution charts as part of portfolio analysis and reporting outputs.",
+      "expected_context_terms": ["risk contribution", "chart", "plot", "examples"],
+      "domain": "reporting",
+      "difficulty": "medium",
+      "retrieval_type": "sparse",
+      "tags": ["examples", "charts"]
+    },
+    {
+      "question": "What input parameters are associated with optimization objectives?",
+      "reference_answer": "Optimization objectives are associated with documented API parameters controlling risk, return, and constraints.",
+      "expected_context_terms": ["parameters", "objective", "optimization", "risk"],
+      "domain": "optimization",
+      "difficulty": "medium",
+      "retrieval_type": "dense",
+      "tags": ["api", "parameters"]
+    },
+    {
+      "question": "How is clustering described across HRP-related material?",
+      "reference_answer": "Clustering is described as a core component of HRP-style portfolio construction.",
+      "expected_context_terms": ["clustering", "hrp", "hierarchical", "portfolio"],
+      "domain": "portfolio-construction",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "tags": ["hrp", "clustering", "graph-helpful"]
+    },
+    {
+      "question": "Which estimator names appear near covariance documentation?",
+      "reference_answer": "Covariance documentation includes estimator names such as historical and shrinkage-based approaches.",
+      "expected_context_terms": ["estimator", "historical", "shrinkage", "covariance"],
+      "domain": "estimation",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": ["estimators", "lookup"]
+    },
+    {
+      "question": "How are portfolio reports linked to optimization results?",
+      "reference_answer": "Portfolio reports are linked to optimization results through examples and reporting utilities that visualize allocations and risk.",
+      "expected_context_terms": ["report", "optimization", "allocation", "risk"],
+      "domain": "reporting",
+      "difficulty": "hard",
+      "retrieval_type": "graph",
+      "tags": ["multi-hop", "reporting", "graph-helpful"]
+    },
+    {
+      "question": "What does the documentation say about budget constraints?",
+      "reference_answer": "Budget constraints are documented as a supported class of optimization constraints.",
+      "expected_context_terms": ["budget", "constraint", "optimization", "portfolio"],
+      "domain": "optimization",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": ["constraints", "lookup"]
+    },
+    {
+      "question": "How are shrinkage estimators positioned relative to historical estimators?",
+      "reference_answer": "Shrinkage estimators are positioned as alternatives to historical estimators for covariance estimation.",
+      "expected_context_terms": ["shrinkage", "historical", "estimator", "covariance"],
+      "domain": "estimation",
+      "difficulty": "hard",
+      "retrieval_type": "dense",
+      "tags": ["comparison", "estimators"]
+    },
+    {
+      "question": "Which graph-linked concepts appear around leverage and budget constraints?",
+      "reference_answer": "Graph-linked retrieval should surface concepts around leverage, budget, and related optimization constraints.",
+      "expected_context_terms": ["leverage", "budget", "constraint", "optimization"],
+      "domain": "optimization",
+      "difficulty": "hard",
+      "retrieval_type": "graph",
+      "tags": ["graph-only", "constraints", "graph-helpful"]
+    },
+    {
+      "question": "How do docs describe the relationship between risk measures and optimization?",
+      "reference_answer": "The docs describe risk measures as key inputs to optimization objectives and constraints.",
+      "expected_context_terms": ["risk measure", "optimization", "constraint", "objective"],
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "hybrid",
+      "tags": ["relationship", "graph-maybe"]
+    },
+    {
+      "question": "Which examples are about plotting allocations rather than estimators?",
+      "reference_answer": "Allocation plotting examples focus on visualizing portfolio outputs rather than estimator internals.",
+      "expected_context_terms": ["allocation", "plot", "examples", "portfolio"],
+      "domain": "reporting",
+      "difficulty": "medium",
+      "retrieval_type": "sparse",
+      "tags": ["negative-control", "graph-not-needed"]
+    },
+    {
+      "question": "What does Riskfolio say about tail-risk measures beyond variance?",
+      "reference_answer": "Riskfolio discusses tail-risk measures such as CVaR as alternatives to variance-based risk treatment.",
+      "expected_context_terms": ["tail", "risk", "cvar", "variance"],
+      "domain": "risk-measures",
+      "difficulty": "hard",
+      "retrieval_type": "hybrid",
+      "tags": ["comparison", "risk-measures"]
+    }
+  ]
+}
