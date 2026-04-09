@@ -117,8 +117,6 @@ def test_evaluator_accepts_heuristic_profile():
     assert report.num_samples == 1
 
 
-
-
 def test_evaluator_legacy_ragas_style_alias_normalizes():
     samples = [
         EvalSample(
@@ -132,6 +130,7 @@ def test_evaluator_legacy_ragas_style_alias_normalizes():
     report = evaluator.run()
 
     assert report.metric_profile == "heuristic-overlap"
+
 
 def test_evaluator_unknown_metric_profile_raises():
     samples = [
@@ -280,3 +279,125 @@ def test_build_default_eval_samples():
     assert any(s.difficulty == "easy" for s in samples)
     assert any(s.difficulty == "hard" for s in samples)
     assert any(s.tags and "negative-control" in s.tags for s in samples)
+
+
+def test_per_sample_contains_diagnostic_fields():
+    """run() must emit actual_retrieval_mode, retrieved_sources, matched_terms, missed_terms."""
+    samples = [
+        EvalSample(
+            question="What is HRP?",
+            reference_answer="HRP uses clustering and risk parity.",
+            expected_context_terms=["hrp", "clustering"],
+        )
+    ]
+    evaluator = Evaluator(
+        samples=samples,
+        retriever=_StubRetriever(),
+        runtime_config={"retrieval_mode": "hybrid_rerank", "embedding_provider": "hash"},
+    )
+    report = evaluator.run()
+    row = report.per_sample[0]
+
+    assert "actual_retrieval_mode" in row
+    assert row["actual_retrieval_mode"] == "hybrid_rerank"
+    assert "retrieved_sources" in row
+    assert isinstance(row["retrieved_sources"], list)
+    assert "matched_terms" in row
+    assert isinstance(row["matched_terms"], list)
+    assert "missed_terms" in row
+    assert isinstance(row["missed_terms"], list)
+    # matched + missed should partition expected_context_terms
+    assert set(row["matched_terms"]) | set(row["missed_terms"]) == {"hrp", "clustering"}
+
+
+def test_report_has_run_at_timestamp():
+    """EvalReport.run_at must be a non-empty ISO-8601 string after run()."""
+    evaluator = Evaluator(_make_samples(1))
+    report = evaluator.run()
+    assert report.run_at != ""
+    # Verify it is a plausible ISO timestamp (contains "T")
+    assert "T" in report.run_at
+
+
+def test_run_at_serialized_in_save(tmp_path):
+    """run_at must appear in the JSON artifact written by save()."""
+    evaluator = Evaluator(_make_samples(1))
+    output = tmp_path / "out.json"
+    evaluator.save(output)
+    data = json.loads(output.read_text())
+    assert "run_at" in data
+    assert data["run_at"] != ""
+
+
+def test_save_with_precomputed_report_does_not_rerun(tmp_path):
+    """Passing a report to save() must serialize that exact report without re-evaluating."""
+    run_count = 0
+
+    class _CountingEvaluator(Evaluator):
+        def run(self) -> EvalReport:  # type: ignore[override]
+            nonlocal run_count
+            run_count += 1
+            return super().run()
+
+    evaluator = _CountingEvaluator(_make_samples(1))
+    report = evaluator.run()
+    assert run_count == 1
+    output = tmp_path / "out.json"
+    evaluator.save(output, report)
+    assert run_count == 1  # save() must not call run() again
+
+
+def test_faithfulness_reflects_reference_answer_support():
+    """Faithfulness must drop when contexts do not support the reference answer."""
+    sample_with_match = EvalSample(
+        question="What is HRP?",
+        reference_answer="HRP uses clustering and risk parity.",
+        expected_context_terms=["hrp", "clustering"],
+    )
+    sample_no_match = EvalSample(
+        question="What is HRP?",
+        reference_answer="HRP uses clustering and risk parity.",
+        expected_context_terms=["hrp", "clustering"],
+    )
+
+    class _OffTopicRetriever:
+        def retrieve(self, query: str) -> list[RetrievalResult]:
+            _ = query
+            return [
+                RetrievalResult(
+                    content="Apples and oranges are common fruits found in grocery stores.",
+                    source_path="off_topic.md",
+                    score=0.1,
+                )
+            ]
+
+    evaluator_relevant = Evaluator(samples=[sample_with_match], retriever=_StubRetriever())
+    evaluator_irrelevant = Evaluator(samples=[sample_no_match], retriever=_OffTopicRetriever())
+
+    report_relevant = evaluator_relevant.run()
+    report_irrelevant = evaluator_irrelevant.run()
+
+    # Retriever returning HRP/clustering content should score higher faithfulness
+    assert report_relevant.answer_faithfulness > report_irrelevant.answer_faithfulness
+
+
+def test_context_precision_matches_multiword_terms():
+    """_ragas_style_context_precision must match multi-word expected terms via substring."""
+    from riskfolio_graphrag_agent.eval.evaluator import _ragas_style_context_precision
+
+    contexts = ["Hierarchical Risk Parity uses clustering to build portfolios."]
+    # "hierarchical risk parity" is multi-word — tokenized matching would miss it
+    score_multiword = _ragas_style_context_precision(
+        "What is HRP?",
+        ["hierarchical risk parity", "clustering"],
+        contexts,
+    )
+    score_single = _ragas_style_context_precision(
+        "What is HRP?",
+        ["hrp", "clustering"],
+        contexts,
+    )
+    # Both terms appear in the context; multi-word term must register a hit
+    assert score_multiword > 0.0
+    # Multi-word and single-word terms should both yield non-trivial scores
+    assert score_single > 0.0

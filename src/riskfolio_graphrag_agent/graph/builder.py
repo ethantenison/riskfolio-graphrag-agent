@@ -57,6 +57,7 @@ NODE_LABELS: tuple[str, ...] = (
     "Parameter",
     "PortfolioMethod",
     "RiskMeasure",
+    "RiskMeasureFamily",
     "ConstraintType",
     "Estimator",
     "ReportType",
@@ -88,6 +89,9 @@ RELATIONSHIP_TYPES: tuple[str, ...] = (
     "RELATED_TO",
     "IS_SUBTYPE_OF",
     "ALTERNATIVE_TO",
+    "BELONGS_TO_FAMILY",
+    "RANGE_VERSION_OF",
+    "DRAWDOWN_ANALOG_OF",
     "REQUIRES",
     "PARAMETERIZED_BY",
     "BENCHMARKED_ON",
@@ -110,6 +114,8 @@ DOMAIN_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
         "Kelly Criterion": ("kelly criterion",),
     },
     "RiskMeasure": {
+        "MV": ("standard deviation", "volatility"),
+        "KT": ("square root of kurtosis", "kurtosis"),
         "CVaR": (
             "cvar",
             "conditional value at risk",
@@ -119,6 +125,8 @@ DOMAIN_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
             "cvar95",
             "cvar99",
         ),
+        "FLPM": ("first lower partial moment",),
+        "SLPM": ("second lower partial moment",),
         "VaR": ("value at risk", "var", "value-at-risk", "var95", "var99"),
         "Semi Deviation": (
             "semi deviation",
@@ -129,12 +137,25 @@ DOMAIN_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
         ),
         "Semi Variance": ("semi variance", "semivariance"),
         "MAD": ("mean absolute deviation", "mad"),
+        "GMD": ("gini mean difference",),
+        "MSV": ("semi standard deviation", "downside deviation", "semideviation"),
+        "SKT": ("square root of semi kurtosis", "semi kurtosis"),
         "Ulcer Index": ("ulcer index",),
+        "UCI": ("ulcer index", "uci"),
         "EVaR": ("entropic value at risk", "evar"),
+        "WR": ("worst realization",),
+        "MDD": ("maximum drawdown",),
+        "ADD": ("average drawdown",),
+        "CDaR": ("conditional drawdown at risk", "cdar"),
         "EDaR": ("entropic drawdown at risk", "edar"),
         "RLVaR": ("relativistic value at risk", "rlvar"),
         "RLDaR": ("relativistic drawdown at risk", "rldar"),
-        "Tail Gini": ("tail gini",),
+        "Tail Gini": ("tail gini", "tg"),
+        "RG": ("range of returns", "return range"),
+        "CVRG": ("cvar range", "conditional value at risk range", "cvrg"),
+        "TGRG": ("tail gini range", "tgrg"),
+        "EVRG": ("evar range", "entropic value at risk range", "evrg"),
+        "RVRG": ("rlvar range", "relativistic value at risk range", "rvrg"),
     },
     "FactorModel": {
         "Fama-French 3 Factor": ("fama french 3", "fama-french 3", "ff3"),
@@ -220,11 +241,57 @@ DOMAIN_PATTERNS: dict[str, list[tuple[str, re.Pattern[str]]]] = {
 _ALTERNATIVE_PAIRS: tuple[tuple[str, str, str], ...] = (
     ("CVaR", "VaR", "RiskMeasure"),
     ("EVaR", "CVaR", "RiskMeasure"),
+    ("Tail Gini", "CVaR", "RiskMeasure"),
+    ("RLVaR", "CVaR", "RiskMeasure"),
     ("EDaR", "RLDaR", "RiskMeasure"),
     ("Hierarchical Risk Parity", "Hierarchical Equal Risk Contribution", "PortfolioMethod"),
     ("Mean-Variance Optimization", "Minimum Variance", "PortfolioMethod"),
     ("Mean-Variance Optimization", "Maximum Sharpe", "PortfolioMethod"),
 )
+
+RISK_MEASURE_FAMILIES: dict[str, str] = {
+    "MV": "Volatility-Style Measure",
+    "KT": "Volatility-Style Measure",
+    "MAD": "Volatility-Style Measure",
+    "GMD": "Volatility-Style Measure",
+    "MSV": "Volatility-Style Measure",
+    "SKT": "Volatility-Style Measure",
+    "Semi Deviation": "Volatility-Style Measure",
+    "Semi Variance": "Volatility-Style Measure",
+    "FLPM": "Tail-Loss Return Measure",
+    "SLPM": "Tail-Loss Return Measure",
+    "VaR": "Tail-Loss Return Measure",
+    "CVaR": "Tail-Loss Return Measure",
+    "Tail Gini": "Tail-Loss Return Measure",
+    "EVaR": "Tail-Loss Return Measure",
+    "RLVaR": "Tail-Loss Return Measure",
+    "WR": "Tail-Loss Return Measure",
+    "MDD": "Drawdown-Based Measure",
+    "ADD": "Drawdown-Based Measure",
+    "CDaR": "Drawdown-Based Measure",
+    "EDaR": "Drawdown-Based Measure",
+    "RLDaR": "Drawdown-Based Measure",
+    "Ulcer Index": "Drawdown-Based Measure",
+    "UCI": "Drawdown-Based Measure",
+    "RG": "Range Tail Dispersion Measure",
+    "CVRG": "Range Tail Dispersion Measure",
+    "TGRG": "Range Tail Dispersion Measure",
+    "EVRG": "Range Tail Dispersion Measure",
+    "RVRG": "Range Tail Dispersion Measure",
+}
+
+RISK_MEASURE_RANGE_BASES: dict[str, str] = {
+    "CVRG": "CVaR",
+    "TGRG": "Tail Gini",
+    "EVRG": "EVaR",
+    "RVRG": "RLVaR",
+}
+
+RISK_MEASURE_DRAWDOWN_ANALOGS: dict[str, str] = {
+    "CDaR": "CVaR",
+    "EDaR": "EVaR",
+    "RLDaR": "RLVaR",
+}
 
 
 def emit_taxonomy_edges() -> tuple[list["GraphNode"], list["GraphEdge"]]:
@@ -233,8 +300,11 @@ def emit_taxonomy_edges() -> tuple[list["GraphNode"], list["GraphEdge"]]:
     The emitted records model two deterministic structures used throughout the
     graph layer:
 
-    - ``IS_SUBTYPE_OF`` edges from canonical concepts to their category label.
-    - bidirectional ``ALTERNATIVE_TO`` edges for selected sibling concepts.
+        - ``IS_SUBTYPE_OF`` edges from canonical concepts to their category label.
+        - ``BELONGS_TO_FAMILY`` edges from risk measures to curated family nodes.
+        - ``RANGE_VERSION_OF`` and ``DRAWDOWN_ANALOG_OF`` edges for explicit
+            risk-measure relationships.
+        - bidirectional ``ALTERNATIVE_TO`` edges for selected sibling concepts.
 
     Returns:
         A tuple of ``(nodes, edges)`` ready to merge into the extracted graph.
@@ -256,6 +326,47 @@ def emit_taxonomy_edges() -> tuple[list["GraphNode"], list["GraphEdge"]]:
                     target_label=category_label,
                 )
             )
+
+    for family_name in sorted(set(RISK_MEASURE_FAMILIES.values())):
+        nodes.append(GraphNode(label="RiskMeasureFamily", name=family_name))
+
+    for measure_name, family_name in RISK_MEASURE_FAMILIES.items():
+        nodes.append(GraphNode(label="RiskMeasure", name=measure_name))
+        edges.append(
+            GraphEdge(
+                source_name=measure_name,
+                target_name=family_name,
+                relation_type="BELONGS_TO_FAMILY",
+                source_label="RiskMeasure",
+                target_label="RiskMeasureFamily",
+            )
+        )
+
+    for range_name, base_name in RISK_MEASURE_RANGE_BASES.items():
+        nodes.append(GraphNode(label="RiskMeasure", name=range_name))
+        nodes.append(GraphNode(label="RiskMeasure", name=base_name))
+        edges.append(
+            GraphEdge(
+                source_name=range_name,
+                target_name=base_name,
+                relation_type="RANGE_VERSION_OF",
+                source_label="RiskMeasure",
+                target_label="RiskMeasure",
+            )
+        )
+
+    for drawdown_name, return_name in RISK_MEASURE_DRAWDOWN_ANALOGS.items():
+        nodes.append(GraphNode(label="RiskMeasure", name=drawdown_name))
+        nodes.append(GraphNode(label="RiskMeasure", name=return_name))
+        edges.append(
+            GraphEdge(
+                source_name=drawdown_name,
+                target_name=return_name,
+                relation_type="DRAWDOWN_ANALOG_OF",
+                source_label="RiskMeasure",
+                target_label="RiskMeasure",
+            )
+        )
 
     for left_name, right_name, label in _ALTERNATIVE_PAIRS:
         edges.append(
@@ -462,7 +573,7 @@ class GraphBuilder:
                     elapsed_seconds,
                 )
 
-        # Augment with taxonomy (IS_SUBTYPE_OF / ALTERNATIVE_TO) edges.
+        # Augment with taxonomy and explicit risk-measure family edges.
         taxonomy_nodes, taxonomy_edges = emit_taxonomy_edges()
         nodes.extend(taxonomy_nodes)
         edges.extend(taxonomy_edges)
@@ -570,7 +681,16 @@ class GraphBuilder:
                     "WITH collect(DISTINCT n)[0..$max_seed_nodes] AS seeds "
                     "UNWIND seeds AS seed "
                     "OPTIONAL MATCH (seed)-[]-(nbr) "
-                    "WITH collect(DISTINCT seed) + collect(DISTINCT nbr) AS raw_nodes "
+                    "OPTIONAL MATCH (seed)-[:BELONGS_TO_FAMILY]->(family:RiskMeasureFamily) "
+                    "OPTIONAL MATCH (family)<-[:BELONGS_TO_FAMILY]-(family_peer:RiskMeasure) "
+                    "OPTIONAL MATCH (seed)<-[:RANGE_VERSION_OF]-(range_variant:RiskMeasure) "
+                    "OPTIONAL MATCH (seed)-[:RANGE_VERSION_OF]->(range_base:RiskMeasure) "
+                    "OPTIONAL MATCH (seed)<-[:DRAWDOWN_ANALOG_OF]-(drawdown_variant:RiskMeasure) "
+                    "OPTIONAL MATCH (seed)-[:DRAWDOWN_ANALOG_OF]->(return_analog:RiskMeasure) "
+                    "WITH collect(DISTINCT seed) + collect(DISTINCT nbr) + collect(DISTINCT family) + "
+                    "collect(DISTINCT family_peer) + collect(DISTINCT range_variant) + "
+                    "collect(DISTINCT range_base) + collect(DISTINCT drawdown_variant) + "
+                    "collect(DISTINCT return_analog) AS raw_nodes "
                     "WITH [n IN raw_nodes WHERE n IS NOT NULL][0..$max_nodes] AS nodes "
                     "RETURN [n IN nodes | {"
                     "id: elementId(n), "
@@ -1034,7 +1154,7 @@ def _safe_name(value: str) -> str:
 
 
 def _query_terms(query: str) -> list[str]:
-    terms = re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", query.lower())
+    terms = re.findall(r"[A-Za-z][A-Za-z0-9_-]{1,}", query.lower())
     deduped: list[str] = []
     seen: set[str] = set()
     for term in terms:

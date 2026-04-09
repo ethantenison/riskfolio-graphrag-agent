@@ -240,6 +240,7 @@ def _trim_evidence_text(text: str, max_chars: int = 260) -> str:
 _NODE_COLOURS: dict[str, str] = {
     "PortfolioMethod": "#7C3AED",
     "RiskMeasure": "#DC2626",
+    "RiskMeasureFamily": "#B45309",
     "ConstraintType": "#D97706",
     "Estimator": "#059669",
     "AssetClass": "#0891B2",
@@ -267,6 +268,9 @@ _DEFAULT_NODE_COLOUR = "#3B82F6"
 _REL_COLOURS: dict[str, str] = {
     "IS_SUBTYPE_OF": "#DC2626",
     "ALTERNATIVE_TO": "#7C3AED",
+    "BELONGS_TO_FAMILY": "#B45309",
+    "RANGE_VERSION_OF": "#0F766E",
+    "DRAWDOWN_ANALOG_OF": "#1D4ED8",
     "SUPPORTS_RISK_MEASURE": "#059669",
     "USES_ESTIMATOR": "#0891B2",
     "HAS_PARAMETER": "#D97706",
@@ -321,7 +325,15 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
         return fig
 
     excluded_types = {"Chunk", "DocPage", "ExampleNotebook", "TestCase"}
-    priority_types = {"PortfolioMethod", "RiskMeasure", "ConstraintType", "Estimator", "PythonClass", "Concept"}
+    priority_types = {
+        "PortfolioMethod",
+        "RiskMeasure",
+        "RiskMeasureFamily",
+        "ConstraintType",
+        "Estimator",
+        "PythonClass",
+        "Concept",
+    }
 
     filtered_nodes = [n for n in nodes if str((n.get("labels") or ["Concept"])[0]) not in excluded_types]
     if len(filtered_nodes) > 35:
@@ -645,7 +657,15 @@ def _render_graph_image(graph: dict[str, list[dict[str, Any]]]) -> Any:
 
     _EXCLUDED_TYPES = {"Chunk", "DocPage", "ExampleNotebook", "TestCase"}
     # Priority types to always keep; others trimmed if graph is large
-    _PRIORITY_TYPES = {"PortfolioMethod", "RiskMeasure", "ConstraintType", "Estimator", "PythonClass", "Concept"}
+    _PRIORITY_TYPES = {
+        "PortfolioMethod",
+        "RiskMeasure",
+        "RiskMeasureFamily",
+        "ConstraintType",
+        "Estimator",
+        "PythonClass",
+        "Concept",
+    }
 
     G = nx.DiGraph()
     node_labels: dict[str, str] = {}
@@ -739,7 +759,16 @@ def _render_graph_image(graph: dict[str, list[dict[str, Any]]]) -> Any:
     nx.draw_networkx_labels(G, pos, labels=short_labels, ax=ax, font_size=7, font_color="#F1F5F9", font_weight="bold")
 
     # Only draw edge labels for the most meaningful relationship types
-    _SHOW_REL_LABELS = {"IS_SUBTYPE_OF", "ALTERNATIVE_TO", "SUPPORTS_RISK_MEASURE", "IMPLEMENTS", "USES_ESTIMATOR"}
+    _SHOW_REL_LABELS = {
+        "IS_SUBTYPE_OF",
+        "ALTERNATIVE_TO",
+        "BELONGS_TO_FAMILY",
+        "RANGE_VERSION_OF",
+        "DRAWDOWN_ANALOG_OF",
+        "SUPPORTS_RISK_MEASURE",
+        "IMPLEMENTS",
+        "USES_ESTIMATOR",
+    }
     edge_labels = {(u, v): d["label"] for u, v, d in G.edges(data=True) if d.get("label", "") in _SHOW_REL_LABELS}
     if edge_labels:
         nx.draw_networkx_edge_labels(

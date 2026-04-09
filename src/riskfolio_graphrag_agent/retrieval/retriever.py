@@ -79,6 +79,14 @@ from riskfolio_graphrag_agent.retrieval.embeddings import EmbeddingProvider, Has
 
 logger = logging.getLogger(__name__)
 
+_QUERY_ONLY_CONCEPT_ALIASES: dict[str, tuple[str, ...]] = {
+    "MV": ("mv",),
+    "KT": ("kt",),
+    "WR": ("wr",),
+    "RG": ("rg", "vrg"),
+    "ADD": ("add",),
+}
+
 RetrievalMode = Literal["dense", "sparse", "graph", "hybrid_rerank"]
 
 
@@ -418,7 +426,7 @@ class HybridRetriever:
 
 
 def _query_tokens(query: str) -> list[str]:
-    tokens = re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", query.lower())
+    tokens = re.findall(r"[A-Za-z][A-Za-z0-9_-]{1,}", query.lower())
     deduped: list[str] = []
     seen: set[str] = set()
     for token in tokens:
@@ -615,12 +623,16 @@ def _graph_seed_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
 
 
 def _find_domain_concepts(query: str) -> list[str]:
-    """Return canonical concept names from DOMAIN_ALIASES that appear in *query*."""
+    """Return canonical concept names whose aliases appear in *query*."""
     lowered = query.lower()
     matched: list[str] = []
     for concepts in DOMAIN_ALIASES.values():
-        for canonical_name in concepts:
-            if canonical_name.lower() in lowered:
+        for canonical_name, aliases in concepts.items():
+            candidate_aliases = tuple(alias.lower() for alias in aliases) + _QUERY_ONLY_CONCEPT_ALIASES.get(
+                canonical_name,
+                (),
+            )
+            if canonical_name.lower() in lowered or any(alias in lowered for alias in candidate_aliases):
                 matched.append(canonical_name)
     return matched
 
@@ -628,9 +640,8 @@ def _find_domain_concepts(query: str) -> list[str]:
 def _graph_hop_expansion(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
     """Find additional graph-relevant chunks from one-hop domain relations.
 
-    This expansion is limited to curated ontology-like edges
-    (`IS_SUBTYPE_OF`, `ALTERNATIVE_TO`, `REQUIRES`) so retrieval remains
-    interpretable and bounded in cost.
+    This expansion is limited to curated ontology-like edges so retrieval
+    remains interpretable and bounded in cost.
     """
     concepts = _find_domain_concepts(query)
     if not concepts:
@@ -642,7 +653,16 @@ def _graph_hop_expansion(driver: Driver, query: str, top_k: int) -> list[VectorH
         "OPTIONAL MATCH (e)-[:IS_SUBTYPE_OF]->(parent) "
         "OPTIONAL MATCH (e)-[:ALTERNATIVE_TO]-(alt) "
         "OPTIONAL MATCH (e)-[:REQUIRES]->(req) "
-        "WITH collect(DISTINCT parent) + collect(DISTINCT alt) + collect(DISTINCT req) AS related_nodes "
+        "OPTIONAL MATCH (e)-[:BELONGS_TO_FAMILY]->(family:RiskMeasureFamily) "
+        "OPTIONAL MATCH (family)<-[:BELONGS_TO_FAMILY]-(family_peer:RiskMeasure) "
+        "OPTIONAL MATCH (e)<-[:RANGE_VERSION_OF]-(range_variant:RiskMeasure) "
+        "OPTIONAL MATCH (e)-[:RANGE_VERSION_OF]->(range_base:RiskMeasure) "
+        "OPTIONAL MATCH (e)<-[:DRAWDOWN_ANALOG_OF]-(drawdown_variant:RiskMeasure) "
+        "OPTIONAL MATCH (e)-[:DRAWDOWN_ANALOG_OF]->(return_analog:RiskMeasure) "
+        "WITH collect(DISTINCT parent) + collect(DISTINCT alt) + collect(DISTINCT req) + "
+        "collect(DISTINCT family) + collect(DISTINCT family_peer) + collect(DISTINCT range_variant) + "
+        "collect(DISTINCT range_base) + collect(DISTINCT drawdown_variant) + "
+        "collect(DISTINCT return_analog) AS related_nodes "
         "UNWIND related_nodes AS rn "
         "WHERE rn IS NOT NULL "
         "OPTIONAL MATCH (c:Chunk)-[:MENTIONS]->(rn) WHERE c.name IS NOT NULL "

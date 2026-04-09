@@ -2,9 +2,9 @@
 
 | mode | context_recall | context_precision |
 |---|---:|---:|
-| dense | 0.2400 | 0.0750 |
-| sparse | 0.2500 | 0.0757 |
-| graph | 0.2300 | 0.0775 |
-| hybrid_rerank | 0.1200 | 0.0518 |
+| dense | 0.1420 | 0.0400 |
+| sparse | 0.2700 | 0.0757 |
+| graph | 0.2420 | 0.0725 |
+| hybrid_rerank | 0.1160 | 0.0494 |
 
 Winner: **sparse**

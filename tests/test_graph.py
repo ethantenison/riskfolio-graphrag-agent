@@ -294,6 +294,32 @@ def test_emit_taxonomy_edges_alternative_to():
     assert ("VaR", "CVaR") in alt_edges
 
 
+def test_emit_taxonomy_edges_risk_measure_family_membership():
+    """emit_taxonomy_edges should connect CVaR to its explicit family node."""
+    nodes, edges = emit_taxonomy_edges()
+
+    node_names = {(n.label, n.name) for n in nodes}
+    assert ("RiskMeasureFamily", "Tail-Loss Return Measure") in node_names
+
+    family_edges = {(e.source_name, e.target_name) for e in edges if e.relation_type == "BELONGS_TO_FAMILY"}
+    assert ("CVaR", "Tail-Loss Return Measure") in family_edges
+    assert ("EDaR", "Drawdown-Based Measure") in family_edges
+    assert ("CVRG", "Range Tail Dispersion Measure") in family_edges
+
+
+def test_emit_taxonomy_edges_range_and_drawdown_relationships():
+    """emit_taxonomy_edges should expose explicit range-version and drawdown analog links."""
+    _, edges = emit_taxonomy_edges()
+
+    range_edges = {(e.source_name, e.target_name) for e in edges if e.relation_type == "RANGE_VERSION_OF"}
+    analog_edges = {(e.source_name, e.target_name) for e in edges if e.relation_type == "DRAWDOWN_ANALOG_OF"}
+
+    assert ("CVRG", "CVaR") in range_edges
+    assert ("TGRG", "Tail Gini") in range_edges
+    assert ("CDaR", "CVaR") in analog_edges
+    assert ("RLDaR", "RLVaR") in analog_edges
+
+
 class _FakeDriver:
     def session(self):
         return _FakeSession()
