@@ -12,16 +12,16 @@
       "tags": ["definition", "hrp", "graph-helpful"]
     },
     {
-      "question": "How does Riskfolio compute CVaR-based optimization?",
-      "reference_answer": "Riskfolio supports CVaR as a risk measure and can optimize portfolios under CVaR objectives or constraints.",
-      "expected_context_terms": ["cvar", "value at risk", "risk measure", "optimization"],
+      "question": "How is CVaR computed?",
+      "reference_answer": "Riskfolio computes CVaR as the historical expected shortfall: the average of returns in the tail beyond the VaR at level α.",
+      "expected_context_terms": ["cvar", "var", "risk", "tail", "expected", "average"],
       "domain": "risk-measures",
       "difficulty": "medium",
       "retrieval_type": "hybrid",
       "tags": ["optimization", "cvar", "graph-maybe"]
     },
     {
-      "question": "Which estimators are used for covariance in Riskfolio?",
+      "question": "Which estimators are used for covariance?",
       "reference_answer": "Riskfolio’s covar_matrix supports historical, semi‑covariance, two EWMA variants, several scikit‑learn shrinkage estimators (Ledoit–Wolf, OAS, Shrunk), Graphical Lasso, and the network‑based j‑LoGo estimator. It also includes three random‑matrix denoising methods (fixed, spectral, shrink) and two Gerber‑statistic‑based robust covariance estimators (gerber1, gerber2).",
       "expected_context_terms": ["historical", "ledoit", "shrinkage", "EWMA", "graphical lasso", "j‑LoGo", "random-matrix", "gerber"],
       "domain": "estimation",
@@ -30,7 +30,7 @@
       "tags": ["estimators", "covariance", "lookup"]
     },
     {
-      "question": "What constraints can be applied in Riskfolio optimization?",
+      "question": "What constraints can be applied during an optimization?",
       "reference_answer": "Riskfolio supports linear weight constraints (assets, groups, classes), factor‑exposure constraints, and Black–Litterman view constraints, plus optional graph‑ and clustering‑based structural constraints on weights.",
       "expected_context_terms": ["constraint", "linear", "factor-exposure", "black-litterman", "graph", "clustering", "risk contribution"],
       "domain": "optimization",

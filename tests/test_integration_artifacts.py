@@ -35,6 +35,7 @@ def test_quickstart_eval_samples_path_points_to_existing_file():
 
 @pytest.mark.integration
 def test_quickstart_option_b_end_to_end_runs_when_enabled():
+    """RUN_OPTION_B_INTEGRATION=1 poetry run pytest -q -m integration"""
     if os.environ.get("RUN_OPTION_B_INTEGRATION") != "1":
         pytest.skip("Set RUN_OPTION_B_INTEGRATION=1 to run the full Option B integration flow.")
 

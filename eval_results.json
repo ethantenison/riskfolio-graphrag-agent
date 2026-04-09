@@ -1,18 +1,18 @@
 {
   "num_samples": 25,
-  "context_recall": 0.5985,
-  "context_precision": 0.1819,
+  "context_recall": 0.6259,
+  "context_precision": 0.1836,
   "answer_faithfulness": 1.0,
-  "answer_relevance": 0.8579,
-  "grounding": 0.7827,
-  "multi_hop_accuracy": 0.3177,
+  "answer_relevance": 0.8563,
+  "grounding": 0.7829,
+  "multi_hop_accuracy": 0.3264,
   "er_precision": 1.0,
   "er_recall": 1.0,
   "er_f1": 1.0,
   "link_prediction_mrr": 1.0,
   "link_prediction_hits_at_3": 1.0,
   "link_prediction_hits_at_10": 1.0,
-  "avg_latency_ms": 261.4532,
+  "avg_latency_ms": 258.8245,
   "estimated_cost_usd": 0.0002,
   "retrieval_mode": "hybrid_rerank",
   "embedding_provider": "hash",
@@ -34,7 +34,7 @@
       "answer_relevance": 0.8417,
       "grounding": 0.8,
       "multi_hop_accuracy": 0.6006,
-      "latency_ms": 257.3,
+      "latency_ms": 254.27,
       "estimated_cost_usd": 0.000255,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -42,7 +42,7 @@
       ]
     },
     {
-      "question": "How does Riskfolio compute CVaR-based optimization?",
+      "question": "How is CVaR computed?",
       "domain": "risk-measures",
       "difficulty": "medium",
       "retrieval_type": "hybrid",
@@ -51,23 +51,21 @@
         "cvar",
         "graph-maybe"
       ],
-      "context_recall": 0.25,
-      "context_precision": 0.1377,
+      "context_recall": 0.6667,
+      "context_precision": 0.1591,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8414,
-      "grounding": 0.7911,
-      "multi_hop_accuracy": 0.1714,
-      "latency_ms": 253.98,
-      "estimated_cost_usd": 0.00022,
+      "answer_relevance": 0.825,
+      "grounding": 0.8071,
+      "multi_hop_accuracy": 0.3331,
+      "latency_ms": 251.67,
+      "estimated_cost_usd": 0.000191,
       "retrieved_contexts": 5,
       "failure_reasons": [
-        "low_context_recall",
-        "low_context_precision",
-        "low_multi_hop_accuracy"
+        "low_context_precision"
       ]
     },
     {
-      "question": "Which estimators are used for covariance in Riskfolio?",
+      "question": "Which estimators are used for covariance?",
       "domain": "estimation",
       "difficulty": "medium",
       "retrieval_type": "dense",
@@ -76,14 +74,14 @@
         "covariance",
         "lookup"
       ],
-      "context_recall": 0.25,
-      "context_precision": 0.085,
+      "context_recall": 0.375,
+      "context_precision": 0.0692,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8467,
-      "grounding": 0.9226,
-      "multi_hop_accuracy": 0.4424,
-      "latency_ms": 263.96,
-      "estimated_cost_usd": 0.000271,
+      "answer_relevance": 0.8522,
+      "grounding": 0.8423,
+      "multi_hop_accuracy": 0.455,
+      "latency_ms": 250.37,
+      "estimated_cost_usd": 0.000257,
       "retrieved_contexts": 5,
       "failure_reasons": [
         "low_context_recall",
@@ -91,7 +89,7 @@
       ]
     },
     {
-      "question": "What constraints can be applied in Riskfolio optimization?",
+      "question": "What constraints can be applied during an optimization?",
       "domain": "optimization",
       "difficulty": "medium",
       "retrieval_type": "graph",
@@ -100,17 +98,16 @@
         "optimization",
         "graph-helpful"
       ],
-      "context_recall": 0.4286,
-      "context_precision": 0.0751,
+      "context_recall": 0.5714,
+      "context_precision": 0.113,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.875,
-      "grounding": 0.7738,
-      "multi_hop_accuracy": 0.305,
-      "latency_ms": 255.87,
-      "estimated_cost_usd": 0.000203,
+      "answer_relevance": 0.8462,
+      "grounding": 0.8438,
+      "multi_hop_accuracy": 0.3484,
+      "latency_ms": 260.45,
+      "estimated_cost_usd": 0.000244,
       "retrieved_contexts": 5,
       "failure_reasons": [
-        "low_context_recall",
         "low_context_precision"
       ]
     },
@@ -130,7 +127,7 @@
       "answer_relevance": 0.8519,
       "grounding": 0.781,
       "multi_hop_accuracy": 0.3152,
-      "latency_ms": 260.47,
+      "latency_ms": 258.89,
       "estimated_cost_usd": 0.000241,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -152,7 +149,7 @@
       "answer_relevance": 0.8609,
       "grounding": 0.8167,
       "multi_hop_accuracy": 0.1943,
-      "latency_ms": 258.46,
+      "latency_ms": 255.99,
       "estimated_cost_usd": 0.000221,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -175,7 +172,7 @@
       "answer_relevance": 0.8583,
       "grounding": 0.84,
       "multi_hop_accuracy": 0.2729,
-      "latency_ms": 248.35,
+      "latency_ms": 264.11,
       "estimated_cost_usd": 0.000211,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -198,7 +195,7 @@
       "answer_relevance": 0.8462,
       "grounding": 0.8939,
       "multi_hop_accuracy": 0.5158,
-      "latency_ms": 259.21,
+      "latency_ms": 268.21,
       "estimated_cost_usd": 0.000304,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -221,7 +218,7 @@
       "answer_relevance": 0.8538,
       "grounding": 0.6125,
       "multi_hop_accuracy": 0.1314,
-      "latency_ms": 257.49,
+      "latency_ms": 271.3,
       "estimated_cost_usd": 0.000226,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -244,7 +241,7 @@
       "answer_relevance": 0.8385,
       "grounding": 0.8625,
       "multi_hop_accuracy": 0.282,
-      "latency_ms": 239.84,
+      "latency_ms": 250.64,
       "estimated_cost_usd": 0.000192,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -267,7 +264,7 @@
       "answer_relevance": 0.8526,
       "grounding": 0.7929,
       "multi_hop_accuracy": 0.3937,
-      "latency_ms": 260.45,
+      "latency_ms": 252.61,
       "estimated_cost_usd": 0.000283,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -289,7 +286,7 @@
       "answer_relevance": 0.8778,
       "grounding": 0.7222,
       "multi_hop_accuracy": 0.2793,
-      "latency_ms": 294.25,
+      "latency_ms": 244.53,
       "estimated_cost_usd": 0.000223,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -312,7 +309,7 @@
       "answer_relevance": 0.8581,
       "grounding": 0.6313,
       "multi_hop_accuracy": 0.3126,
-      "latency_ms": 322.46,
+      "latency_ms": 255.19,
       "estimated_cost_usd": 0.00025,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -334,7 +331,7 @@
       "answer_relevance": 0.8571,
       "grounding": 0.7677,
       "multi_hop_accuracy": 0.1987,
-      "latency_ms": 263.13,
+      "latency_ms": 306.21,
       "estimated_cost_usd": 0.000218,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -357,7 +354,7 @@
       "answer_relevance": 0.88,
       "grounding": 0.7409,
       "multi_hop_accuracy": 0.42,
-      "latency_ms": 255.31,
+      "latency_ms": 253.09,
       "estimated_cost_usd": 0.000258,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -379,7 +376,7 @@
       "answer_relevance": 0.8552,
       "grounding": 0.7167,
       "multi_hop_accuracy": 0.427,
-      "latency_ms": 264.7,
+      "latency_ms": 266.01,
       "estimated_cost_usd": 0.00026,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -402,7 +399,7 @@
       "answer_relevance": 0.8522,
       "grounding": 0.7188,
       "multi_hop_accuracy": 0.2511,
-      "latency_ms": 261.11,
+      "latency_ms": 253.3,
       "estimated_cost_usd": 0.000184,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -425,7 +422,7 @@
       "answer_relevance": 0.856,
       "grounding": 0.7937,
       "multi_hop_accuracy": 0.17,
-      "latency_ms": 241.7,
+      "latency_ms": 252.54,
       "estimated_cost_usd": 0.000237,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -450,7 +447,7 @@
       "answer_relevance": 0.85,
       "grounding": 0.7375,
       "multi_hop_accuracy": 0.3829,
-      "latency_ms": 250.65,
+      "latency_ms": 250.09,
       "estimated_cost_usd": 0.000249,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -472,7 +469,7 @@
       "answer_relevance": 0.864,
       "grounding": 0.8429,
       "multi_hop_accuracy": 0.2677,
-      "latency_ms": 259.74,
+      "latency_ms": 255.08,
       "estimated_cost_usd": 0.000239,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -494,7 +491,7 @@
       "answer_relevance": 0.85,
       "grounding": 0.8639,
       "multi_hop_accuracy": 0.384,
-      "latency_ms": 252.47,
+      "latency_ms": 248.83,
       "estimated_cost_usd": 0.000294,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -517,7 +514,7 @@
       "answer_relevance": 0.89,
       "grounding": 0.7869,
       "multi_hop_accuracy": 0.2878,
-      "latency_ms": 257.01,
+      "latency_ms": 254.3,
       "estimated_cost_usd": 0.000162,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -539,7 +536,7 @@
       "answer_relevance": 0.8714,
       "grounding": 0.7308,
       "multi_hop_accuracy": 0.396,
-      "latency_ms": 276.19,
+      "latency_ms": 265.58,
       "estimated_cost_usd": 0.000234,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -561,7 +558,7 @@
       "answer_relevance": 0.8643,
       "grounding": 0.8057,
       "multi_hop_accuracy": 0.22,
-      "latency_ms": 262.09,
+      "latency_ms": 264.66,
       "estimated_cost_usd": 0.000253,
       "retrieved_contexts": 5,
       "failure_reasons": [
@@ -585,7 +582,7 @@
       "answer_relevance": 0.8538,
       "grounding": 0.8205,
       "multi_hop_accuracy": 0.3214,
-      "latency_ms": 260.15,
+      "latency_ms": 262.69,
       "estimated_cost_usd": 0.000279,
       "retrieved_contexts": 5,
       "failure_reasons": [
