@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from riskfolio_graphrag_agent.eval.evaluator import (
     ContrastiveEvalReport,
     EvalReport,
@@ -12,9 +14,9 @@ from riskfolio_graphrag_agent.eval.evaluator import (
     _answer_faithfulness,
     _grounding_score,
     _multi_hop_accuracy,
+    build_default_eval_samples,
 )
 from riskfolio_graphrag_agent.retrieval.retriever import RetrievalResult
-from riskfolio_graphrag_agent.eval.evaluator import build_default_eval_samples
 
 
 class _StubRetriever:
@@ -130,6 +132,19 @@ def test_evaluator_legacy_ragas_style_alias_normalizes():
     report = evaluator.run()
 
     assert report.metric_profile == "heuristic-overlap"
+
+def test_evaluator_unknown_metric_profile_raises():
+    samples = [
+        EvalSample(
+            question="What is Hierarchical Risk Parity?",
+            reference_answer="HRP uses clustering and risk parity.",
+            expected_context_terms=["hierarchical", "risk parity"],
+        )
+    ]
+
+    with pytest.raises(ValueError, match="Unknown metric_profile"):
+        Evaluator(samples=samples, metric_profile="foo-bar")
+
 
 def test_evaluator_save(tmp_path):
     """Evaluator.save should write valid JSON to the given path."""

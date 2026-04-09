@@ -182,10 +182,13 @@ class Evaluator:
         Args:
             samples: Evaluation samples to score.
             retriever: Optional retriever used to gather evidence for each sample.
-            metric_profile: Metric family used for context and answer scoring.
-                Legacy aliases ``ragas-style`` and ``heuristic`` are accepted
-                for backward compatibility and normalized to
-                ``heuristic-overlap``.
+            metric_profile: Name for the scoring profile metadata. The current
+                implementation only uses the heuristic overlap/support scoring
+                flow, so ``heuristic-overlap`` is the effective profile for all
+                runs. Legacy aliases ``ragas-style`` and ``heuristic`` are
+                accepted for backward compatibility and normalized to
+                ``heuristic-overlap`` rather than selecting different scoring
+                behavior. Any other value raises ``ValueError``.
             runtime_config: Run metadata such as retrieval mode or embedding backend.
             er_metrics: Optional entity-resolution summary metrics to include in
                 the final report.
@@ -195,6 +198,13 @@ class Evaluator:
         normalized_metric_profile = metric_profile.strip().lower()
         if normalized_metric_profile in {"ragas-style", "heuristic"}:
             normalized_metric_profile = "heuristic-overlap"
+        _SUPPORTED_PROFILES = {"heuristic-overlap"}
+        if normalized_metric_profile not in _SUPPORTED_PROFILES:
+            raise ValueError(
+                f"Unknown metric_profile {normalized_metric_profile!r}. "
+                f"Supported values: {sorted(_SUPPORTED_PROFILES)}. "
+                "Legacy aliases 'ragas-style' and 'heuristic' are also accepted."
+            )
         self._metric_profile = normalized_metric_profile
         self._runtime_config = runtime_config or {}
         self._er_metrics = er_metrics or {}
