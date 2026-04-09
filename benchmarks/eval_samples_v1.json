@@ -67,8 +67,8 @@
     },
     {
       "question": "Which risk measures are related to CVaR?",
-      "reference_answer": "CVaR (Conditional Value at Risk) is the expected loss given that the loss has exceeded the VaR at a chosen confidence level, so it focuses on the severity of tail events. Risk measures related to CVaR in Riskfolio are VaR, Tail Gini (TG), EVaR, RLVaR, and their corresponding range versions VRG, CVRG, TGRG, EVRG, and RVRG.",
-      "expected_context_terms": ["cvar", "var", "tail gini", "tg", "evar", "rlvar", "vrg", "cvrg", "tgrg", "evrg", "rvrg"],
+      "reference_answer": "CVaR (Conditional Value at Risk) belongs to the tail-loss return measure family. Closely related measures in that family are VaR, Tail Gini (TG), EVaR, RLVaR, and Worst Realization (WR). Its explicit range-tail counterparts are CVRG, TGRG, EVRG, and RVRG.",
+      "expected_context_terms": ["cvar", "var", "tail gini", "tg", "evar", "rlvar", "wr", "tail-loss", "cvrg", "tgrg", "evrg", "rvrg"],
       "domain": "risk-measures",
       "difficulty": "medium",
       "retrieval_type": "graph",
@@ -220,8 +220,8 @@
     },
     {
       "question": "What tail-risk measures are there beyond variance?",
-      "reference_answer": "Tail‑risk measures beyond variance in Riskfolio are CVaR, Tail Gini (TG), EVaR, RLVaR, Worst Realization (WR), and their range versions CVRG, TGRG, EVRG, and RVRG.",
-      "expected_context_terms": ["tail", "risk", "cvar", "worst", "tail", "range"],
+      "reference_answer": "Tail-risk measures beyond variance in Riskfolio include the tail-loss return family headed by VaR and CVaR, plus Tail Gini (TG), EVaR, RLVaR, and Worst Realization (WR). Related range-tail dispersion measures include CVRG, TGRG, EVRG, and RVRG.",
+      "expected_context_terms": ["tail", "risk", "cvar", "tail gini", "evar", "rlvar", "worst realization", "range", "cvrg", "tgrg", "evrg", "rvrg"],
       "domain": "risk-measures",
       "difficulty": "hard",
       "retrieval_type": "hybrid",

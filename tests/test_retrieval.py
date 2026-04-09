@@ -10,13 +10,15 @@ from riskfolio_graphrag_agent.retrieval.embeddings import HashEmbeddingProvider
 from riskfolio_graphrag_agent.retrieval.retriever import (
     ChromaVectorStore,
     HybridRetriever,
+    Neo4jChunkVectorStore,
+    Neo4jLexicalStore,
     RetrievalResult,
     VectorHit,
+    _find_domain_concepts,
     _graph_expand,
     _hash_embedding,
     _vector_search,
 )
-from riskfolio_graphrag_agent.retrieval.retriever import Neo4jLexicalStore, Neo4jChunkVectorStore
 
 
 class _FakeCollection:
@@ -196,3 +198,12 @@ def test_hash_embedding_is_deterministic():
 
 def test_neo4j_lexical_store_alias():
     assert Neo4jChunkVectorStore is Neo4jLexicalStore
+
+
+def test_find_domain_concepts_matches_short_risk_measure_aliases():
+    concepts = _find_domain_concepts("Compare TG, EVRG, MV, and CDaR for tail-risk analysis")
+
+    assert "Tail Gini" in concepts
+    assert "EVRG" in concepts
+    assert "MV" in concepts
+    assert "CDaR" in concepts
