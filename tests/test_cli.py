@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
@@ -106,3 +108,45 @@ def test_eval_gate_cli_passes_all_thresholds(monkeypatch, tmp_path):
     assert captured["max_latency_ms"] == 2500.0
     assert captured["max_estimated_cost_usd"] == 0.01
     assert captured["trend_path"] == str(trend_file)
+
+
+def test_eval_cli_accepts_benchmark_samples_file(monkeypatch, tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    samples_path = repo_root / "benchmarks" / "eval_samples_v1.json"
+
+    class _StubRetriever:
+        def retrieve(self, query: str):
+            _ = query
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        cli,
+        "_resolve_embedding",
+        lambda settings: SimpleNamespace(
+            provider=None,
+            selected_provider="stub",
+            fallback_reason=None,
+        ),
+    )
+    monkeypatch.setattr(cli, "HybridRetriever", lambda **kwargs: _StubRetriever())
+    monkeypatch.setattr(cli, "run_er_pipeline", lambda *args, **kwargs: SimpleNamespace(metrics=None))
+
+    output_path = tmp_path / "eval_results.json"
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval",
+            "--samples",
+            str(samples_path),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert output_path.exists()
+    payload = json.loads(output_path.read_text())
+    assert payload["num_samples"] > 0

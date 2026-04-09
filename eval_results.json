@@ -1,124 +1,597 @@
 {
-  "num_samples": 5,
-  "context_recall": 0.55,
-  "context_precision": 0.1564,
+  "num_samples": 25,
+  "context_recall": 0.5985,
+  "context_precision": 0.1819,
   "answer_faithfulness": 1.0,
-  "answer_relevance": 0.8525,
-  "grounding": 0.7734,
-  "multi_hop_accuracy": 1.0,
+  "answer_relevance": 0.8579,
+  "grounding": 0.7827,
+  "multi_hop_accuracy": 0.3177,
   "er_precision": 1.0,
   "er_recall": 1.0,
   "er_f1": 1.0,
   "link_prediction_mrr": 1.0,
   "link_prediction_hits_at_3": 1.0,
   "link_prediction_hits_at_10": 1.0,
-  "avg_latency_ms": 29.2203,
+  "avg_latency_ms": 261.4532,
   "estimated_cost_usd": 0.0002,
-  "retrieval_mode": "sparse",
+  "retrieval_mode": "hybrid_rerank",
   "embedding_provider": "hash",
-  "metric_profile": "ragas-style",
+  "metric_profile": "heuristic-overlap",
   "per_sample": [
     {
       "question": "What is Hierarchical Risk Parity (HRP)?",
+      "domain": "portfolio-construction",
+      "difficulty": "easy",
+      "retrieval_type": "hybrid",
+      "tags": [
+        "definition",
+        "hrp",
+        "graph-helpful"
+      ],
       "context_recall": 1.0,
       "context_precision": 0.1934,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8455,
-      "grounding": 0.8182,
-      "multi_hop_accuracy": 1.0,
-      "latency_ms": 36.19,
+      "answer_relevance": 0.8417,
+      "grounding": 0.8,
+      "multi_hop_accuracy": 0.6006,
+      "latency_ms": 257.3,
       "estimated_cost_usd": 0.000255,
-      "retrieved_contexts": 5
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
     },
     {
       "question": "How does Riskfolio compute CVaR-based optimization?",
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "hybrid",
+      "tags": [
+        "optimization",
+        "cvar",
+        "graph-maybe"
+      ],
       "context_recall": 0.25,
       "context_precision": 0.1377,
       "answer_faithfulness": 1.0,
       "answer_relevance": 0.8414,
-      "grounding": 0.7586,
-      "multi_hop_accuracy": 1.0,
-      "latency_ms": 30.46,
+      "grounding": 0.7911,
+      "multi_hop_accuracy": 0.1714,
+      "latency_ms": 253.98,
       "estimated_cost_usd": 0.00022,
-      "retrieved_contexts": 5
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_recall",
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
     },
     {
       "question": "Which estimators are used for covariance in Riskfolio?",
-      "context_recall": 0.5,
-      "context_precision": 0.28,
+      "domain": "estimation",
+      "difficulty": "medium",
+      "retrieval_type": "dense",
+      "tags": [
+        "estimators",
+        "covariance",
+        "lookup"
+      ],
+      "context_recall": 0.25,
+      "context_precision": 0.085,
       "answer_faithfulness": 1.0,
       "answer_relevance": 0.8467,
-      "grounding": 0.8333,
-      "multi_hop_accuracy": 1.0,
-      "latency_ms": 26.98,
-      "estimated_cost_usd": 0.00027,
-      "retrieved_contexts": 5
+      "grounding": 0.9226,
+      "multi_hop_accuracy": 0.4424,
+      "latency_ms": 263.96,
+      "estimated_cost_usd": 0.000271,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_recall",
+        "low_context_precision"
+      ]
     },
     {
       "question": "What constraints can be applied in Riskfolio optimization?",
-      "context_recall": 0.5,
-      "context_precision": 0.0194,
+      "domain": "optimization",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "tags": [
+        "constraints",
+        "optimization",
+        "graph-helpful"
+      ],
+      "context_recall": 0.4286,
+      "context_precision": 0.0751,
       "answer_faithfulness": 1.0,
       "answer_relevance": 0.875,
-      "grounding": 0.6875,
-      "multi_hop_accuracy": 1.0,
-      "latency_ms": 26.72,
+      "grounding": 0.7738,
+      "multi_hop_accuracy": 0.305,
+      "latency_ms": 255.87,
       "estimated_cost_usd": 0.000203,
-      "retrieved_contexts": 5
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_recall",
+        "low_context_precision"
+      ]
     },
     {
       "question": "How do examples demonstrate portfolio reports and plots?",
+      "domain": "reporting",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": [
+        "examples",
+        "plots",
+        "lexical"
+      ],
       "context_recall": 0.5,
       "context_precision": 0.1515,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8538,
-      "grounding": 0.7692,
-      "multi_hop_accuracy": 1.0,
-      "latency_ms": 25.75,
+      "answer_relevance": 0.8519,
+      "grounding": 0.781,
+      "multi_hop_accuracy": 0.3152,
+      "latency_ms": 260.47,
       "estimated_cost_usd": 0.000241,
-      "retrieved_contexts": 5
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "What does Riskfolio use to represent portfolio constraints?",
+      "domain": "optimization",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": [
+        "api-lookup",
+        "constraints"
+      ],
+      "context_recall": 0.8333,
+      "context_precision": 0.2327,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8609,
+      "grounding": 0.8167,
+      "multi_hop_accuracy": 0.1943,
+      "latency_ms": 258.46,
+      "estimated_cost_usd": 0.000221,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "How is mean return estimation described in the documentation?",
+      "domain": "estimation",
+      "difficulty": "easy",
+      "retrieval_type": "dense",
+      "tags": [
+        "definition",
+        "estimation"
+      ],
+      "context_recall": 0.75,
+      "context_precision": 0.3459,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8583,
+      "grounding": 0.84,
+      "multi_hop_accuracy": 0.2729,
+      "latency_ms": 248.35,
+      "estimated_cost_usd": 0.000211,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "Which risk measures are related to CVaR?",
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "tags": [
+        "comparison",
+        "risk-measures",
+        "graph-helpful"
+      ],
+      "context_recall": 0.4545,
+      "context_precision": 0.1734,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8462,
+      "grounding": 0.8939,
+      "multi_hop_accuracy": 0.5158,
+      "latency_ms": 259.21,
+      "estimated_cost_usd": 0.000304,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "How do examples connect allocation outputs to reporting visuals?",
+      "domain": "reporting",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "tags": [
+        "multi-hop",
+        "examples",
+        "graph-helpful"
+      ],
+      "context_recall": 0.75,
+      "context_precision": 0.1673,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8538,
+      "grounding": 0.6125,
+      "multi_hop_accuracy": 0.1314,
+      "latency_ms": 257.49,
+      "estimated_cost_usd": 0.000226,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "How can you do a leverage constraint?",
+      "domain": "optimization",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": [
+        "constraint",
+        "lookup"
+      ],
+      "context_recall": 0.2222,
+      "context_precision": 0.0274,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8385,
+      "grounding": 0.8625,
+      "multi_hop_accuracy": 0.282,
+      "latency_ms": 239.84,
+      "estimated_cost_usd": 0.000192,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_recall",
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "Which sections mention covariance shrinkage?",
+      "domain": "estimation",
+      "difficulty": "medium",
+      "retrieval_type": "dense",
+      "tags": [
+        "section-lookup",
+        "estimators"
+      ],
+      "context_recall": 0.5,
+      "context_precision": 0.2506,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8526,
+      "grounding": 0.7929,
+      "multi_hop_accuracy": 0.3937,
+      "latency_ms": 260.45,
+      "estimated_cost_usd": 0.000283,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "How are efficient frontier plots presented in examples?",
+      "domain": "reporting",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": [
+        "examples",
+        "plots"
+      ],
+      "context_recall": 0.75,
+      "context_precision": 0.0791,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8778,
+      "grounding": 0.7222,
+      "multi_hop_accuracy": 0.2793,
+      "latency_ms": 294.25,
+      "estimated_cost_usd": 0.000223,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "What concepts are linked to HRP in the graph-oriented retrieval path?",
+      "domain": "portfolio-construction",
+      "difficulty": "hard",
+      "retrieval_type": "graph",
+      "tags": [
+        "graph-only",
+        "multi-hop",
+        "graph-helpful"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.1783,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8581,
+      "grounding": 0.6313,
+      "multi_hop_accuracy": 0.3126,
+      "latency_ms": 322.46,
+      "estimated_cost_usd": 0.00025,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "How does Riskfolio describe downside risk in relation to CVaR?",
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "hybrid",
+      "tags": [
+        "risk-measures",
+        "definition"
+      ],
+      "context_recall": 0.5,
+      "context_precision": 0.1379,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8571,
+      "grounding": 0.7677,
+      "multi_hop_accuracy": 0.1987,
+      "latency_ms": 263.13,
+      "estimated_cost_usd": 0.000218,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "Which examples mention risk contribution charts?",
+      "domain": "reporting",
+      "difficulty": "medium",
+      "retrieval_type": "sparse",
+      "tags": [
+        "examples",
+        "charts"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.1896,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.88,
+      "grounding": 0.7409,
+      "multi_hop_accuracy": 0.42,
+      "latency_ms": 255.31,
+      "estimated_cost_usd": 0.000258,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "What parameters are associated with optimization objectives in Riskfolio?",
+      "domain": "optimization",
+      "difficulty": "medium",
+      "retrieval_type": "dense",
+      "tags": [
+        "api",
+        "parameters"
+      ],
+      "context_recall": 0.8571,
+      "context_precision": 0.2066,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8552,
+      "grounding": 0.7167,
+      "multi_hop_accuracy": 0.427,
+      "latency_ms": 264.7,
+      "estimated_cost_usd": 0.00026,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "How is clustering described across HRP-related material?",
+      "domain": "portfolio-construction",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "tags": [
+        "hrp",
+        "clustering",
+        "graph-helpful"
+      ],
+      "context_recall": 0.25,
+      "context_precision": 0.17,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8522,
+      "grounding": 0.7188,
+      "multi_hop_accuracy": 0.2511,
+      "latency_ms": 261.11,
+      "estimated_cost_usd": 0.000184,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_recall",
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "Which estimator names appear near covariance documentation?",
+      "domain": "estimation",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": [
+        "estimators",
+        "lookup"
+      ],
+      "context_recall": 0.25,
+      "context_precision": 0.107,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.856,
+      "grounding": 0.7937,
+      "multi_hop_accuracy": 0.17,
+      "latency_ms": 241.7,
+      "estimated_cost_usd": 0.000237,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_recall",
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "How are portfolio reports linked to optimization results?",
+      "domain": "reporting",
+      "difficulty": "hard",
+      "retrieval_type": "graph",
+      "tags": [
+        "multi-hop",
+        "reporting",
+        "graph-helpful"
+      ],
+      "context_recall": 0.5,
+      "context_precision": 0.3105,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.85,
+      "grounding": 0.7375,
+      "multi_hop_accuracy": 0.3829,
+      "latency_ms": 250.65,
+      "estimated_cost_usd": 0.000249,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "What does the documentation say about budget constraints?",
+      "domain": "optimization",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "tags": [
+        "constraints",
+        "lookup"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.2111,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.864,
+      "grounding": 0.8429,
+      "multi_hop_accuracy": 0.2677,
+      "latency_ms": 259.74,
+      "estimated_cost_usd": 0.000239,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "How are shrinkage estimators positioned relative to historical estimators?",
+      "domain": "estimation",
+      "difficulty": "hard",
+      "retrieval_type": "dense",
+      "tags": [
+        "comparison",
+        "estimators"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.3385,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.85,
+      "grounding": 0.8639,
+      "multi_hop_accuracy": 0.384,
+      "latency_ms": 252.47,
+      "estimated_cost_usd": 0.000294,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "Which graph-linked concepts appear around leverage and budget constraints?",
+      "domain": "optimization",
+      "difficulty": "hard",
+      "retrieval_type": "graph",
+      "tags": [
+        "graph-only",
+        "constraints",
+        "graph-helpful"
+      ],
+      "context_recall": 0.5,
+      "context_precision": 0.2963,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.89,
+      "grounding": 0.7869,
+      "multi_hop_accuracy": 0.2878,
+      "latency_ms": 257.01,
+      "estimated_cost_usd": 0.000162,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "How do docs describe the relationship between risk measures and optimization?",
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "hybrid",
+      "tags": [
+        "relationship",
+        "graph-maybe"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.1917,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8714,
+      "grounding": 0.7308,
+      "multi_hop_accuracy": 0.396,
+      "latency_ms": 276.19,
+      "estimated_cost_usd": 0.000234,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "Which examples are about plotting allocations rather than estimators?",
+      "domain": "reporting",
+      "difficulty": "medium",
+      "retrieval_type": "sparse",
+      "tags": [
+        "negative-control",
+        "graph-not-needed"
+      ],
+      "context_recall": 0.25,
+      "context_precision": 0.1421,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8643,
+      "grounding": 0.8057,
+      "multi_hop_accuracy": 0.22,
+      "latency_ms": 262.09,
+      "estimated_cost_usd": 0.000253,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_recall",
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "What tail-risk measures are there beyond variance?",
+      "domain": "risk-measures",
+      "difficulty": "hard",
+      "retrieval_type": "hybrid",
+      "tags": [
+        "comparison",
+        "risk-measures"
+      ],
+      "context_recall": 0.1667,
+      "context_precision": 0.1488,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8538,
+      "grounding": 0.8205,
+      "multi_hop_accuracy": 0.3214,
+      "latency_ms": 260.15,
+      "estimated_cost_usd": 0.000279,
+      "retrieved_contexts": 5,
+      "failure_reasons": [
+        "low_context_recall",
+        "low_context_precision"
+      ]
     }
-  ],
-  "all_modes": {
-    "dense": {
-      "context_recall": 0.55,
-      "context_precision": 0.1564,
-      "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8525,
-      "grounding": 0.7734,
-      "multi_hop_accuracy": 1.0,
-      "avg_latency_ms": 70.3445,
-      "estimated_cost_usd": 0.0002
-    },
-    "sparse": {
-      "context_recall": 0.55,
-      "context_precision": 0.1564,
-      "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8525,
-      "grounding": 0.7734,
-      "multi_hop_accuracy": 1.0,
-      "avg_latency_ms": 29.2203,
-      "estimated_cost_usd": 0.0002
-    },
-    "graph": {
-      "context_recall": 0.35,
-      "context_precision": 0.102,
-      "answer_faithfulness": 1.0,
-      "answer_relevance": 0.847,
-      "grounding": 0.7426,
-      "multi_hop_accuracy": 1.0,
-      "avg_latency_ms": 27.2095,
-      "estimated_cost_usd": 0.0002
-    },
-    "hybrid_rerank": {
-      "context_recall": 0.55,
-      "context_precision": 0.1564,
-      "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8525,
-      "grounding": 0.7734,
-      "multi_hop_accuracy": 1.0,
-      "avg_latency_ms": 45.8795,
-      "estimated_cost_usd": 0.0002
-    }
-  }
+  ]
 }

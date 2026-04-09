@@ -440,7 +440,7 @@ def graph_stats() -> None:
             console.print(f"  - {relationship_type}: {count}")
 
 
-@app.command()
+@app.command(name="eval")
 def eval_command(
     output_file: str = typer.Option("eval_results.json", "--output", "-o", help="Path to write evaluation results JSON."),
     samples_path: str | None = typer.Option(

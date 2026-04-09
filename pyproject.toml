@@ -52,6 +52,9 @@ extend-select = ["A", "E501", "I"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--tb=short -q"
+markers = [
+  "integration: end-to-end or environment-dependent integration tests",
+]
 filterwarnings = [
   "ignore:'asyncio\\.iscoroutinefunction' is deprecated and slated for removal in Python 3\\.16; use inspect\\.iscoroutinefunction\\(\\) instead:DeprecationWarning:neo4j\\..*",
 ]
