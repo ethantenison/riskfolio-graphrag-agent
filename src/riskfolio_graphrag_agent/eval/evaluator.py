@@ -51,6 +51,7 @@ from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever, Retrie
 
 logger = logging.getLogger(__name__)
 
+_SUPPORTED_METRIC_PROFILES: frozenset[str] = frozenset({"heuristic-overlap"})
 
 @dataclass
 class EvalSample:
@@ -198,11 +199,10 @@ class Evaluator:
         normalized_metric_profile = metric_profile.strip().lower()
         if normalized_metric_profile in {"ragas-style", "heuristic"}:
             normalized_metric_profile = "heuristic-overlap"
-        _SUPPORTED_PROFILES = {"heuristic-overlap"}
-        if normalized_metric_profile not in _SUPPORTED_PROFILES:
+        if normalized_metric_profile not in _SUPPORTED_METRIC_PROFILES:
             raise ValueError(
                 f"Unknown metric_profile {normalized_metric_profile!r}. "
-                f"Supported values: {sorted(_SUPPORTED_PROFILES)}. "
+                f"Supported values: {sorted(_SUPPORTED_METRIC_PROFILES)}. "
                 "Legacy aliases 'ragas-style' and 'heuristic' are also accepted."
             )
         self._metric_profile = normalized_metric_profile
