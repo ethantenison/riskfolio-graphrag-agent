@@ -8,6 +8,15 @@ poetry run pytest -q
 poetry run riskfolio-agent kg-run --source-dir /path/to/Riskfolio-Lib --artifact-dir artifacts/kg
 ```
 
+Example:
+```bash
+poetry run riskfolio-agent kg-run \
+  --source-dir /Users/et/Desktop/Data_Projects/Riskfolio-Lib \
+  --artifact-dir artifacts/kg \
+  --persist-neo4j \
+  --drop-existing
+```
+
 Expected outputs:
 
 - `artifacts/kg/extractions.json`
@@ -36,3 +45,4 @@ poetry run riskfolio-agent build-graph
 ```
 
 Use this only if you specifically need the older deterministic graph builder for comparison or migration work.
+

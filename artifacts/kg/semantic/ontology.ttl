@@ -1,0 +1,58 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+<https://riskfolio-graphrag.io/kg/v2/concept-scheme:induced-relation-types:2f95f86683c8> a skos:ConceptScheme ;
+    skos:prefLabel "Induced Relation Types" .
+
+<https://riskfolio-graphrag.io/kg/v2/ontology-class:acronym-concept:bec579d2d1dd> a owl:Class,
+        skos:Concept ;
+    rdfs:label "Acronym Concept" ;
+    rdfs:comment "Induced class for entities labeled as acronym_concept during open extraction." ;
+    skos:inScheme <https://riskfolio-graphrag.io/kg/v2/concept-scheme:induced-entity-types:ff6cb9253ce3> .
+
+<https://riskfolio-graphrag.io/kg/v2/ontology-class:api-symbol:5c6e9ee14816> a owl:Class,
+        skos:Concept ;
+    rdfs:label "Api Symbol" ;
+    rdfs:comment "Induced class for entities labeled as api_symbol during open extraction." ;
+    skos:inScheme <https://riskfolio-graphrag.io/kg/v2/concept-scheme:induced-entity-types:ff6cb9253ce3> .
+
+<https://riskfolio-graphrag.io/kg/v2/ontology-class:concept:49376c9cc5b0> a owl:Class,
+        skos:Concept ;
+    rdfs:label "Concept" ;
+    rdfs:comment "Induced class for entities labeled as concept during open extraction." ;
+    skos:inScheme <https://riskfolio-graphrag.io/kg/v2/concept-scheme:induced-entity-types:ff6cb9253ce3> .
+
+<https://riskfolio-graphrag.io/kg/v2/ontology-class:model:1d06a0d76f00> a owl:Class,
+        skos:Concept ;
+    rdfs:label "Model" ;
+    rdfs:comment "Induced class for entities labeled as model during open extraction." ;
+    skos:inScheme <https://riskfolio-graphrag.io/kg/v2/concept-scheme:induced-entity-types:ff6cb9253ce3> .
+
+<https://riskfolio-graphrag.io/kg/v2/ontology-class:python-class:7174dc6b5f87> a owl:Class,
+        skos:Concept ;
+    rdfs:label "Python Class" ;
+    rdfs:comment "Induced class for entities labeled as python_class during open extraction." ;
+    skos:inScheme <https://riskfolio-graphrag.io/kg/v2/concept-scheme:induced-entity-types:ff6cb9253ce3> .
+
+<https://riskfolio-graphrag.io/kg/v2/ontology-class:python-function:e802877f3f89> a owl:Class,
+        skos:Concept ;
+    rdfs:label "Python Function" ;
+    rdfs:comment "Induced class for entities labeled as python_function during open extraction." ;
+    skos:inScheme <https://riskfolio-graphrag.io/kg/v2/concept-scheme:induced-entity-types:ff6cb9253ce3> .
+
+<https://riskfolio-graphrag.io/kg/v2/ontology-class:python-parameter:831f8fffabf2> a owl:Class,
+        skos:Concept ;
+    rdfs:label "Python Parameter" ;
+    rdfs:comment "Induced class for entities labeled as python_parameter during open extraction." ;
+    skos:inScheme <https://riskfolio-graphrag.io/kg/v2/concept-scheme:induced-entity-types:ff6cb9253ce3> .
+
+<https://riskfolio-graphrag.io/kg/v2/ontology-class:risk-measure-like:33cb99850133> a owl:Class,
+        skos:Concept ;
+    rdfs:label "Risk Measure Like" ;
+    rdfs:comment "Induced class for entities labeled as risk_measure_like during open extraction." ;
+    skos:inScheme <https://riskfolio-graphrag.io/kg/v2/concept-scheme:induced-entity-types:ff6cb9253ce3> .
+
+<https://riskfolio-graphrag.io/kg/v2/concept-scheme:induced-entity-types:ff6cb9253ce3> a skos:ConceptScheme ;
+    skos:prefLabel "Induced Entity Types" .
+

@@ -1,0 +1,16 @@
+{
+  "entity_compression_ratio": 0.064495156361745,
+  "mean_assertion_confidence": 0.0,
+  "mean_canonical_entity_confidence": 0.6945181451612903,
+  "num_candidate_assertions": 0,
+  "num_candidate_entities": 30762,
+  "num_candidate_events": 0,
+  "num_canonical_entities": 1984,
+  "num_canonical_predicates": 0,
+  "num_chunks": 2821,
+  "num_mentions": 30762,
+  "num_ontology_classes": 8,
+  "num_ontology_properties": 0,
+  "promoted_assertion_ratio": 0.0,
+  "schema_support_ratio": 1.0
+}

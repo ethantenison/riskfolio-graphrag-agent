@@ -13,6 +13,8 @@ This module does not claim full ontology completeness or SHACL closure.
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 try:
     from rdflib import Graph, Literal, Namespace
     from rdflib.namespace import OWL, RDF, RDFS, SKOS, XSD
@@ -23,6 +25,21 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency fallback
     OWL = RDF = RDFS = SKOS = XSD = None
 
 from riskfolio_graphrag_agent.kg_models import GraphWritePlan, SchemaInductionResult, SemanticExportResult
+
+
+def _safe_local(value: str) -> str:
+    """Percent-encode a string so it is safe to use as a URI local name.
+
+    RDF URIs must not contain unencoded whitespace, angle brackets or other
+    IRI-unsafe characters. Paths from notebook filenames commonly carry spaces.
+
+    Args:
+        value: Raw identifier or file-path-derived string.
+
+    Returns:
+        Percent-encoded string safe for appending to a namespace URI.
+    """
+    return quote(value, safe="-._~:@!$&'()*+,;=/#")
 
 
 class SemanticExportPipeline:
@@ -55,31 +72,31 @@ class SemanticExportPipeline:
             graph.bind("xsd", XSD)
 
         for ontology_class in schema_induction.ontology_classes:
-            uri = rf[ontology_class.ontology_class_id]
+            uri = rf[_safe_local(ontology_class.ontology_class_id)]
             ontology_graph.add((uri, RDF.type, OWL.Class))
             ontology_graph.add((uri, RDFS.label, Literal(ontology_class.label)))
             ontology_graph.add((uri, RDFS.comment, Literal(ontology_class.definition)))
 
         for ontology_property in schema_induction.ontology_properties:
-            uri = rf[ontology_property.ontology_property_id]
+            uri = rf[_safe_local(ontology_property.ontology_property_id)]
             ontology_graph.add((uri, RDF.type, OWL.ObjectProperty))
             ontology_graph.add((uri, RDFS.label, Literal(ontology_property.label)))
             ontology_graph.add((uri, RDFS.comment, Literal(ontology_property.definition)))
 
         for scheme in schema_induction.concept_schemes:
-            scheme_uri = rf[scheme.concept_scheme_id]
+            scheme_uri = rf[_safe_local(scheme.concept_scheme_id)]
             ontology_graph.add((scheme_uri, RDF.type, SKOS.ConceptScheme))
             ontology_graph.add((scheme_uri, SKOS.prefLabel, Literal(scheme.label)))
             for concept_id in scheme.concept_ids:
-                concept_uri = rf[concept_id]
+                concept_uri = rf[_safe_local(concept_id)]
                 ontology_graph.add((concept_uri, RDF.type, SKOS.Concept))
                 ontology_graph.add((concept_uri, SKOS.inScheme, scheme_uri))
 
         for node in write_plan.nodes:
-            node_uri = rf[node.node_id]
-            instance_graph.add((node_uri, RDF.type, rf[node.label]))
+            node_uri = rf[_safe_local(node.node_id)]
+            instance_graph.add((node_uri, RDF.type, rf[_safe_local(node.label)]))
             for key, value in node.properties.items():
-                predicate = rf[key]
+                predicate = rf[_safe_local(key)]
                 if isinstance(value, bool | int | float):
                     instance_graph.add((node_uri, predicate, Literal(value)))
                 elif isinstance(value, list):
@@ -91,9 +108,9 @@ class SemanticExportPipeline:
                 instance_graph.add((node_uri, RDF.type, prov.Entity))
 
         for edge in write_plan.edges:
-            source_uri = rf[edge.source_id]
-            target_uri = rf[edge.target_id]
-            predicate_uri = rf[edge.relationship_type]
+            source_uri = rf[_safe_local(edge.source_id)]
+            target_uri = rf[_safe_local(edge.target_id)]
+            predicate_uri = rf[_safe_local(edge.relationship_type)]
             instance_graph.add((source_uri, predicate_uri, target_uri))
             if edge.relationship_type == "SUPPORTED_BY":
                 instance_graph.add((source_uri, prov.wasDerivedFrom, target_uri))
