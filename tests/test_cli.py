@@ -150,3 +150,61 @@ def test_eval_cli_accepts_benchmark_samples_file(monkeypatch, tmp_path):
     assert output_path.exists()
     payload = json.loads(output_path.read_text())
     assert payload["num_samples"] > 0
+
+
+def test_kg_run_cli_writes_summary(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+
+    class _FakePipeline:
+        def run(self, **kwargs):
+            captured.update(kwargs)
+            output_dir = tmp_path / "kg"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            return SimpleNamespace(
+                graph_quality=SimpleNamespace(
+                    num_chunks=2,
+                    num_mentions=4,
+                    num_candidate_assertions=1,
+                    num_canonical_entities=2,
+                    num_ontology_classes=1,
+                    num_ontology_properties=1,
+                ),
+                artifact_paths={
+                    "ontology_ttl": str(output_dir / "ontology.ttl"),
+                    "instances_ttl": str(output_dir / "instances.ttl"),
+                },
+            )
+
+    monkeypatch.setattr(cli, "_make_kg_pipeline", _FakePipeline)
+    monkeypatch.setattr(cli, "_resolve_focus_directories", lambda source_dir, settings: [tmp_path])
+    monkeypatch.setattr(
+        cli,
+        "_load_from_directories",
+        lambda directories: [
+            Document(
+                content="Hierarchical Risk Parity uses CVaR.",
+                source_path=str(tmp_path / "doc.md"),
+                chunk_index=0,
+                chunk_id="doc.md::chunk:0",
+                content_hash="abc123",
+                line_start=1,
+                line_end=1,
+                metadata={"source_type": "docs", "relative_path": "doc.md"},
+            )
+        ],
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "kg-run",
+            "--artifact-dir",
+            str(tmp_path / "kg"),
+            "--source-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["artifact_dir"] == str(tmp_path / "kg")
+    assert captured["persist_neo4j"] is False

@@ -4,6 +4,7 @@ Commands
 --------
 ingest      Load and chunk source documents / code.
 build-graph Build the knowledge graph in Neo4j.
+kg-run      Run the redesigned KG induction pipeline and write review artifacts.
 graph-stats Show basic graph counts from Neo4j.
 eval        Run retrieval-quality evaluation suite.
 serve       Start the FastAPI server.
@@ -74,6 +75,12 @@ def _resolve_embedding(settings: Settings):
         openai_timeout_seconds=settings.openai_timeout_seconds,
         ssl_context=_build_ssl_context(),
     )
+
+
+def _make_kg_pipeline():
+    from riskfolio_graphrag_agent.kg_pipeline import KnowledgeGraphPipeline
+
+    return KnowledgeGraphPipeline()
 
 
 def _make_openai_graph_extractor(settings: Settings):
@@ -354,7 +361,7 @@ def build_graph(
         help="Limit graph extraction to at most this many chunks.",
     ),
 ) -> None:
-    """Build (or rebuild) the knowledge graph in Neo4j.
+    """Build (or rebuild) the legacy deterministic knowledge graph in Neo4j.
 
     Args:
         drop_existing: When True, wipes the current graph before rebuilding.
@@ -371,6 +378,11 @@ def build_graph(
     )
     summary = summarize_documents(documents)
     selected_summary = summarize_documents(selected_documents)
+
+    console.print(
+        "[yellow]legacy graph path[/] build-graph retains the older alias-driven builder. "
+        "Use [bold]kg-run[/] for the redesigned mention/assertion-first pipeline."
+    )
 
     if not selected_documents:
         console.print(
@@ -408,6 +420,101 @@ def build_graph(
     if isinstance(by_source_type, dict):
         for source_type, count in sorted(by_source_type.items()):
             console.print(f"  - {source_type}: {count}")
+
+
+@app.command(name="kg-run")
+def kg_run(
+    artifact_dir: str = typer.Option(
+        "artifacts/kg",
+        "--artifact-dir",
+        help="Directory where redesigned KG artifacts will be written.",
+    ),
+    persist_neo4j: bool = typer.Option(
+        False,
+        "--persist-neo4j",
+        help="Write the promoted retrieval graph to Neo4j after artifact generation.",
+    ),
+    drop_existing: bool = typer.Option(
+        False,
+        "--drop-existing",
+        help="Drop existing Neo4j content before writing the promoted retrieval graph.",
+    ),
+    source_dir: str | None = typer.Option(
+        None,
+        "--source-dir",
+        "-s",
+        help="Path to Riskfolio-Lib source/docs root or subdirectory.",
+    ),
+    chunk_offset: int = typer.Option(
+        0,
+        "--chunk-offset",
+        min=0,
+        help="Skip this many chunks before the redesigned KG pipeline starts.",
+    ),
+    max_chunks: int | None = typer.Option(
+        None,
+        "--max-chunks",
+        min=1,
+        help="Limit the redesigned KG pipeline to at most this many chunks.",
+    ),
+) -> None:
+    """Run the redesigned KG induction pipeline and write review artifacts.
+
+    The command preserves mention-level provenance and separates extraction,
+    canonicalization, schema induction, materialization, and semantic export.
+
+    Args:
+        artifact_dir: Output directory for KG review artifacts.
+        persist_neo4j: Whether to write the promoted graph into Neo4j.
+        drop_existing: Whether to clear Neo4j before a promoted-graph write.
+        source_dir: Optional path override for the source directory.
+        chunk_offset: Number of chunks to skip before processing.
+        max_chunks: Maximum number of chunks to process.
+    """
+    initialize_ssl_truststore_once()
+    settings = Settings()
+    _configure_logging(settings.log_level)
+    source_dirs = _resolve_focus_directories(source_dir, settings)
+    documents = _load_from_directories(source_dirs)
+    selected_documents = _select_documents_for_build(
+        documents,
+        chunk_offset=chunk_offset,
+        max_chunks=max_chunks,
+    )
+    if not selected_documents:
+        console.print(
+            "[yellow]kg-run skipped[/]",
+            f"No chunks selected from total_chunks={len(documents)} offset={chunk_offset} max_chunks={max_chunks}",
+        )
+        return
+
+    pipeline = _make_kg_pipeline()
+    result = pipeline.run(
+        documents=selected_documents,
+        artifact_dir=artifact_dir,
+        persist_neo4j=persist_neo4j,
+        neo4j_uri=settings.neo4j_uri,
+        neo4j_user=settings.neo4j_user,
+        neo4j_password=settings.neo4j_password,
+        drop_existing=drop_existing,
+    )
+
+    console.print(
+        "[bold green]kg-run complete[/]",
+        (
+            f"chunks={result.graph_quality.num_chunks} mentions={result.graph_quality.num_mentions} "
+            f"candidate_assertions={result.graph_quality.num_candidate_assertions} "
+            f"canonical_entities={result.graph_quality.num_canonical_entities} "
+            f"ontology_classes={result.graph_quality.num_ontology_classes} "
+            f"ontology_properties={result.graph_quality.num_ontology_properties}"
+        ),
+    )
+    console.print(f"artifacts: {artifact_dir}")
+    console.print(
+        "semantic export:",
+        result.artifact_paths.get("ontology_ttl", ""),
+        result.artifact_paths.get("instances_ttl", ""),
+    )
 
 
 @app.command(name="graph-stats")
