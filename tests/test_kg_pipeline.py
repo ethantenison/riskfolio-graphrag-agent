@@ -62,6 +62,62 @@ def test_kg_pipeline_materialized_graph_contains_assertion_structure(tmp_path):
     assert "SUPPORTED_BY" in relationship_types
 
 
+def test_kg_pipeline_materializes_lowercase_assertions(tmp_path):
+    documents = [
+        Document(
+            content="hierarchical risk parity uses cvar.",
+            source_path=str(tmp_path / "risk.md"),
+            chunk_index=0,
+            chunk_id="risk.md::chunk:0",
+            content_hash="hash-2b",
+            line_start=1,
+            line_end=1,
+            metadata={"source_type": "docs", "relative_path": "risk.md", "module_name": "risk"},
+        )
+    ]
+
+    pipeline = KnowledgeGraphPipeline()
+    result = pipeline.run(documents=documents, artifact_dir=tmp_path / "artifacts")
+
+    relationship_types = {
+        edge["relationship_type"]
+        for edge in json.loads((tmp_path / "artifacts" / "materialized_graph.json").read_text())["edges"]
+    }
+
+    assert result.graph_quality.num_candidate_assertions >= 1
+    assert result.graph_quality.num_ontology_properties >= 1
+    assert "SUPPORTED_BY" in relationship_types
+
+
+def test_kg_pipeline_materializes_code_signature_assertions(tmp_path):
+    documents = [
+        Document(
+            content="def optimize_portfolio(returns, covariance):\n    return returns\n",
+            source_path=str(tmp_path / "risk.py"),
+            chunk_index=0,
+            chunk_id="risk.py::chunk:0",
+            content_hash="hash-2c",
+            line_start=1,
+            line_end=2,
+            metadata={"source_type": "code", "relative_path": "risk.py", "module_name": "riskfolio"},
+        )
+    ]
+
+    pipeline = KnowledgeGraphPipeline()
+    result = pipeline.run(documents=documents, artifact_dir=tmp_path / "artifacts")
+
+    materialized_graph = json.loads((tmp_path / "artifacts" / "materialized_graph.json").read_text())
+    assertion_nodes = [node for node in materialized_graph["nodes"] if node["label"] == "Assertion"]
+    extractions = json.loads((tmp_path / "artifacts" / "extractions.json").read_text())
+    extracted_relation_guesses = {
+        assertion["relation_guess"] for extraction in extractions for assertion in extraction["candidate_assertions"]
+    }
+
+    assert result.graph_quality.num_candidate_assertions >= 1
+    assert "defines" in extracted_relation_guesses or "accepts_parameter" in extracted_relation_guesses
+    assert assertion_nodes == []
+
+
 def test_llm_open_extractor_emits_assertions_and_events(tmp_path):
     document = Document(
         content="Hierarchical Risk Parity uses CVaR.",

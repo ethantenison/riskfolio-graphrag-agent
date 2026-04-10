@@ -44,28 +44,6 @@ _MIXED_CASE_PATTERN = re.compile(r"\b[A-Z][A-Za-z0-9]{1,24}[A-Z][A-Za-z0-9]{0,24
 _CODE_REF_PATTERN = re.compile(r"`([^`]{2,80})`")
 _CLASS_PATTERN = re.compile(r"^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE)
 _FUNCTION_PATTERN = re.compile(r"^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)", re.MULTILINE)
-_RELATION_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
-    (
-        re.compile(r"\b(?P<subject>[A-Z][\w\-. ]{1,80}?)\s+uses\s+(?P<object>[A-Z][\w\-. ]{1,80})\b"),
-        "uses",
-        "usage",
-    ),
-    (
-        re.compile(r"\b(?P<subject>[A-Z][\w\-. ]{1,80}?)\s+supports\s+(?P<object>[A-Z][\w\-. ]{1,80})\b"),
-        "supports",
-        "support",
-    ),
-    (
-        re.compile(r"\b(?P<subject>[A-Z][\w\-. ]{1,80}?)\s+implements\s+(?P<object>[A-Z][\w\-. ]{1,80})\b"),
-        "implements",
-        "implementation",
-    ),
-    (
-        re.compile(r"\b(?P<subject>[A-Z][\w\-. ]{1,80}?)\s+is\s+(?:an?\s+)?(?P<object>[A-Za-z][\w\-. ]{1,80})\b"),
-        "is",
-        "typing",
-    ),
-)
 
 
 class ChunkOpenExtractorProtocol(Protocol):
@@ -169,9 +147,72 @@ class HeuristicOpenExtractor:
 
     The current implementation is deliberately simple but structurally honest:
     it yields mention-level and assertion-level records with provenance and
-    free-text semantic guesses. Higher-precision LLM or model-backed extractors
-    can replace this class without changing downstream contracts.
+    free-text semantic guesses. It also synthesizes missing mentions for valid
+    relation matches and emits code-structure assertions from Python signatures
+    so the promoted graph remains materializable on source-heavy corpora.
     """
+
+    _RELATION_ENDPOINT = r"[A-Za-z][\w./-]*(?:\s+[A-Za-z][\w./-]*){0,5}"
+    _RELATION_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+uses\s+(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "uses",
+            "usage",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+supports\s+(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "supports",
+            "support",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+implements\s+(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "implements",
+            "implementation",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+provides\s+(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "provides",
+            "provision",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+returns\s+(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "returns",
+            "return",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+"
+                rf"(?:optimizes|minimizes|maximizes|estimates|computes|builds|selects|targets|applies)\s+"
+                rf"(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "relates_to",
+            "computation",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+is\s+(?:an?\s+)?(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "is",
+            "typing",
+        ),
+    )
 
     def __init__(self, model_name: str = "heuristic-open-extractor") -> None:
         """Initialize the extractor.
@@ -204,9 +245,8 @@ class HeuristicOpenExtractor:
         source_document = SourceDocumentRecord.from_document(document)
         chunk = ChunkRecord.from_document(document)
         mentions = self._extract_mentions(chunk)
-        mention_map = {mention.normalized_text: mention for mention in mentions}
+        candidate_assertions, candidate_events = self._extract_assertions_and_events(chunk, mentions)
         candidate_entities = [self._candidate_from_mention(mention) for mention in mentions]
-        candidate_assertions, candidate_events = self._extract_assertions_and_events(chunk, mention_map)
         return OpenChunkExtraction(
             source_document=source_document,
             chunk=chunk,
@@ -282,68 +322,162 @@ class HeuristicOpenExtractor:
     def _extract_assertions_and_events(
         self,
         chunk: ChunkRecord,
-        mention_map: dict[str, MentionRecord],
+        mentions: list[MentionRecord],
     ) -> tuple[list[CandidateAssertionRecord], list[CandidateEventRecord]]:
         assertions: list[CandidateAssertionRecord] = []
         events: list[CandidateEventRecord] = []
-        for sentence in _SENTENCE_SPLIT.split(chunk.content):
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-            for pattern, relation_guess, event_type_guess in _RELATION_PATTERNS:
+        mention_map = self._build_mention_map(mentions)
+
+        for sentence, sentence_start, sentence_end in self._iter_sentences(chunk.content):
+            for pattern, relation_guess, event_type_guess in self._RELATION_PATTERNS:
                 match = pattern.search(sentence)
                 if match is None:
                     continue
-                subject_text = match.group("subject").strip()
-                object_text = match.group("object").strip()
-                subject_mention = mention_map.get(subject_text.casefold())
-                object_mention = mention_map.get(object_text.casefold())
-                if subject_mention is None or object_mention is None:
+                subject_text = self._clean_relation_endpoint(match.group("subject"))
+                object_text = self._clean_relation_endpoint(match.group("object"))
+                if not subject_text or not object_text or subject_text.casefold() == object_text.casefold():
                     continue
-                sentence_start = chunk.content.find(sentence)
-                sentence_end = sentence_start + len(sentence)
+                subject_mention = self._ensure_mention(
+                    chunk=chunk,
+                    mentions=mentions,
+                    mention_map=mention_map,
+                    text=subject_text,
+                    char_start=sentence_start + match.start("subject"),
+                    char_end=sentence_start + match.end("subject"),
+                )
+                object_mention = self._ensure_mention(
+                    chunk=chunk,
+                    mentions=mentions,
+                    mention_map=mention_map,
+                    text=object_text,
+                    char_start=sentence_start + match.start("object"),
+                    char_end=sentence_start + match.end("object"),
+                )
                 evidence = self._build_evidence(chunk, sentence, sentence_start, sentence_end)
-                assertion_id = stable_id(
-                    "assertion",
-                    chunk.chunk_id,
-                    subject_mention.mention_id,
-                    relation_guess,
-                    object_mention.mention_id,
+                self._append_assertion_and_event(
+                    assertions=assertions,
+                    events=events,
+                    chunk=chunk,
+                    evidence=evidence,
+                    subject_mention=subject_mention,
+                    object_mention=object_mention,
+                    relation_guess=relation_guess,
+                    event_type_guess=event_type_guess,
+                    confidence=0.68,
+                    sentence=sentence,
+                    trigger_text=match.group(0).strip(),
                 )
-                assertions.append(
-                    CandidateAssertionRecord(
-                        assertion_id=assertion_id,
-                        chunk_id=chunk.chunk_id,
-                        subject_mention_id=subject_mention.mention_id,
-                        object_mention_id=object_mention.mention_id,
-                        relation_guess=relation_guess,
-                        statement=f"{subject_text} {relation_guess} {object_text}",
-                        evidence_ids=[evidence.evidence_id],
-                        confidence=0.68,
-                        extraction_method=self._model_name,
-                        extraction_model=self._model_name,
-                        status=ReviewStatus.PROPOSED,
-                        metadata={"sentence": sentence},
-                    )
+
+        self._extract_definition_relations(chunk, mentions, mention_map, assertions, events)
+        return self._dedupe_assertions(assertions), self._dedupe_events(events)
+
+    def _extract_definition_relations(
+        self,
+        chunk: ChunkRecord,
+        mentions: list[MentionRecord],
+        mention_map: dict[str, MentionRecord],
+        assertions: list[CandidateAssertionRecord],
+        events: list[CandidateEventRecord],
+    ) -> None:
+        module_name = self._clean_relation_endpoint(str(chunk.metadata.get("module_name", "")))
+        module_mention: MentionRecord | None = None
+        if module_name:
+            module_mention = self._ensure_mention(
+                chunk=chunk,
+                mentions=mentions,
+                mention_map=mention_map,
+                text=module_name,
+                char_start=0,
+                char_end=min(len(module_name), len(chunk.content)),
+                type_guess="python_module",
+                confidence=0.8,
+            )
+
+        for match in _CLASS_PATTERN.finditer(chunk.content):
+            class_mention = self._ensure_mention(
+                chunk=chunk,
+                mentions=mentions,
+                mention_map=mention_map,
+                text=match.group(1),
+                char_start=match.start(1),
+                char_end=match.end(1),
+                type_guess="python_class",
+                confidence=0.92,
+            )
+            if module_mention is None:
+                continue
+            evidence = self._build_evidence(chunk, match.group(0).strip(), match.start(), match.end())
+            self._append_assertion_and_event(
+                assertions=assertions,
+                events=events,
+                chunk=chunk,
+                evidence=evidence,
+                subject_mention=module_mention,
+                object_mention=class_mention,
+                relation_guess="defines",
+                event_type_guess="definition",
+                confidence=0.76,
+                sentence=match.group(0).strip(),
+                trigger_text="class",
+            )
+
+        for match in _FUNCTION_PATTERN.finditer(chunk.content):
+            function_mention = self._ensure_mention(
+                chunk=chunk,
+                mentions=mentions,
+                mention_map=mention_map,
+                text=match.group(1),
+                char_start=match.start(1),
+                char_end=match.end(1),
+                type_guess="python_function",
+                confidence=0.9,
+            )
+            evidence = self._build_evidence(chunk, match.group(0).strip(), match.start(), match.end())
+            if module_mention is not None:
+                self._append_assertion_and_event(
+                    assertions=assertions,
+                    events=events,
+                    chunk=chunk,
+                    evidence=evidence,
+                    subject_mention=module_mention,
+                    object_mention=function_mention,
+                    relation_guess="defines",
+                    event_type_guess="definition",
+                    confidence=0.76,
+                    sentence=match.group(0).strip(),
+                    trigger_text="def",
                 )
-                events.append(
-                    CandidateEventRecord(
-                        candidate_event_id=stable_id("event", chunk.chunk_id, relation_guess, sentence),
-                        chunk_id=chunk.chunk_id,
-                        trigger_text=relation_guess,
-                        event_type_guess=event_type_guess,
-                        arguments=[
-                            EventArgument(role="subject", mention_id=subject_mention.mention_id),
-                            EventArgument(role="object", mention_id=object_mention.mention_id),
-                        ],
-                        evidence_ids=[evidence.evidence_id],
-                        confidence=0.61,
-                        extraction_method=self._model_name,
-                        status=ReviewStatus.PROPOSED,
-                        metadata={"sentence": sentence},
-                    )
+
+            raw_params = [part.strip() for part in match.group(2).split(",") if part.strip()]
+            for param in raw_params[:6]:
+                param_name = param.split("=")[0].split(":")[0].strip()
+                if not param_name:
+                    continue
+                relative_offset = match.group(0).find(param_name)
+                char_start = match.start() + max(relative_offset, 0)
+                param_mention = self._ensure_mention(
+                    chunk=chunk,
+                    mentions=mentions,
+                    mention_map=mention_map,
+                    text=param_name,
+                    char_start=char_start,
+                    char_end=char_start + len(param_name),
+                    type_guess="python_parameter",
+                    confidence=0.82,
                 )
-        return assertions, events
+                self._append_assertion_and_event(
+                    assertions=assertions,
+                    events=events,
+                    chunk=chunk,
+                    evidence=evidence,
+                    subject_mention=function_mention,
+                    object_mention=param_mention,
+                    relation_guess="accepts_parameter",
+                    event_type_guess="signature",
+                    confidence=0.72,
+                    sentence=match.group(0).strip(),
+                    trigger_text=param_name,
+                )
 
     def _candidate_from_mention(self, mention: MentionRecord) -> CandidateEntityRecord:
         return CandidateEntityRecord(
@@ -382,6 +516,119 @@ class HeuristicOpenExtractor:
             status=ReviewStatus.PROPOSED,
             metadata={"section": chunk.section},
         )
+
+    def _build_mention_map(self, mentions: Sequence[MentionRecord]) -> dict[str, MentionRecord]:
+        return {mention.normalized_text: mention for mention in mentions}
+
+    def _ensure_mention(
+        self,
+        *,
+        chunk: ChunkRecord,
+        mentions: list[MentionRecord],
+        mention_map: dict[str, MentionRecord],
+        text: str,
+        char_start: int,
+        char_end: int,
+        type_guess: str | None = None,
+        confidence: float = 0.7,
+    ) -> MentionRecord:
+        normalized_text = text.casefold().strip()
+        existing = mention_map.get(normalized_text)
+        if existing is not None:
+            return existing
+
+        mention = self._build_mention(
+            chunk,
+            text,
+            max(0, char_start),
+            max(char_start, char_end),
+            type_guess or self._guess_type(text),
+            confidence,
+        )
+        mentions.append(mention)
+        mention_map[normalized_text] = mention
+        return mention
+
+    def _append_assertion_and_event(
+        self,
+        *,
+        assertions: list[CandidateAssertionRecord],
+        events: list[CandidateEventRecord],
+        chunk: ChunkRecord,
+        evidence: EvidenceSpan,
+        subject_mention: MentionRecord,
+        object_mention: MentionRecord,
+        relation_guess: str,
+        event_type_guess: str,
+        confidence: float,
+        sentence: str,
+        trigger_text: str,
+    ) -> None:
+        assertion_id = stable_id(
+            "assertion",
+            chunk.chunk_id,
+            subject_mention.mention_id,
+            relation_guess,
+            object_mention.mention_id,
+        )
+        assertions.append(
+            CandidateAssertionRecord(
+                assertion_id=assertion_id,
+                chunk_id=chunk.chunk_id,
+                subject_mention_id=subject_mention.mention_id,
+                object_mention_id=object_mention.mention_id,
+                relation_guess=relation_guess,
+                statement=f"{subject_mention.text} {relation_guess} {object_mention.text}",
+                evidence_ids=[evidence.evidence_id],
+                confidence=confidence,
+                extraction_method=self._model_name,
+                extraction_model=self._model_name,
+                status=ReviewStatus.PROPOSED,
+                metadata={"sentence": sentence},
+            )
+        )
+        events.append(
+            CandidateEventRecord(
+                candidate_event_id=stable_id("event", chunk.chunk_id, relation_guess, sentence),
+                chunk_id=chunk.chunk_id,
+                trigger_text=trigger_text,
+                event_type_guess=event_type_guess,
+                arguments=[
+                    EventArgument(role="subject", mention_id=subject_mention.mention_id),
+                    EventArgument(role="object", mention_id=object_mention.mention_id),
+                ],
+                evidence_ids=[evidence.evidence_id],
+                confidence=max(0.0, confidence - 0.07),
+                extraction_method=self._model_name,
+                status=ReviewStatus.PROPOSED,
+                metadata={"sentence": sentence},
+            )
+        )
+
+    def _dedupe_assertions(self, assertions: Sequence[CandidateAssertionRecord]) -> list[CandidateAssertionRecord]:
+        return list({assertion.assertion_id: assertion for assertion in assertions}.values())
+
+    def _dedupe_events(self, events: Sequence[CandidateEventRecord]) -> list[CandidateEventRecord]:
+        return list({event.candidate_event_id: event for event in events}.values())
+
+    def _clean_relation_endpoint(self, text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", text).strip(" .,:;()[]{}\"'")
+        cleaned = re.sub(r"^(?:the|a|an|this|that)\s+", "", cleaned, flags=re.IGNORECASE)
+        return cleaned.strip()
+
+    def _iter_sentences(self, content: str) -> list[tuple[str, int, int]]:
+        sentences: list[tuple[str, int, int]] = []
+        start = 0
+        for match in _SENTENCE_SPLIT.finditer(content):
+            end = match.start()
+            sentence = content[start:end].strip()
+            if sentence:
+                sentences.append((sentence, start, end))
+            start = match.end()
+        sentence = content[start:].strip()
+        if sentence:
+            sentences.append((sentence, start, len(content)))
+        return sentences
 
     def _build_evidence(self, chunk: ChunkRecord, excerpt: str, char_start: int, char_end: int) -> EvidenceSpan:
         start = max(0, char_start)

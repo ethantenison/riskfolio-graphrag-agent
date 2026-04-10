@@ -29,6 +29,7 @@ from riskfolio_graphrag_agent.kg_models import (
     slugify,
     stable_id,
 )
+from riskfolio_graphrag_agent.semantic_quality import is_semantic_relation_label
 
 
 class SchemaInductionPipeline:
@@ -55,6 +56,8 @@ class SchemaInductionPipeline:
         for entity in canonicalization.canonical_entities:
             entity_type_support[entity.type_guess].append(entity.canonical_entity_id)
         for predicate in canonicalization.canonical_predicates:
+            if not is_semantic_relation_label(predicate.preferred_label):
+                continue
             relation_support[predicate.preferred_label].extend(predicate.assertion_ids)
         for event_type in canonicalization.canonical_event_types:
             event_type_support[event_type.preferred_label].extend(event_type.event_ids)

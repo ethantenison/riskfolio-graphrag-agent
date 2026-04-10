@@ -26,8 +26,10 @@ from riskfolio_graphrag_agent.kg_models import (
     OpenChunkExtraction,
     ReviewStatus,
     SchemaInductionResult,
+    slugify,
     stable_id,
 )
+from riskfolio_graphrag_agent.semantic_quality import is_semantic_assertion, is_semantic_relation_label
 
 
 class GraphMaterializationPipeline:
@@ -60,6 +62,7 @@ class GraphMaterializationPipeline:
         nodes: list[MaterializedNode] = []
         edges: list[MaterializedEdge] = []
         mention_to_entity: dict[str, str] = {}
+        entity_lookup = {entity.canonical_entity_id: entity for entity in canonicalization.canonical_entities}
 
         for extraction in extractions:
             nodes.append(
@@ -144,7 +147,9 @@ class GraphMaterializationPipeline:
                 )
 
         class_lookup = {item.label.casefold(): item.ontology_class_id for item in schema_induction.ontology_classes}
-        property_lookup = {item.label.casefold(): item.ontology_property_id for item in schema_induction.ontology_properties}
+        property_lookup = {
+            self._normalize_property_label(item.label): item.ontology_property_id for item in schema_induction.ontology_properties
+        }
 
         for entity in canonicalization.canonical_entities:
             nodes.append(
@@ -176,10 +181,11 @@ class GraphMaterializationPipeline:
             item.preferred_label.casefold(): item
             for item in canonicalization.canonical_predicates
             if item.status in {ReviewStatus.PROPOSED, ReviewStatus.REVIEWED, ReviewStatus.PROMOTED}
+            and is_semantic_relation_label(item.preferred_label)
         }
 
         for predicate in promoted_predicates.values():
-            property_id = property_lookup.get(predicate.preferred_label.casefold())
+            property_id = property_lookup.get(self._normalize_property_label(predicate.preferred_label))
             if property_id is None:
                 continue
             edges.append(
@@ -199,6 +205,14 @@ class GraphMaterializationPipeline:
                 object_id = mention_to_entity.get(assertion.object_mention_id)
                 predicate = promoted_predicates.get(assertion.relation_guess.casefold())
                 if subject_id is None or object_id is None or predicate is None:
+                    continue
+                subject_entity = entity_lookup.get(subject_id)
+                object_entity = entity_lookup.get(object_id)
+                if not is_semantic_assertion(
+                    assertion.relation_guess,
+                    subject_type=subject_entity.type_guess if subject_entity is not None else None,
+                    object_type=object_entity.type_guess if object_entity is not None else None,
+                ):
                     continue
                 assertion_node_id = stable_id("materialized-assertion", assertion.assertion_id)
                 nodes.append(
@@ -229,7 +243,7 @@ class GraphMaterializationPipeline:
                         ),
                         MaterializedEdge(
                             source_id=assertion_node_id,
-                            target_id=property_lookup[predicate.preferred_label.casefold()],
+                            target_id=property_lookup[self._normalize_property_label(predicate.preferred_label)],
                             relationship_type="ASSERTS_PREDICATE",
                         ),
                         MaterializedEdge(
@@ -246,6 +260,9 @@ class GraphMaterializationPipeline:
             edges=self._dedupe_edges(edges),
             retrieval_queries=self._build_retrieval_queries(),
         )
+
+    def _normalize_property_label(self, label: str) -> str:
+        return slugify(label)
 
     def _build_constraints(self) -> list[str]:
         return [
