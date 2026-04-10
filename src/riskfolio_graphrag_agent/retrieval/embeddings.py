@@ -55,6 +55,9 @@ class HashEmbeddingProvider:
 class OpenAIEmbeddingProvider:
     """OpenAI-compatible embeddings provider."""
 
+    _MAX_BATCH_TEXTS = 128
+    _MAX_ESTIMATED_TOKENS = 200000
+
     def __init__(
         self,
         *,
@@ -79,6 +82,19 @@ class OpenAIEmbeddingProvider:
         return self._dimension
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+
+        vectors: list[list[float]] = []
+        for batch in _chunk_embedding_inputs(
+            texts,
+            max_batch_texts=self._MAX_BATCH_TEXTS,
+            max_estimated_tokens=self._MAX_ESTIMATED_TOKENS,
+        ):
+            vectors.extend(self._embed_batch(batch))
+        return vectors
+
+    def _embed_batch(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
@@ -125,6 +141,33 @@ class OpenAIEmbeddingProvider:
             vectors.append(vector)
 
         return vectors
+
+
+def _chunk_embedding_inputs(
+    texts: list[str],
+    *,
+    max_batch_texts: int,
+    max_estimated_tokens: int,
+) -> list[list[str]]:
+    """Split inputs into embedding-safe batches using a conservative token estimate."""
+    batches: list[list[str]] = []
+    current_batch: list[str] = []
+    current_tokens = 0
+
+    for text in texts:
+        estimated_tokens = max(1, len(text) // 4)
+        if current_batch and (len(current_batch) >= max_batch_texts or current_tokens + estimated_tokens > max_estimated_tokens):
+            batches.append(current_batch)
+            current_batch = []
+            current_tokens = 0
+
+        current_batch.append(text)
+        current_tokens += estimated_tokens
+
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches
 
 
 def resolve_embedding_provider(

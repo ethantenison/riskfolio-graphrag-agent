@@ -215,7 +215,8 @@ chroma/
 *.chroma
 *.chroma-wal
 .gradio/certificate.pem
-
+benchmarks/.chroma_hash_clean
+benchmarks/.chroma_openai_clean
 
 #MISC
 scripts/riskfolio_graphrag_system_slides/
