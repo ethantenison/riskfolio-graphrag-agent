@@ -287,6 +287,7 @@ def create_app() -> FastAPI:
     query_router = None
     if settings.adaptive_tool_routing_enabled:
         query_router = QueryToolRouter(
+            embedding_provider=embedding_provider,
             min_confidence=settings.adaptive_tool_routing_min_confidence,
         )
 

@@ -77,10 +77,143 @@ def _resolve_embedding(settings: Settings):
     )
 
 
-def _make_kg_pipeline():
+def _make_openai_open_extractor(settings: Settings):
+    def _extract(*, content: str, source_type: str, model_name: str) -> dict[str, object]:
+        prompt = (
+            "Extract evidence-grounded candidate assertions and event frames from one Riskfolio chunk. "
+            "Return strict JSON only with top-level keys 'candidate_assertions' and 'candidate_events'. "
+            "Do not include markdown or explanations.\n\n"
+            "candidate_assertions item schema:\n"
+            "{"
+            '"subject_text": string, '
+            '"subject_type_guess": string, '
+            '"predicate_text": string, '
+            '"object_text": string, '
+            '"object_type_guess": string, '
+            '"statement": string, '
+            '"evidence_text": string, '
+            '"confidence": number, '
+            '"metadata": object'
+            "}\n\n"
+            "candidate_events item schema:\n"
+            "{"
+            '"trigger_text": string, '
+            '"event_type_guess": string, '
+            '"arguments": [{"role": string, "text": string, "type_guess": string}], '
+            '"evidence_text": string, '
+            '"confidence": number, '
+            '"metadata": object'
+            "}\n\n"
+            "Rules:\n"
+            "- Only emit claims supported verbatim by the chunk.\n"
+            "- Prefer domain relations such as computes, uses, supports, constrains, estimates, plots, reports.\n"
+            "- Prefer subject/object spans that appear exactly in the chunk.\n"
+            "- If no supported claims exist, return empty arrays.\n\n"
+            f"source_type: {source_type}\n"
+            f"content:\n{content[:8000]}"
+        )
+
+        payload = {
+            "model": model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an information extraction engine. Output valid JSON only. Never invent unsupported claims."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        }
+        endpoint = f"{settings.openai_base_url.rstrip('/')}/chat/completions"
+        body = json.dumps(payload).encode("utf-8")
+        http_request = request.Request(
+            url=endpoint,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+        max_attempts = max(1, int(settings.openai_retry_attempts) + 1)
+        backoff_seconds = max(0.0, float(settings.openai_retry_backoff_seconds))
+        raw = ""
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with request.urlopen(
+                    http_request,
+                    timeout=settings.openai_timeout_seconds,
+                    context=_build_ssl_context(),
+                ) as response:
+                    raw = response.read().decode("utf-8")
+                break
+            except HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="ignore")
+                if exc.code in {408, 429, 500, 502, 503, 504} and attempt < max_attempts:
+                    sleep_seconds = backoff_seconds * attempt
+                    logger.warning(
+                        "Open-extractor transient HTTP %s on attempt %d/%d; retrying in %.1fs",
+                        exc.code,
+                        attempt,
+                        max_attempts,
+                        sleep_seconds,
+                    )
+                    if sleep_seconds > 0:
+                        time.sleep(sleep_seconds)
+                    continue
+                raise RuntimeError(f"Open extractor HTTP error {exc.code}: {detail}") from exc
+            except (URLError, TimeoutError) as exc:
+                if attempt < max_attempts:
+                    sleep_seconds = backoff_seconds * attempt
+                    logger.warning(
+                        "Open-extractor request failed on attempt %d/%d (%s); retrying in %.1fs",
+                        attempt,
+                        max_attempts,
+                        exc,
+                        sleep_seconds,
+                    )
+                    if sleep_seconds > 0:
+                        time.sleep(sleep_seconds)
+                    continue
+                raise RuntimeError(f"Open extractor endpoint unreachable: {exc}") from exc
+
+        try:
+            response_payload = json.loads(raw)
+            choices = response_payload.get("choices", [])
+            first_choice = choices[0] if isinstance(choices, list) and choices else {}
+            message = first_choice.get("message", {}) if isinstance(first_choice, dict) else {}
+            content_text = message.get("content", "") if isinstance(message, dict) else ""
+            if not isinstance(content_text, str) or not content_text.strip():
+                return {"candidate_assertions": [], "candidate_events": []}
+            extracted = json.loads(content_text)
+            if not isinstance(extracted, dict):
+                return {"candidate_assertions": [], "candidate_events": []}
+            extracted.setdefault("candidate_assertions", [])
+            extracted.setdefault("candidate_events", [])
+            return extracted
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Open extractor returned invalid JSON") from exc
+
+    return _extract
+
+
+def _make_kg_pipeline(settings: Settings | None = None):
+    from riskfolio_graphrag_agent.extraction.pipeline import LLMOpenExtractor
     from riskfolio_graphrag_agent.kg_pipeline import KnowledgeGraphPipeline
 
-    return KnowledgeGraphPipeline()
+    extractor = None
+    if settings is not None and settings.openai_enable_graph_extraction and settings.openai_api_key.strip():
+        extractor = LLMOpenExtractor(
+            llm_extract=_make_openai_open_extractor(settings),
+            model_name=settings.openai_model,
+        )
+
+    return KnowledgeGraphPipeline(extractor=extractor)
 
 
 def _make_openai_graph_extractor(settings: Settings):
@@ -488,7 +621,7 @@ def kg_run(
         )
         return
 
-    pipeline = _make_kg_pipeline()
+    pipeline = _make_kg_pipeline(settings)
     result = pipeline.run(
         documents=selected_documents,
         artifact_dir=artifact_dir,

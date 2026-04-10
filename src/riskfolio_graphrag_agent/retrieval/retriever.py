@@ -46,8 +46,9 @@ Minimal working example:
 Non-obvious design decisions:
     - The vector backend is abstracted behind `VectorStore` so the retrieval
       flow can work with either Chroma or a Neo4j-backed fallback.
-    - Hybrid merging uses fixed weights rather than a learned reranker to keep
-      the system deterministic, lightweight, and testable.
+        - Hybrid merging uses reciprocal-rank fusion with score calibration to keep
+            the system deterministic, lightweight, and less sensitive to score-scale
+            mismatch across backends.
         - Graph expansion is intentionally shallow. It augments retrieval with local
             entity and chunk context, but does not attempt deep graph reasoning.
         - Retrieval now prefers the promoted assertion-aware graph shape and falls
@@ -67,6 +68,7 @@ What this module does not do:
 from __future__ import annotations
 
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -467,8 +469,12 @@ class HybridRetriever:
 
         if retrieval_mode == "hybrid_rerank":
             for result in results:
-                graph_boost = 0.03 * len(result.related_entities) + 0.015 * len(result.graph_neighbours)
-                result.score = round(float(result.score) + graph_boost, 6)
+                entity_count = len(result.related_entities)
+                neighbour_count = len(result.graph_neighbours)
+                entity_signal = min(1.0, math.log1p(entity_count) / math.log(6.0))
+                neighbour_signal = min(1.0, math.log1p(neighbour_count) / math.log(8.0))
+                evidence_boost = (0.12 * entity_signal) + (0.08 * neighbour_signal)
+                result.score = round((0.85 * float(result.score)) + evidence_boost, 6)
 
         results.sort(key=lambda item: item.score, reverse=True)
         return results[: self._top_k]
@@ -887,33 +893,65 @@ def _graph_hop_expansion(driver: Driver, query: str, top_k: int) -> list[VectorH
 def _merge_hits(dense_hits: list[VectorHit], sparse_hits: list[VectorHit], top_k: int) -> list[VectorHit]:
     """Merge dense and sparse hit lists into a single ranking.
 
-    The current weighting favours dense retrieval (`0.65`) while still letting
-    exact lexical matches influence the final order (`0.35`). This is a fixed,
-    deterministic heuristic chosen for simplicity and predictable tests rather
-    than a learned ranking model.
+    Uses reciprocal-rank fusion (RRF) as the primary signal, then blends a
+    calibrated score channel and overlap bonus. This avoids brittle behavior
+    when dense/sparse raw scores live on different scales.
     """
+    if top_k <= 0:
+        return []
+
     merged: dict[str, VectorHit] = {}
-    for hit in dense_hits:
-        key = hit.chunk_id
-        merged[key] = hit
+    dense_rank = {hit.chunk_id: index + 1 for index, hit in enumerate(dense_hits)}
+    sparse_rank = {hit.chunk_id: index + 1 for index, hit in enumerate(sparse_hits)}
+    dense_score = _normalize_scores({hit.chunk_id: float(hit.score) for hit in dense_hits})
+    sparse_score = _normalize_scores({hit.chunk_id: float(hit.score) for hit in sparse_hits})
 
-    for hit in sparse_hits:
+    for hit in dense_hits + sparse_hits:
         key = hit.chunk_id
-        existing = merged.get(key)
-        if existing is None:
-            merged[key] = VectorHit(
-                chunk_id=hit.chunk_id,
-                content=hit.content,
-                source_path=hit.source_path,
-                score=0.0,
-                metadata=dict(hit.metadata),
-            )
+        if key in merged:
             existing = merged[key]
+            if not existing.content:
+                existing.content = hit.content
+            if not existing.source_path:
+                existing.source_path = hit.source_path
+            if not existing.metadata:
+                existing.metadata = dict(hit.metadata)
+            continue
+        merged[key] = VectorHit(
+            chunk_id=hit.chunk_id,
+            content=hit.content,
+            source_path=hit.source_path,
+            score=0.0,
+            metadata=dict(hit.metadata),
+        )
 
-        existing.score = (0.65 * float(existing.score)) + (0.35 * float(hit.score))
-        for field_name in ("content", "source_path"):
-            if not getattr(existing, field_name):
-                setattr(existing, field_name, getattr(hit, field_name))
+    rrf_k = 60.0
+    for chunk_id, hit in merged.items():
+        rrf = 0.0
+        if chunk_id in dense_rank:
+            rrf += 1.0 / (rrf_k + dense_rank[chunk_id])
+        if chunk_id in sparse_rank:
+            rrf += 1.0 / (rrf_k + sparse_rank[chunk_id])
+
+        dense_component = dense_score.get(chunk_id, 0.0)
+        sparse_component = sparse_score.get(chunk_id, 0.0)
+        channel_count = int(chunk_id in dense_rank) + int(chunk_id in sparse_rank)
+        calibrated = (dense_component + sparse_component) / max(channel_count, 1)
+        overlap_bonus = 0.22 if channel_count == 2 else 0.0
+        hit.score = (0.55 * rrf) + (0.23 * calibrated) + overlap_bonus
 
     ordered = sorted(merged.values(), key=lambda item: item.score, reverse=True)
     return ordered[:top_k]
+
+
+def _normalize_scores(raw_scores: dict[str, float]) -> dict[str, float]:
+    """Min-max normalize arbitrary backend scores to [0, 1]."""
+    if not raw_scores:
+        return {}
+
+    values = list(raw_scores.values())
+    minimum = min(values)
+    maximum = max(values)
+    if maximum <= minimum:
+        return {key: 1.0 for key in raw_scores}
+    return {key: (score - minimum) / (maximum - minimum) for key, score in raw_scores.items()}

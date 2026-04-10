@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     openai_enable_graph_extraction: bool = True
 
     # Embeddings
-    embedding_provider: Literal["hash", "openai"] = "hash"
+    embedding_provider: Literal["hash", "openai"] = "openai"
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
 
@@ -108,9 +108,9 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_embedding_provider(cls, value: object) -> str:
         if value is None:
-            return "hash"
+            return "openai"
         text = str(value).strip().lower()
-        return text if text else "hash"
+        return text if text else "openai"
 
     @field_validator("retrieval_mode", mode="before")
     @classmethod

@@ -17,6 +17,7 @@ from riskfolio_graphrag_agent.retrieval.retriever import (
     _find_domain_concepts,
     _graph_expand,
     _hash_embedding,
+    _merge_hits,
     _promoted_graph_hop_expansion,
     _promoted_graph_seed_hits,
     _sparse_query_hits,
@@ -312,3 +313,26 @@ def test_promoted_graph_hop_expansion_returns_hits():
 
     assert len(hits) == 1
     assert hits[0].chunk_id == "chunk:hop"
+
+
+def test_merge_hits_prefers_cross_channel_overlap():
+    dense_hits = [
+        VectorHit(chunk_id="a", content="a", source_path="a.py", score=0.95),
+        VectorHit(chunk_id="b", content="b", source_path="b.py", score=0.9),
+    ]
+    sparse_hits = [
+        VectorHit(chunk_id="c", content="c", source_path="c.py", score=4.0),
+        VectorHit(chunk_id="a", content="a", source_path="a.py", score=3.0),
+    ]
+
+    merged = _merge_hits(dense_hits, sparse_hits, top_k=3)
+
+    assert merged
+    assert merged[0].chunk_id == "a"
+
+
+def test_merge_hits_returns_empty_when_top_k_non_positive():
+    dense_hits = [VectorHit(chunk_id="a", content="a", source_path="a.py", score=0.5)]
+    sparse_hits = [VectorHit(chunk_id="a", content="a", source_path="a.py", score=1.0)]
+
+    assert _merge_hits(dense_hits, sparse_hits, top_k=0) == []

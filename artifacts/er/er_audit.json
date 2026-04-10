@@ -17,24 +17,15 @@
       "name": "CVaR",
       "source": "docs",
       "entity_type": "Concept"
-    },
-    {
-      "entity_id": "e4",
-      "name": "conditional value at risk",
-      "source": "docs",
-      "entity_type": "Concept"
     }
   ],
   "canonical_entities": [
     {
       "canonical_id": "canon::cvar",
       "canonical_name": "CVaR",
-      "aliases": [
-        "conditional value at risk"
-      ],
+      "aliases": [],
       "source_entity_ids": [
-        "e3",
-        "e4"
+        "e3"
       ]
     },
     {
@@ -53,20 +44,12 @@
     [
       "e1",
       "e2"
-    ],
-    [
-      "e3",
-      "e4"
     ]
   ],
   "gold_pairs": [
     [
       "e1",
       "e2"
-    ],
-    [
-      "e3",
-      "e4"
     ]
   ],
   "metrics": {

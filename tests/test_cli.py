@@ -175,7 +175,7 @@ def test_kg_run_cli_writes_summary(monkeypatch, tmp_path):
                 },
             )
 
-    monkeypatch.setattr(cli, "_make_kg_pipeline", _FakePipeline)
+    monkeypatch.setattr(cli, "_make_kg_pipeline", lambda settings=None: _FakePipeline())
     monkeypatch.setattr(cli, "_resolve_focus_directories", lambda source_dir, settings: [tmp_path])
     monkeypatch.setattr(
         cli,
@@ -208,3 +208,35 @@ def test_kg_run_cli_writes_summary(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert captured["artifact_dir"] == str(tmp_path / "kg")
     assert captured["persist_neo4j"] is False
+
+
+def test_make_kg_pipeline_uses_llm_open_extractor_when_enabled(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class _FakePipeline:
+        def __init__(self, extractor=None):
+            captured["extractor"] = extractor
+
+    class _FakeLLMOpenExtractor:
+        def __init__(self, llm_extract, model_name, fallback_extractor=None):
+            captured["llm_extract"] = llm_extract
+            captured["model_name"] = model_name
+            captured["fallback_extractor"] = fallback_extractor
+
+    import riskfolio_graphrag_agent.extraction.pipeline as extraction_pipeline
+    import riskfolio_graphrag_agent.kg_pipeline as kg_pipeline_module
+
+    monkeypatch.setattr(extraction_pipeline, "LLMOpenExtractor", _FakeLLMOpenExtractor)
+    monkeypatch.setattr(kg_pipeline_module, "KnowledgeGraphPipeline", _FakePipeline)
+    monkeypatch.setattr(cli, "_make_openai_open_extractor", lambda settings: object())
+
+    settings = SimpleNamespace(
+        openai_enable_graph_extraction=True,
+        openai_api_key="test-key",
+        openai_model="gpt-4o-mini",
+    )
+
+    cli._make_kg_pipeline(settings)
+
+    assert captured["extractor"] is not None
+    assert captured["model_name"] == "gpt-4o-mini"

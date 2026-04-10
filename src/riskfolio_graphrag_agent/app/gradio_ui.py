@@ -51,6 +51,7 @@ def run_query_with_graph(
     query_router = None
     if settings.adaptive_tool_routing_enabled:
         query_router = QueryToolRouter(
+            embedding_provider=provider_resolution.provider,
             min_confidence=settings.adaptive_tool_routing_min_confidence,
         )
 
@@ -1367,6 +1368,7 @@ def create_gradio_app(
     query_router = None
     if settings.adaptive_tool_routing_enabled:
         query_router = QueryToolRouter(
+            embedding_provider=provider_resolution.provider,
             min_confidence=settings.adaptive_tool_routing_min_confidence,
         )
 

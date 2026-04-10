@@ -20,7 +20,7 @@ from pathlib import Path
 
 from riskfolio_graphrag_agent.canonicalization.pipeline import CanonicalizationPipeline
 from riskfolio_graphrag_agent.evaluation.graph_quality import evaluate_graph_quality
-from riskfolio_graphrag_agent.extraction.pipeline import HeuristicOpenExtractor
+from riskfolio_graphrag_agent.extraction.pipeline import ChunkOpenExtractorProtocol, HeuristicOpenExtractor
 from riskfolio_graphrag_agent.graph_materialization.pipeline import (
     GraphMaterializationPipeline,
     write_materialized_graph,
@@ -34,9 +34,14 @@ from riskfolio_graphrag_agent.semantic_export.pipeline import SemanticExportPipe
 class KnowledgeGraphPipeline:
     """Run the redesigned end-to-end KG induction pipeline."""
 
-    def __init__(self) -> None:
-        """Initialize the pipeline with the default vertical-slice components."""
-        self._extractor = HeuristicOpenExtractor()
+    def __init__(self, extractor: ChunkOpenExtractorProtocol | None = None) -> None:
+        """Initialize the pipeline with configurable extraction.
+
+        Args:
+            extractor: Optional chunk-level extractor. When omitted, the
+                heuristic extractor remains the default vertical slice.
+        """
+        self._extractor = extractor or HeuristicOpenExtractor()
         self._canonicalizer = CanonicalizationPipeline()
         self._schema_inducer = SchemaInductionPipeline()
         self._materializer = GraphMaterializationPipeline()
