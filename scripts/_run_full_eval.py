@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the full evaluation harness (4 retrieval modes + ER) and write eval_results.json."""
+"""Run the full evaluation harness (4 retrieval modes + ER) and write benchmarks/eval_results.json."""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ def main() -> int:
             f"  faithfulness={r['answer_faithfulness']:.4f}  latency={r['avg_latency_ms']:.1f}ms"
         )
 
-    # Primary result for eval_results.json = sparse (new router default)
+    # Primary result for benchmarks/eval_results.json = sparse (new router default)
     primary = dict(results["sparse"])  # copy to avoid mutating
     primary["er_precision"] = er_metrics["precision"]
     primary["er_recall"] = er_metrics["recall"]
@@ -108,7 +108,8 @@ def main() -> int:
     }
     primary["all_modes"] = all_modes_summary
 
-    out = Path("eval_results.json")
+    out = Path("benchmarks/eval_results.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(primary, indent=2))
     print(f"\nwrote {out}")
     return 0

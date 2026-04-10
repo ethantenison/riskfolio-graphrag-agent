@@ -682,7 +682,12 @@ def graph_stats() -> None:
 
 @app.command(name="eval")
 def eval_command(
-    output_file: str = typer.Option("eval_results.json", "--output", "-o", help="Path to write evaluation results JSON."),
+    output_file: str = typer.Option(
+        "benchmarks/eval_results.json",
+        "--output",
+        "-o",
+        help="Path to write evaluation results JSON.",
+    ),
     samples_path: str | None = typer.Option(
         None,
         "--samples",
@@ -799,7 +804,7 @@ def er_eval(
 
 @app.command(name="eval-gate")
 def eval_gate(
-    report_file: str = typer.Option("eval_results.json", "--report", help="Path to eval report JSON."),
+    report_file: str = typer.Option("benchmarks/eval_results.json", "--report", help="Path to eval report JSON."),
     min_faithfulness: float = typer.Option(0.35, "--min-faithfulness"),
     min_relevance: float = typer.Option(0.8, "--min-relevance"),
     min_context_recall: float = typer.Option(0.45, "--min-context-recall"),

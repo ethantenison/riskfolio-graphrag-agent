@@ -22,7 +22,7 @@ This module does not compute metrics itself, execute retrieval, or own broader
 observability reporting.
 
 Usage:
-        python -m riskfolio_graphrag_agent.eval.regression_gate --report eval_results.json
+    python -m riskfolio_graphrag_agent.eval.regression_gate --report benchmarks/eval_results.json
 """
 
 from __future__ import annotations
@@ -108,7 +108,7 @@ def main() -> int:
         ``0`` when the report passes all thresholds, otherwise ``1``.
     """
     parser = argparse.ArgumentParser(description="Evaluation regression gate")
-    parser.add_argument("--report", default="eval_results.json", help="Path to eval report JSON")
+    parser.add_argument("--report", default="benchmarks/eval_results.json", help="Path to eval report JSON")
     parser.add_argument("--min-faithfulness", type=float, default=0.35)
     parser.add_argument("--min-relevance", type=float, default=0.8)
     parser.add_argument("--min-context-recall", type=float, default=0.45)
