@@ -19,6 +19,7 @@ from riskfolio_graphrag_agent.retrieval.retriever import (
     _graph_expand,
     _hash_embedding,
     _merge_hits,
+    _promoted_graph_bridge_hits,
     _promoted_graph_hop_expansion,
     _promoted_graph_seed_hits,
     _query_tokens_for_lexical_graph,
@@ -336,6 +337,30 @@ def test_promoted_graph_hop_expansion_returns_hits():
     assert hits[0].chunk_id == "chunk:hop"
 
 
+def test_promoted_graph_bridge_hits_returns_hits():
+    rows = [
+        _Row(
+            {
+                "chunk_id": "chunk:bridge",
+                "content": "Tail-risk peers connect CVaR and CDaR assertions.",
+                "source_path": "docs/risk.md",
+                "relative_path": "docs/risk.md",
+                "chunk_index": 7,
+                "chunk_kind": "section",
+                "line_start": 3,
+                "line_end": 6,
+                "score": 0.59,
+            }
+        )
+    ]
+    driver = _DriverCtx(rows)
+
+    hits = _promoted_graph_bridge_hits(driver, "tail risk", top_k=5)
+
+    assert len(hits) == 1
+    assert hits[0].chunk_id == "chunk:bridge"
+
+
 def test_merge_hits_prefers_cross_channel_overlap():
     dense_hits = [
         VectorHit(chunk_id="a", content="a", source_path="a.py", score=0.95),
@@ -469,3 +494,62 @@ def test_dense_retriever_uses_query_variants_and_wider_candidate_pool():
     assert results
     assert len(vector_store.search_calls) == 2
     assert all(call_top_k == 6 for _, call_top_k in vector_store.search_calls)
+
+
+def test_graph_retriever_uses_wider_candidate_pool_and_sparse_backfill():
+    mock_session = MagicMock()
+    mock_session.__enter__ = MagicMock(return_value=mock_session)
+    mock_session.__exit__ = MagicMock(return_value=False)
+    mock_session.run.return_value = iter([])
+
+    mock_driver = MagicMock()
+    mock_driver.session.return_value = mock_session
+
+    with (
+        patch("riskfolio_graphrag_agent.retrieval.retriever.GraphDatabase.driver", return_value=mock_driver),
+        patch(
+            "riskfolio_graphrag_agent.retrieval.retriever._promoted_graph_seed_hits",
+            return_value=[VectorHit(chunk_id="seed-1", content="seed", source_path="seed.py", score=0.9)],
+        ) as seed_mock,
+        patch(
+            "riskfolio_graphrag_agent.retrieval.retriever._promoted_graph_hop_expansion",
+            return_value=[VectorHit(chunk_id="hop-1", content="hop", source_path="hop.py", score=0.7)],
+        ) as hop_mock,
+        patch(
+            "riskfolio_graphrag_agent.retrieval.retriever._promoted_graph_bridge_hits",
+            return_value=[VectorHit(chunk_id="bridge-1", content="bridge", source_path="bridge.py", score=0.8)],
+        ) as bridge_mock,
+        patch(
+            "riskfolio_graphrag_agent.retrieval.retriever._sparse_query_hits",
+            return_value=[VectorHit(chunk_id="sparse-1", content="sparse", source_path="sparse.py", score=2.0)],
+        ) as sparse_mock,
+        patch(
+            "riskfolio_graphrag_agent.retrieval.retriever._graph_expand",
+            side_effect=lambda hit, session: RetrievalResult(
+                content=hit.content,
+                source_path=hit.source_path,
+                score=hit.score,
+                graph_neighbours=[],
+                related_entities=[],
+                metadata={"chunk_id": hit.chunk_id},
+            ),
+        ),
+    ):
+        retriever = HybridRetriever(
+            neo4j_uri="bolt://localhost:7687",
+            neo4j_user="neo4j",
+            neo4j_password="password",
+            top_k=3,
+            vector_store=_FakeVectorStore(),
+            retrieval_mode="graph",
+        )
+        try:
+            results = retriever.retrieve("How does HRP connect to CVaR?")
+        finally:
+            retriever.close()
+
+    assert results
+    assert seed_mock.call_args.kwargs["top_k"] == 9
+    assert hop_mock.call_args.kwargs["top_k"] == 9
+    assert bridge_mock.call_args.kwargs["top_k"] == 9
+    assert sparse_mock.call_args.kwargs["top_k"] == 4

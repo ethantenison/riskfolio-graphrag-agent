@@ -13,6 +13,7 @@ from riskfolio_graphrag_agent import cli
 from riskfolio_graphrag_agent.cli import (
     _default_eval_output_path,
     _dense_index_fingerprint,
+    _normalize_metric_profile,
     _resolve_eval_samples,
     _select_documents_for_build,
 )
@@ -434,6 +435,11 @@ def test_eval_cli_refresh_dense_index_records_runtime_metadata(monkeypatch, tmp_
     assert captured_runtime["dense_index_refreshed"] == "True"
     assert captured_runtime["dense_index_fingerprint"] == "abc123"
     assert captured_runtime["dense_index_upserted"] == "42"
+
+
+def test_normalize_metric_profile_accepts_graph_aliases():
+    assert _normalize_metric_profile("graph") == "graph"
+    assert _normalize_metric_profile("graph-order-sensitive") == "graph-order-sensitive"
 
 
 def test_kg_run_cli_writes_summary(monkeypatch, tmp_path):

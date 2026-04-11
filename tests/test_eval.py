@@ -95,6 +95,9 @@ def test_evaluator_default_profile_is_heuristic_overlap():
     assert 0.0 <= report.context_precision <= 1.0
     assert 0.0 <= report.answer_faithfulness <= 1.0
     assert 0.0 <= report.answer_relevance <= 1.0
+    assert 0.0 <= report.link_prediction_ndcg_at_3 <= 1.0
+    assert 0.0 <= report.link_prediction_ndcg_at_10 <= 1.0
+    assert 0.0 <= report.rank_quality <= 1.0
 
 
 def test_evaluator_accepts_heuristic_profile():
@@ -143,6 +146,22 @@ def test_evaluator_unknown_metric_profile_raises():
 
     with pytest.raises(ValueError, match="Unknown metric_profile"):
         Evaluator(samples=samples, metric_profile="foo-bar")
+
+
+def test_evaluator_graph_profile_alias_normalizes_to_graph_order_sensitive():
+    samples = [
+        EvalSample(
+            question="What is Hierarchical Risk Parity?",
+            reference_answer="HRP uses clustering and risk parity.",
+            expected_context_terms=["hierarchical", "risk parity", "clustering"],
+        )
+    ]
+
+    evaluator = Evaluator(samples=samples, retriever=_StubRetriever(), metric_profile="graph")
+    report = evaluator.run()
+
+    assert report.metric_profile == "graph-order-sensitive"
+    assert report.rank_quality >= 0.0
 
 
 def test_evaluator_save(tmp_path):

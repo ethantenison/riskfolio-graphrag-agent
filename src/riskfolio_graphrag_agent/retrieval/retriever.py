@@ -460,16 +460,26 @@ class HybridRetriever:
         elif retrieval_mode == "sparse":
             hits = _sparse_query_hits(self._driver, query, top_k=self._top_k)
         elif retrieval_mode == "graph":
-            # Prefer promoted assertion-aware traversal, fallback to legacy graph seeds.
-            hits = _promoted_graph_seed_hits(self._driver, query, top_k=self._top_k)
-            if not hits:
-                hits = _graph_seed_hits(self._driver, query, top_k=self._top_k)
+            # Graph mode now builds a broader candidate pool before reranking.
+            candidate_k = max(self._top_k * 3, self._top_k)
 
-            hop_hits = _promoted_graph_hop_expansion(self._driver, query, top_k=self._top_k)
+            # Prefer promoted assertion-aware traversal, fallback to legacy graph seeds.
+            seed_hits = _promoted_graph_seed_hits(self._driver, query, top_k=candidate_k)
+            if not seed_hits:
+                seed_hits = _graph_seed_hits(self._driver, query, top_k=candidate_k)
+
+            hop_hits = _promoted_graph_hop_expansion(self._driver, query, top_k=candidate_k)
             if not hop_hits:
-                hop_hits = _graph_hop_expansion(self._driver, query, top_k=self._top_k)
-            if hop_hits:
-                hits = _merge_hits(hits, hop_hits, top_k=self._top_k * 2)[: self._top_k]
+                hop_hits = _graph_hop_expansion(self._driver, query, top_k=candidate_k)
+
+            bridge_hits = _promoted_graph_bridge_hits(self._driver, query, top_k=candidate_k)
+            sparse_backfill = _sparse_query_hits(self._driver, query, top_k=max(self._top_k, candidate_k // 2))
+
+            hits = _merge_hits(seed_hits, hop_hits, top_k=candidate_k)
+            if bridge_hits:
+                hits = _merge_hits(hits, bridge_hits, top_k=candidate_k)
+            if sparse_backfill:
+                hits = _merge_hits(hits, sparse_backfill, top_k=candidate_k)
         else:
             # Use a broader candidate pool in hybrid mode before final rerank.
             candidate_k = max(self._top_k * 2, self._top_k)
@@ -485,7 +495,7 @@ class HybridRetriever:
             for hit in hits:
                 results.append(_graph_expand(hit, session))
 
-        if retrieval_mode in {"hybrid_rerank", "dense"}:
+        if retrieval_mode in {"hybrid_rerank", "dense", "graph"}:
             query_tokens = (
                 set(_query_tokens(query)) if retrieval_mode == "hybrid_rerank" else set(_query_tokens_for_lexical_graph(query))
             )
@@ -498,6 +508,9 @@ class HybridRetriever:
                 if retrieval_mode == "hybrid_rerank":
                     evidence_boost = (0.11 * entity_signal) + (0.07 * neighbour_signal) + (0.09 * coverage_signal)
                     result.score = round((0.85 * float(result.score)) + evidence_boost, 6)
+                elif retrieval_mode == "graph":
+                    evidence_boost = (0.10 * entity_signal) + (0.05 * neighbour_signal) + (0.15 * coverage_signal)
+                    result.score = round((0.70 * float(result.score)) + evidence_boost, 6)
                 else:
                     evidence_boost = (0.07 * entity_signal) + (0.03 * neighbour_signal) + (0.08 * coverage_signal)
                     result.score = round((0.88 * float(result.score)) + evidence_boost, 6)
@@ -906,6 +919,66 @@ def _promoted_graph_hop_expansion(driver: Driver, query: str, top_k: int) -> lis
             rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
     except Exception as exc:
         logger.debug("Promoted graph-hop expansion query failed: %s", exc)
+        return []
+
+    hits: list[VectorHit] = []
+    for row in rows:
+        hits.append(
+            VectorHit(
+                chunk_id=str(row["chunk_id"] or ""),
+                content=str(row["content"] or ""),
+                source_path=str(row["source_path"] or ""),
+                score=float(row["score"]),
+                metadata={
+                    "relative_path": str(row["relative_path"] or ""),
+                    "chunk_index": int(row["chunk_index"] or 0),
+                    "chunk_kind": str(row["chunk_kind"] or ""),
+                    "section": "",
+                    "line_start": int(row["line_start"] or 1),
+                    "line_end": int(row["line_end"] or 1),
+                    "content_hash": "",
+                },
+            )
+        )
+    return hits
+
+
+def _promoted_graph_bridge_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
+    """Expand from seed entities to assertion-bridged peer entities.
+
+    This supplements seed and ontology-class traversal by traversing one
+    assertion hop to peer canonical entities, then collecting supporting chunks.
+    """
+    tokens = _query_tokens_for_lexical_graph(query)
+    if not tokens:
+        return []
+
+    cypher = (
+        "MATCH (seed:CanonicalEntity) "
+        "WHERE any(t IN $tokens WHERE toLower(seed.preferred_label) CONTAINS t "
+        "OR toLower(coalesce(seed.normalized_label, '')) CONTAINS t) "
+        "MATCH (a1:Assertion)-[:ASSERTS_SUBJECT|ASSERTS_OBJECT]->(seed) "
+        "MATCH (a1)-[:ASSERTS_SUBJECT|ASSERTS_OBJECT]->(peer:CanonicalEntity) "
+        "WHERE peer <> seed "
+        "MATCH (a2:Assertion)-[:ASSERTS_SUBJECT|ASSERTS_OBJECT]->(peer) "
+        "MATCH (a2)-[:SUPPORTED_BY]->(c:Chunk) "
+        "WITH c, max(coalesce(a1.confidence, 0.0) * 0.35 + coalesce(a2.confidence, 0.0) * 0.65) AS score "
+        "RETURN coalesce(c.node_id, c.name) AS chunk_id, "
+        "coalesce(c.content, '') AS content, "
+        "coalesce(c.source_path, '') AS source_path, "
+        "coalesce(c.relative_path, c.source_path, '') AS relative_path, "
+        "coalesce(c.chunk_index, 0) AS chunk_index, "
+        "coalesce(c.chunk_kind, c.section, '') AS chunk_kind, "
+        "coalesce(c.line_start, 1) AS line_start, "
+        "coalesce(c.line_end, 1) AS line_end, score "
+        "ORDER BY score DESC LIMIT $top_k"
+    )
+
+    try:
+        with driver.session() as session:
+            rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
+    except Exception as exc:
+        logger.debug("Promoted graph bridge expansion query failed: %s", exc)
         return []
 
     hits: list[VectorHit] = []

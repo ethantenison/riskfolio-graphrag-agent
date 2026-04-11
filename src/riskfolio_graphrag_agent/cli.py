@@ -363,6 +363,10 @@ def _report_metrics_snapshot(report: object) -> dict[str, float | int | str]:
         "answer_relevance": float(getattr(report, "answer_relevance", 0.0)),
         "grounding": float(getattr(report, "grounding", 0.0)),
         "multi_hop_accuracy": float(getattr(report, "multi_hop_accuracy", 0.0)),
+        "link_prediction_mrr": float(getattr(report, "link_prediction_mrr", 0.0)),
+        "link_prediction_ndcg_at_3": float(getattr(report, "link_prediction_ndcg_at_3", 0.0)),
+        "link_prediction_ndcg_at_10": float(getattr(report, "link_prediction_ndcg_at_10", 0.0)),
+        "rank_quality": float(getattr(report, "rank_quality", 0.0)),
         "avg_latency_ms": float(getattr(report, "avg_latency_ms", 0.0)),
         "estimated_cost_usd": float(getattr(report, "estimated_cost_usd", 0.0)),
         "retrieval_mode": str(getattr(report, "retrieval_mode", "")),
@@ -393,8 +397,8 @@ def _dense_index_fingerprint(documents: list[Document]) -> str:
 def _normalize_metric_profile(metric_profile: str) -> str:
     """Validate and normalize metric profile values accepted by CLI commands."""
     normalized_profile = metric_profile.strip().lower()
-    if normalized_profile not in {"ragas-style", "heuristic"}:
-        raise typer.BadParameter("--metric-profile must be one of: ragas-style, heuristic")
+    if normalized_profile not in {"ragas-style", "heuristic", "graph", "graph-order-sensitive"}:
+        raise typer.BadParameter("--metric-profile must be one of: ragas-style, heuristic, graph, graph-order-sensitive")
     return normalized_profile
 
 
@@ -816,7 +820,7 @@ def eval_command(
     metric_profile: str = typer.Option(
         "ragas-style",
         "--metric-profile",
-        help="Evaluation metric profile to run: ragas-style or heuristic.",
+        help="Evaluation metric profile to run: ragas-style, heuristic, graph, or graph-order-sensitive.",
         case_sensitive=False,
     ),
     eval_top_k: int = typer.Option(
@@ -933,7 +937,7 @@ def eval_ablation_command(
     metric_profile: str = typer.Option(
         "ragas-style",
         "--metric-profile",
-        help="Evaluation metric profile to run: ragas-style or heuristic.",
+        help="Evaluation metric profile to run: ragas-style, heuristic, graph, or graph-order-sensitive.",
         case_sensitive=False,
     ),
     eval_top_k: int = typer.Option(
@@ -1024,6 +1028,7 @@ def eval_ablation_command(
         summary_rows,
         key=lambda key: float(summary_rows[key]["context_recall"]) + float(summary_rows[key]["context_precision"]),
     )
+    best_mode_rank_quality = max(summary_rows, key=lambda key: float(summary_rows[key]["rank_quality"]))
 
     summary_payload = {
         "eval_top_k": eval_top_k,
@@ -1034,6 +1039,7 @@ def eval_ablation_command(
         "dense_index_upserted": dense_index_upserted,
         "modes": summary_rows,
         "winner_by_recall_plus_precision": best_mode,
+        "winner_by_rank_quality": best_mode_rank_quality,
     }
     summary_path = resolved_output_dir / f"ablation_summary_top{eval_top_k}.json"
     summary_path.write_text(json.dumps(summary_payload, indent=2))
@@ -1077,6 +1083,9 @@ def eval_gate(
     min_context_recall: float = typer.Option(0.45, "--min-context-recall"),
     min_grounding: float = typer.Option(0.35, "--min-grounding"),
     min_multi_hop_accuracy: float = typer.Option(0.25, "--min-multi-hop-accuracy"),
+    min_link_prediction_mrr: float = typer.Option(0.0, "--min-link-prediction-mrr"),
+    min_link_prediction_ndcg_at_3: float = typer.Option(0.0, "--min-link-prediction-ndcg-at-3"),
+    min_rank_quality: float = typer.Option(0.0, "--min-rank-quality"),
     max_latency_ms: float = typer.Option(5000.0, "--max-latency-ms"),
     max_estimated_cost_usd: float = typer.Option(0.02, "--max-estimated-cost-usd"),
     trend_path: str = typer.Option("artifacts/eval/eval_trend.json", "--trend-path"),
@@ -1089,6 +1098,9 @@ def eval_gate(
         min_context_recall=min_context_recall,
         min_grounding=min_grounding,
         min_multi_hop_accuracy=min_multi_hop_accuracy,
+        min_link_prediction_mrr=min_link_prediction_mrr,
+        min_link_prediction_ndcg_at_3=min_link_prediction_ndcg_at_3,
+        min_rank_quality=min_rank_quality,
         max_latency_ms=max_latency_ms,
         max_estimated_cost_usd=max_estimated_cost_usd,
         trend_path=trend_path,
