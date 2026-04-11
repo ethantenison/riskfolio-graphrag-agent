@@ -110,6 +110,15 @@ Inputs: user query, vector backend, Neo4j graph, and embedding provider.
 
 Outputs: ranked `RetrievalResult` evidence with citation-friendly metadata.
 
+**Supported retrieval modes**:
+
+- **Dense**: Embedding-based semantic similarity with query expansion. Uses `2×top_k` candidate pool before final truncation. Fast and broad; good for paraphrased queries.
+- **Sparse**: Lexical token matching over Neo4j chunks. Direct keyword search; precise for domain terminology but weak on synonyms.
+- **Graph**: Multi-stage assertion-aware traversal with `3×top_k` candidate pool. Combines seed matching, ontology-class expansion, assertion-bridged peer entities, and sparse backfill. Slowest but captures semantic relationships.
+- **Hybrid Rerank**: Merges dense and sparse results from `2×top_k` each, then applies graph-contextualized evidence boosts. Balances precision and recall; default mode.
+
+All modes (except sparse) apply optional reranking boosts based on entity density, graph neighbourhood connectivity, and query token coverage. See `docs/retrieval_methods.md` for detailed mode descriptions, formulas, and performance profiles.
+
 Must not: own graph induction or final answer narration.
 
 ### Agent Layer
@@ -148,8 +157,8 @@ Must not: bury core business logic in handlers when it belongs in lower layers.
 | `src/riskfolio_graphrag_agent/kg_pipeline.py` | End-to-end redesigned KG orchestration | Writes stage artifacts and can persist the promoted graph to Neo4j. |
 | `src/riskfolio_graphrag_agent/graph/builder.py` | Legacy deterministic graph builder | Compatibility path only; not the recommended architecture. |
 | `src/riskfolio_graphrag_agent/graph/semantic_interop.py` | Legacy semantic export helpers | Compatibility path only; superseded by `semantic_export/`. |
-| `src/riskfolio_graphrag_agent/retrieval/retriever.py` | Evidence retrieval and graph-aware reranking | Still partly coupled to the legacy graph and will be migrated incrementally. |
-| `src/riskfolio_graphrag_agent/retrieval/router.py` | Query-to-retrieval-mode routing | Chooses between dense, sparse, graph, and hybrid modes. |
+| `src/riskfolio_graphrag_agent/retrieval/retriever.py` | Evidence retrieval and graph-aware reranking | Implements four retrieval modes: dense, sparse, graph, and hybrid_rerank. Prefers promoted assertion-aware graph with legacy fallback. See `docs/retrieval_methods.md` for detailed mode descriptions and performance profiles. |
+| `src/riskfolio_graphrag_agent/retrieval/router.py` | Query-to-retrieval-mode routing | Chooses between dense, sparse, graph, and hybrid modes based on query characteristics. |
 | `src/riskfolio_graphrag_agent/agent/workflow.py` | Multi-step plan, retrieve, reason, verify flow | Orchestrates answer production over retrieved evidence. |
 | `src/riskfolio_graphrag_agent/eval/evaluator.py` | Retrieval and answer quality evaluation | Existing answer-quality harness. |
 | `src/riskfolio_graphrag_agent/eval/regression_gate.py` | Regression thresholds and CI gating | Existing CI gate for answer-quality metrics. |
@@ -181,6 +190,7 @@ Must not: bury core business logic in handlers when it belongs in lower layers.
 - `README.md`: project overview, setup, and honest current status.
 - `docs/quickstart.md`: concise local validation commands.
 - `docs/kg-redesign.md`: detailed redesign rationale and graph-layer design.
+- `docs/retrieval_methods.md`: retrieval mode descriptions, formulas, performance profiles, and troubleshooting.
 - This document: architecture map, boundaries, entry points, and design guardrails.
 
 ## Current Non-Goals

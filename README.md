@@ -56,8 +56,9 @@ That separation matters because it keeps provenance, confidence, and review stat
 | [src/riskfolio_graphrag_agent/semantic_export/pipeline.py](src/riskfolio_graphrag_agent/semantic_export/pipeline.py) | Export ontology and instance/provenance Turtle views using OWL, SKOS, and PROV-O |
 | [src/riskfolio_graphrag_agent/evaluation/graph_quality.py](src/riskfolio_graphrag_agent/evaluation/graph_quality.py) | Score graph-quality metrics such as compression, promotion yield, and schema support |
 | [src/riskfolio_graphrag_agent/kg_pipeline.py](src/riskfolio_graphrag_agent/kg_pipeline.py) | Orchestrate the end-to-end redesigned KG pipeline and artifact generation |
-| [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py) | Retrieval stack with promoted-graph-aware seeding/expansion plus legacy fallback |
-| [src/riskfolio_graphrag_agent/agent/workflow.py](src/riskfolio_graphrag_agent/agent/workflow.py) | Existing plan-retrieve-reason-verify orchestration |
+| [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py) | Retrieval orchestration supporting four modes: dense (embedding), sparse (lexical), graph (assertion-aware), and hybrid_rerank (merged with graph context) |
+| [src/riskfolio_graphrag_agent/retrieval/router.py](src/riskfolio_graphrag_agent/retrieval/router.py) | Query router to select appropriate retrieval mode |
+| [src/riskfolio_graphrag_agent/agent/workflow.py](src/riskfolio_graphrag_agent/agent/workflow.py) | Plan-retrieve-reason-verify orchestration for answer generation |
 
 ## Architecture
 
@@ -101,6 +102,24 @@ Graph Materialization
         ▼
 Promoted Retrieval Graph
 ```
+
+## Retrieval Methods
+
+The retrieval system supports four modes to serve different query characteristics and performance needs:
+
+| Mode | Strategy | Best For | Candidate Pool |
+|------|----------|----------|-----------------|
+| **Dense** | Embedding-based semantic similarity with query expansion | Broad semantic queries; paraphrasing | 2×top_k |
+| **Sparse** | Direct lexical token matching on Neo4j chunks | Domain terminology; acronyms; exact phrases | 1×top_k |
+| **Graph** | Multi-stage assertion-aware traversal with entity seed, ontology-class expansion, assertion-bridged peers, and keyword backfill | Complex multi-hop relationships | 3×top_k |
+| **Hybrid Rerank** | Merged dense and sparse results with graph-contextualized evidence boosting (default) | General-purpose balanced precision/recall | 4×top_k |
+
+All modes (except sparse) apply optional reranking boosts based on:
+- **Entity signal**: Richness of related entity context (~log scale, max 0.07–0.11 boost)
+- **Neighbour signal**: Graph connectivity (~log scale, max 0.03–0.07 boost)
+- **Coverage signal**: Fraction of query tokens present in text (0–0.09 boost)
+
+For detailed mode descriptions, performance profiles, formulas, and troubleshooting, see [docs/retrieval_methods.md](docs/retrieval_methods.md).
 
 ## Commands
 
@@ -189,6 +208,7 @@ The graph-quality report produced by `kg-run` currently measures pipeline struct
 - [docs/kg-redesign.md](docs/kg-redesign.md) — redesign goals, data model, pipeline, Cypher model, semantic export, and evaluation plan
 - [docs/kg-migration.md](docs/kg-migration.md) — what is being retired and which compatibility is intentionally dropped
 - [docs/architecture_module_map.md](docs/architecture_module_map.md) — architecture boundaries and package ownership
+- [docs/retrieval_methods.md](docs/retrieval_methods.md) — retrieval mode descriptions, formulas, performance profiles, and troubleshooting
 - [docs/quickstart.md](docs/quickstart.md) — concise local validation commands
 
 ## Development
