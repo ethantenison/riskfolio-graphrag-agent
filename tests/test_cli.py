@@ -406,10 +406,10 @@ def test_make_kg_pipeline_uses_llm_open_extractor_when_enabled(monkeypatch):
     settings = SimpleNamespace(
         openai_enable_graph_extraction=True,
         openai_api_key="test-key",
-        openai_model="gpt-4o-mini",
+        openai_model="gpt-5.4-nano",
     )
 
     cli._make_kg_pipeline(settings)
 
     assert captured["extractor"] is not None
-    assert captured["model_name"] == "gpt-4o-mini"
+    assert captured["model_name"] == "gpt-5.4-nano"

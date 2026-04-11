@@ -52,7 +52,7 @@ def test_extract_entities_includes_llm_nodes_and_edges():
     def _fake_llm_extract(*, content: str, source_type: str, model_name: str):
         assert content
         assert source_type == "python"
-        assert model_name == "gpt-4o-mini"
+        assert model_name == "gpt-5.4-nano"
         return {
             "nodes": [
                 {"label": "PortfolioMethod", "name": "Hierarchical Risk Parity", "properties": {}},
@@ -69,7 +69,7 @@ def test_extract_entities_includes_llm_nodes_and_edges():
             ],
         }
 
-    nodes, edges = _extract_entities(doc, llm_extract=_fake_llm_extract, llm_model_name="gpt-4o-mini")
+    nodes, edges = _extract_entities(doc, llm_extract=_fake_llm_extract, llm_model_name="gpt-5.4-nano")
     node_pairs = {(node.label, node.name) for node in nodes}
     edge_keys = {(edge.source_label, edge.source_name, edge.relation_type, edge.target_label, edge.target_name) for edge in edges}
 
@@ -128,7 +128,7 @@ def test_extract_entities_with_llm_timeout_returns_empty(caplog):
             source_label="PythonModule",
             chunk_id="AuxFunctions.py::chunk:3",
             llm_extract=_timeout_llm_extract,
-            llm_model_name="gpt-4o-mini",
+            llm_model_name="gpt-5.4-nano",
         )
 
     assert nodes == []

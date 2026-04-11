@@ -469,7 +469,7 @@ class GraphBuilder:
         neo4j_user: str,
         neo4j_password: str,
         llm_extract: LLMExtractProtocol | None = None,
-        llm_model_name: str = "gpt-4o-mini",
+        llm_model_name: str = "gpt-5.4-nano",
     ) -> None:
         """Initialize a graph builder.
 
@@ -880,7 +880,7 @@ class GraphBuilder:
 def _extract_entities(
     doc: Document,
     llm_extract: LLMExtractProtocol | None = None,
-    llm_model_name: str = "gpt-4o-mini",
+    llm_model_name: str = "gpt-5.4-nano",
 ) -> tuple[list[GraphNode], list[GraphEdge]]:
     """Extract Riskfolio-aware graph entities from one chunk."""
     metadata = doc.metadata
