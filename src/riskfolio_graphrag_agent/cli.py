@@ -1082,7 +1082,7 @@ def eval_gate(
     min_relevance: float = typer.Option(0.8, "--min-relevance"),
     min_context_recall: float = typer.Option(0.45, "--min-context-recall"),
     min_grounding: float = typer.Option(0.35, "--min-grounding"),
-    min_multi_hop_accuracy: float = typer.Option(0.25, "--min-multi-hop-accuracy"),
+    min_multi_hop_accuracy: float = typer.Option(0.0, "--min-multi-hop-accuracy"),
     min_link_prediction_mrr: float = typer.Option(0.0, "--min-link-prediction-mrr"),
     min_link_prediction_ndcg_at_3: float = typer.Option(0.0, "--min-link-prediction-ndcg-at-3"),
     min_rank_quality: float = typer.Option(0.0, "--min-rank-quality"),

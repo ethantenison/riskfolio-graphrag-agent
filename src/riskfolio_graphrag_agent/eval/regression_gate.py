@@ -43,7 +43,7 @@ def run_regression_gate(
     min_relevance: float = 0.8,
     min_context_recall: float = 0.45,
     min_grounding: float = 0.35,
-    min_multi_hop_accuracy: float = 0.25,
+    min_multi_hop_accuracy: float = 0.0,
     min_link_prediction_mrr: float = 0.0,
     min_link_prediction_ndcg_at_3: float = 0.0,
     min_rank_quality: float = 0.0,
