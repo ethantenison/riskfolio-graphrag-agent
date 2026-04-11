@@ -390,6 +390,58 @@ def _dense_index_fingerprint(documents: list[Document]) -> str:
     return digest.hexdigest()
 
 
+def _normalize_metric_profile(metric_profile: str) -> str:
+    """Validate and normalize metric profile values accepted by CLI commands."""
+    normalized_profile = metric_profile.strip().lower()
+    if normalized_profile not in {"ragas-style", "heuristic"}:
+        raise typer.BadParameter("--metric-profile must be one of: ragas-style, heuristic")
+    return normalized_profile
+
+
+def _run_default_er_pipeline() -> object:
+    """Run the standard ER bootstrap used by eval commands."""
+    er_entities = [
+        EntityRecord(entity_id="e1", name="Hierarchical Risk Parity", source="docs"),
+        EntityRecord(entity_id="e2", name="hierarchical-risk-parity", source="code"),
+        EntityRecord(entity_id="e3", name="CVaR", source="docs"),
+    ]
+    return run_er_pipeline(
+        er_entities,
+        gold_pairs={("e1", "e2")},
+        audit_dir="artifacts/er",
+    )
+
+
+def _er_metrics_payload(er_result: object) -> dict[str, float]:
+    """Return evaluator-compatible ER metrics payload from pipeline result."""
+    metrics = getattr(er_result, "metrics", None)
+    return {
+        "precision": float(getattr(metrics, "precision", 0.0) if metrics else 0.0),
+        "recall": float(getattr(metrics, "recall", 0.0) if metrics else 0.0),
+        "f1": float(getattr(metrics, "f1", 0.0) if metrics else 0.0),
+    }
+
+
+def _eval_runtime_config(
+    *,
+    retrieval_mode: str,
+    embedding_provider: str,
+    eval_top_k: int,
+    refresh_dense_index: bool,
+    dense_index_fingerprint: str,
+    dense_index_upserted: int,
+) -> dict[str, str]:
+    """Build shared runtime metadata for eval reports."""
+    return {
+        "retrieval_mode": retrieval_mode,
+        "embedding_provider": embedding_provider,
+        "eval_top_k": str(eval_top_k),
+        "dense_index_refreshed": str(refresh_dense_index),
+        "dense_index_fingerprint": dense_index_fingerprint,
+        "dense_index_upserted": str(dense_index_upserted),
+    }
+
+
 def _refresh_dense_index(
     *,
     settings: Settings,
@@ -422,38 +474,6 @@ def _refresh_dense_index(
         retriever.close()
 
     return upserted, fingerprint
-
-
-def _resolve_source_directories(source_dir: str | None, settings: Settings) -> list[Path]:
-    candidate = Path(source_dir or settings.riskfolio_source_dir).expanduser().resolve()
-    if not candidate.exists():
-        raise FileNotFoundError(f"Source directory not found: {candidate}")
-
-    dirs: list[Path] = []
-    if (candidate / "riskfolio" / "src").exists() and (candidate / "docs" / "source").exists():
-        dirs = [candidate / "riskfolio" / "src", candidate / "docs" / "source"]
-    elif candidate.name == "src" and candidate.parent.name == "riskfolio":
-        sibling_docs = candidate.parent.parent / "docs" / "source"
-        dirs = [candidate]
-        if sibling_docs.exists():
-            dirs.append(sibling_docs)
-    elif candidate.name == "source" and candidate.parent.name == "docs":
-        sibling_src = candidate.parent.parent / "riskfolio" / "src"
-        dirs = [candidate]
-        if sibling_src.exists():
-            dirs.append(sibling_src)
-    else:
-        dirs = [candidate]
-
-    unique_dirs: list[Path] = []
-    seen: set[str] = set()
-    for directory in dirs:
-        normalized = str(directory)
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        unique_dirs.append(directory)
-    return unique_dirs
 
 
 def _resolve_focus_directories(source_dir: str | None, settings: Settings) -> list[Path]:
@@ -828,16 +848,7 @@ def eval_command(
         samples = _resolve_eval_samples(samples_path)
     except ValueError as exc:
         raise typer.BadParameter(str(exc), param_hint="--samples") from exc
-    er_entities = [
-        EntityRecord(entity_id="e1", name="Hierarchical Risk Parity", source="docs"),
-        EntityRecord(entity_id="e2", name="hierarchical-risk-parity", source="code"),
-        EntityRecord(entity_id="e3", name="CVaR", source="docs"),
-    ]
-    er_result = run_er_pipeline(
-        er_entities,
-        gold_pairs={("e1", "e2")},
-        audit_dir="artifacts/er",
-    )
+    er_result = _run_default_er_pipeline()
     dense_index_upserted = 0
     dense_index_fingerprint = ""
     if refresh_dense_index:
@@ -868,27 +879,21 @@ def eval_command(
     )
 
     try:
-        normalized_profile = metric_profile.strip().lower()
-        if normalized_profile not in {"ragas-style", "heuristic"}:
-            raise typer.BadParameter("--metric-profile must be one of: ragas-style, heuristic")
+        normalized_profile = _normalize_metric_profile(metric_profile)
 
         evaluator = Evaluator(
             samples=samples,
             retriever=retriever,
             metric_profile=normalized_profile,
-            runtime_config={
-                "retrieval_mode": settings.retrieval_mode,
-                "embedding_provider": provider_resolution.selected_provider,
-                "eval_top_k": str(eval_top_k),
-                "dense_index_refreshed": str(refresh_dense_index),
-                "dense_index_fingerprint": dense_index_fingerprint,
-                "dense_index_upserted": str(dense_index_upserted),
-            },
-            er_metrics={
-                "precision": er_result.metrics.precision if er_result.metrics else 0.0,
-                "recall": er_result.metrics.recall if er_result.metrics else 0.0,
-                "f1": er_result.metrics.f1 if er_result.metrics else 0.0,
-            },
+            runtime_config=_eval_runtime_config(
+                retrieval_mode=settings.retrieval_mode,
+                embedding_provider=provider_resolution.selected_provider,
+                eval_top_k=eval_top_k,
+                refresh_dense_index=refresh_dense_index,
+                dense_index_fingerprint=dense_index_fingerprint,
+                dense_index_upserted=dense_index_upserted,
+            ),
+            er_metrics=_er_metrics_payload(er_result),
         )
         report = evaluator.run()
         Path(resolved_output_file).parent.mkdir(parents=True, exist_ok=True)
@@ -957,20 +962,8 @@ def eval_ablation_command(
     except ValueError as exc:
         raise typer.BadParameter(str(exc), param_hint="--samples") from exc
 
-    normalized_profile = metric_profile.strip().lower()
-    if normalized_profile not in {"ragas-style", "heuristic"}:
-        raise typer.BadParameter("--metric-profile must be one of: ragas-style, heuristic")
-
-    er_entities = [
-        EntityRecord(entity_id="e1", name="Hierarchical Risk Parity", source="docs"),
-        EntityRecord(entity_id="e2", name="hierarchical-risk-parity", source="code"),
-        EntityRecord(entity_id="e3", name="CVaR", source="docs"),
-    ]
-    er_result = run_er_pipeline(
-        er_entities,
-        gold_pairs={("e1", "e2")},
-        audit_dir="artifacts/er",
-    )
+    normalized_profile = _normalize_metric_profile(metric_profile)
+    er_result = _run_default_er_pipeline()
     dense_index_upserted = 0
     dense_index_fingerprint = ""
     if refresh_dense_index:
@@ -1006,19 +999,15 @@ def eval_ablation_command(
                 samples=samples,
                 retriever=retriever,
                 metric_profile=normalized_profile,
-                runtime_config={
-                    "retrieval_mode": mode,
-                    "embedding_provider": provider_resolution.selected_provider,
-                    "eval_top_k": str(eval_top_k),
-                    "dense_index_refreshed": str(refresh_dense_index),
-                    "dense_index_fingerprint": dense_index_fingerprint,
-                    "dense_index_upserted": str(dense_index_upserted),
-                },
-                er_metrics={
-                    "precision": er_result.metrics.precision if er_result.metrics else 0.0,
-                    "recall": er_result.metrics.recall if er_result.metrics else 0.0,
-                    "f1": er_result.metrics.f1 if er_result.metrics else 0.0,
-                },
+                runtime_config=_eval_runtime_config(
+                    retrieval_mode=mode,
+                    embedding_provider=provider_resolution.selected_provider,
+                    eval_top_k=eval_top_k,
+                    refresh_dense_index=refresh_dense_index,
+                    dense_index_fingerprint=dense_index_fingerprint,
+                    dense_index_upserted=dense_index_upserted,
+                ),
+                er_metrics=_er_metrics_payload(er_result),
             )
             report = evaluator.run()
             mode_output = resolved_output_dir / f"eval_{mode}_top{eval_top_k}.json"

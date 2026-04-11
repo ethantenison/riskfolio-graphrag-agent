@@ -101,7 +101,6 @@ def _compute_insights(
     query_router: Any,
 ) -> dict[str, Any]:
     """Derive insight dicts from workflow state for the four hiring-manager panels."""
-    # ── Routing ──────────────────────────────────────────────────────────────
     routing_rows: list[dict[str, Any]] = []
     for sub_q in state.sub_questions:
         if query_router is not None:
@@ -124,7 +123,6 @@ def _compute_insights(
                 }
             )
 
-    # ── Grounding ─────────────────────────────────────────────────────────────
     scores = [float(c.get("score", 0.0)) for c in state.citations]
     avg_score = round(sum(scores) / max(len(scores), 1), 4)
     all_entities: list[str] = []
@@ -133,14 +131,12 @@ def _compute_insights(
     unique_entities = list(dict.fromkeys(str(e) for e in all_entities if e))
     evidence_excerpts = _build_grounding_excerpts(state)
 
-    # ── Graph Evidence ────────────────────────────────────────────────────────
     all_neighbours: list[str] = []
     for c in state.citations:
         all_neighbours.extend(c.get("graph_neighbours", []) or [])
     unique_neighbours = list(dict.fromkeys(str(n) for n in all_neighbours if n))
     edge_semantics = _graph_edge_semantic_summary(graph)
 
-    # ── Governance ────────────────────────────────────────────────────────────
     token_count = sum(len(sq.split()) for sq in state.sub_questions)
     estimated_cost = round(token_count * 0.000001, 8)
 
@@ -640,6 +636,64 @@ def _render_graph_plot(graph: dict[str, list[dict[str, Any]]], height: int = 440
     return fig
 
 
+def _render_graph_svg(graph: dict[str, list[dict[str, Any]]]) -> str:
+    """Render a compact static SVG fallback for graph previews and tests."""
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+
+    if not nodes:
+        return "<p>No graph data available.</p>"
+
+    width = 920
+    row_height = 56
+    margin_top = 28
+    total_height = max(220, margin_top + (len(nodes) * row_height) + 36)
+
+    node_rows: list[str] = []
+    node_y: dict[str, int] = {}
+    for index, node in enumerate(nodes):
+        node_id = str(node.get("id", f"node-{index}"))
+        name = html.escape(str(node.get("name", "Unnamed")))
+        labels = node.get("labels", [])
+        node_type = html.escape(str(labels[0]) if labels else "Concept")
+        y = margin_top + (index * row_height)
+        node_y[node_id] = y
+        node_rows.append(f'<text x="26" y="{y}" fill="#0F172A" font-size="14" font-weight="700">{name}</text>')
+        node_rows.append(f'<text x="26" y="{y + 18}" fill="#475569" font-size="11">type: {node_type}</text>')
+
+    edge_rows: list[str] = []
+    for edge in edges[:120]:
+        source_id = str(edge.get("source", ""))
+        target_id = str(edge.get("target", ""))
+        rel = html.escape(str(edge.get("type", "")))
+        semantic = edge.get("semantic", {}) if isinstance(edge.get("semantic", {}), dict) else {}
+        predicate = html.escape(str(semantic.get("predicate", "")))
+        domain = html.escape(str(semantic.get("domain", "")))
+        range_name = html.escape(str(semantic.get("range", "")))
+
+        src_y = node_y.get(source_id, margin_top)
+        tgt_y = node_y.get(target_id, src_y)
+        y_mid = int((src_y + tgt_y) / 2)
+        edge_rows.append(f'<line x1="360" y1="{src_y - 6}" x2="620" y2="{tgt_y - 6}" stroke="#94A3B8" stroke-width="1.5" />')
+        edge_rows.append(f'<text x="366" y="{y_mid - 10}" fill="#1E293B" font-size="11" font-weight="600">{rel}</text>')
+        if predicate or domain or range_name:
+            semantic_line = predicate or ""
+            if domain or range_name:
+                semantic_line = f"{semantic_line} ({domain or 'owl:Thing'} -> {range_name or 'owl:Thing'})".strip()
+            edge_rows.append(f'<text x="366" y="{y_mid + 6}" fill="#64748B" font-size="10">{semantic_line}</text>')
+
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{total_height}" viewBox="0 0 {width} {total_height}" '
+        'role="img" aria-label="Knowledge graph preview">'
+        '<rect x="0" y="0" width="100%" height="100%" fill="#F8FAFC" />'
+        '<text x="24" y="18" fill="#334155" font-size="12">Knowledge Graph Evidence</text>'
+        + "".join(node_rows)
+        + "".join(edge_rows)
+        + "</svg>"
+    )
+    return svg
+
+
 def _render_graph_image(graph: dict[str, list[dict[str, Any]]]) -> Any:
     """Render the knowledge graph as a matplotlib image via networkx (fallback)."""
     import io
@@ -984,78 +1038,6 @@ def _format_cost_estimate(cost: float) -> str:
     return f"${cost:.4f} / query"
 
 
-def _render_graph_svg(graph: dict[str, list[dict[str, Any]]], width: int = 800, height: int = 400) -> str:
-    """Render a simple SVG representation of the knowledge graph."""
-    nodes = graph.get("nodes", [])
-    edges = graph.get("edges", [])
-
-    if not nodes:
-        return (
-            f"<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}'>"
-            f"<text x='{width // 2}' y='{height // 2}' text-anchor='middle' "
-            "fill='#9CA3AF' font-size='14' font-family='sans-serif'>"
-            "No graph data available"
-            "</text></svg>"
-        )
-
-    import math
-
-    node_positions: dict[str, tuple[float, float]] = {}
-    n = len(nodes)
-    cx, cy, r = width / 2, height / 2, min(width, height) * 0.35
-    for i, node in enumerate(nodes):
-        angle = 2 * math.pi * i / n
-        node_positions[str(node.get("id", i))] = (
-            cx + r * math.cos(angle),
-            cy + r * math.sin(angle),
-        )
-
-    parts = [f"<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}'>"]
-
-    for edge in edges:
-        src = str(edge.get("source", ""))
-        tgt = str(edge.get("target", ""))
-        etype = html.escape(str(edge.get("type", "")))
-        if src in node_positions and tgt in node_positions:
-            x1, y1 = node_positions[src]
-            x2, y2 = node_positions[tgt]
-            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-            semantic = edge.get("semantic", {}) if isinstance(edge.get("semantic", {}), dict) else {}
-            tooltip = html.escape(
-                f"{etype} | {semantic.get('predicate', '')} | {semantic.get('domain', '')} -> {semantic.get('range', '')}"
-            )
-            parts.append(
-                (
-                    f"<g><title>{tooltip}</title>"
-                    f"<line x1='{x1:.1f}' y1='{y1:.1f}' x2='{x2:.1f}' y2='{y2:.1f}' "
-                    "stroke='#94A3B8' stroke-width='1.5'/></g>"
-                )
-            )
-            if etype:
-                parts.append(
-                    f"<text x='{mx:.1f}' y='{my:.1f}' text-anchor='middle' "
-                    "fill='#64748B' font-size='10' font-family='sans-serif'>"
-                    f"{etype}</text>"
-                )
-
-    for node in nodes:
-        nid = str(node.get("id", ""))
-        name = html.escape(str(node.get("name", "")).strip() or "Unnamed")
-        labels = node.get("labels", [])
-        primary = str(labels[0]) if labels else "Concept"
-        colour = _NODE_COLOURS.get(primary, _DEFAULT_NODE_COLOUR)
-        if nid in node_positions:
-            x, y = node_positions[nid]
-            parts.append(f"<circle cx='{x:.1f}' cy='{y:.1f}' r='20' fill='{colour}' stroke='white' stroke-width='2'/>")
-            parts.append(
-                f"<text x='{x:.1f}' y='{y + 32:.1f}' text-anchor='middle' "
-                f"fill='#1E293B' font-size='11' font-family='sans-serif'>{name}</text>"
-            )
-
-    parts.append("</svg>")
-    return "".join(parts)
-
-
 def _badge(text: str, colour: str) -> str:
     safe = html.escape(str(text))
     return (
@@ -1323,30 +1305,6 @@ def _normalize_answer_math(answer: str) -> str:
     normalized = _PARENTHESIZED_LATEX_PATTERN.sub(lambda match: f"${match.group(1).strip()}$", normalized)
     normalized = re.sub(r"\$\s*([^$\n]+?)\s*\$", lambda match: f"${match.group(1).strip()}$", normalized)
     return normalized
-
-
-def _render_summary_card(insights: dict, citations: list, top_k: int = 10) -> str:
-    """'What just happened' strip shown below the chatbot."""
-    grounding = insights.get("grounding", {})
-    graph_ev = insights.get("graph_evidence", {})
-    gov = insights.get("governance", {})
-    n_found = len(citations)
-    verified = grounding.get("verified", False)
-    subgraph_nodes = graph_ev.get("subgraph_nodes", 0)
-    matched_concepts = len(grounding.get("unique_entities", []))
-    cost = gov.get("estimated_cost_usd", 0.0)
-    support_label, support_colour, _ = _support_status(bool(verified), n_found)
-    return (
-        "<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;"
-        "padding:8px 16px;font-size:12px;color:#475569;display:flex;gap:20px;"
-        "flex-wrap:wrap;margin-top:4px'>"
-        f"<span>\U0001f4da <strong>{n_found}</strong> / {top_k} sources</span>"
-        f"<span>\U0001f578 <strong>{subgraph_nodes}</strong> graph nodes</span>"
-        f"<span>\U0001f9e0 <strong>{matched_concepts}</strong> matched concepts</span>"
-        f"<span style='color:{support_colour}'><strong>{html.escape(support_label)}</strong></span>"
-        f"<span>\U0001f4b0 approx. cost <strong>{_format_cost_estimate(cost)}</strong></span>"
-        "</div>"
-    )
 
 
 _LOADING_HTML = "<p style='color:#6B7280;font-size:13px;padding:8px'>⏳ Searching knowledge graph…</p>"

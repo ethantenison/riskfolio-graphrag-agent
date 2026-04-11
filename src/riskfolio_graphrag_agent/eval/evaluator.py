@@ -731,36 +731,6 @@ def _context_recall(expected_terms: list[str], contexts: list[str]) -> float:
     return matched / len(expected_terms)
 
 
-def _context_precision(expected_terms: list[str], contexts: list[str]) -> float:
-    if not contexts:
-        return 0.0
-    expected_lower = [term.lower() for term in expected_terms]
-    relevant = 0
-    for context in contexts:
-        lowered = context.lower()
-        if any(term in lowered for term in expected_lower):
-            relevant += 1
-    return relevant / len(contexts)
-
-
-def _answer_faithfulness(answer: str, contexts: list[str]) -> float:
-    answer_tokens = set(_tokens(answer))
-    if not answer_tokens:
-        return 0.0
-    context_tokens = set(_tokens(" ".join(contexts)))
-    if not context_tokens:
-        return 0.0
-    return len(answer_tokens & context_tokens) / len(answer_tokens)
-
-
-def _answer_relevance(question: str, answer: str) -> float:
-    q_tokens = set(_tokens(question))
-    a_tokens = set(_tokens(answer))
-    if not q_tokens or not a_tokens:
-        return 0.0
-    return len(q_tokens & a_tokens) / len(q_tokens)
-
-
 def _grounding_score(answer: str, contexts: list[str], top_k: int = 3) -> float:
     """Estimate how well the answer is grounded in top-ranked retrieved evidence.
 
@@ -919,6 +889,19 @@ def _ragas_style_faithfulness(answer: str, contexts: list[str]) -> float:
             supported += 1
 
     return supported / len(claims)
+
+
+def _answer_faithfulness(answer: str, contexts: list[str]) -> float:
+    """Backward-compatible alias for answer faithfulness scoring.
+
+    Args:
+        answer: Answer text to evaluate.
+        contexts: Retrieved evidence contexts.
+
+    Returns:
+        Deterministic faithfulness score in the range ``[0.0, 1.0]``.
+    """
+    return _ragas_style_faithfulness(answer, contexts)
 
 
 def _ragas_style_answer_relevance(question: str, answer: str) -> float:
