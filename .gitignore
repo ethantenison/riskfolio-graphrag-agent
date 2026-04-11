@@ -223,3 +223,8 @@ scripts/riskfolio_graphrag_system_slides/
 scripts/dell_graphrag_proposal_revealjs_files/
 artifacts/kg_promoted_rebuild/
 artifacts/kg_promoted_rebuild/extractions.json
+artifacts/kg_semantic_expansion_latest
+artifacts/kg_semantic_expansion
+benchmarks/eval_results_semantic_expansion_latest.json
+benchmarks/eval_results_semantic_expansion_retrieval_tuned.json
+benchmarks/eval_results_semantic_expansion.json

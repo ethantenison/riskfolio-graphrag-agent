@@ -14,10 +14,28 @@ This module does not perform extraction, canonicalization, or graph writes.
 
 from __future__ import annotations
 
+import re
+
 from riskfolio_graphrag_agent.kg_models import slugify
 
 STRUCTURAL_RELATION_LABELS = frozenset({"accepts-parameter", "defines", "relates-to", "returns"})
 CODE_LIKE_ENTITY_TYPES = frozenset({"api_symbol", "python_class", "python_function", "python_module", "python_parameter"})
+CODE_LIKE_TYPE_TOKENS = frozenset(
+    {
+        "api",
+        "attribute",
+        "class",
+        "code",
+        "decorator",
+        "import",
+        "module",
+        "namespace",
+        "package",
+        "parameter",
+        "symbol",
+        "variable",
+    }
+)
 
 
 def normalize_relation_label(label: str) -> str:
@@ -44,6 +62,26 @@ def is_semantic_relation_label(label: str) -> bool:
     return normalize_relation_label(label) not in STRUCTURAL_RELATION_LABELS
 
 
+def is_code_like_entity_type(entity_type: str | None) -> bool:
+    """Return whether an entity type appears to describe source-code structure.
+
+    Args:
+        entity_type: Optional entity type guess from extraction/canonicalization.
+
+    Returns:
+        True when the type indicates a code symbol or code-level construct.
+    """
+    normalized = (entity_type or "").strip().casefold().replace("-", "_")
+    if not normalized:
+        return False
+    if normalized in CODE_LIKE_ENTITY_TYPES:
+        return True
+    if normalized.startswith("python_"):
+        return True
+    tokens = {token for token in re.split(r"[^a-z0-9]+", normalized) if token}
+    return not CODE_LIKE_TYPE_TOKENS.isdisjoint(tokens)
+
+
 def is_semantic_assertion(
     relation_label: str,
     subject_type: str | None = None,
@@ -63,8 +101,6 @@ def is_semantic_assertion(
     if normalized_label in STRUCTURAL_RELATION_LABELS:
         return False
 
-    subject_kind = (subject_type or "").casefold()
-    object_kind = (object_type or "").casefold()
-    if normalized_label == "is" and (subject_kind in CODE_LIKE_ENTITY_TYPES or object_kind in CODE_LIKE_ENTITY_TYPES):
+    if normalized_label == "is" and (is_code_like_entity_type(subject_type) or is_code_like_entity_type(object_type)):
         return False
     return True

@@ -336,3 +336,61 @@ def test_merge_hits_returns_empty_when_top_k_non_positive():
     sparse_hits = [VectorHit(chunk_id="a", content="a", source_path="a.py", score=1.0)]
 
     assert _merge_hits(dense_hits, sparse_hits, top_k=0) == []
+
+
+def test_hybrid_retriever_uses_wider_candidate_pool_in_hybrid_mode():
+    mock_session = MagicMock()
+    mock_session.__enter__ = MagicMock(return_value=mock_session)
+    mock_session.__exit__ = MagicMock(return_value=False)
+    mock_session.run.return_value = iter([])
+
+    mock_driver = MagicMock()
+    mock_driver.session.return_value = mock_session
+
+    class _DenseOnlyStore:
+        def __init__(self) -> None:
+            self.search_calls: list[int] = []
+
+        def upsert(self, documents: list[Document]) -> int:
+            return len(documents)
+
+        def search(self, query: str, top_k: int) -> list[VectorHit]:
+            _ = query
+            self.search_calls.append(top_k)
+            return [VectorHit(chunk_id="dense-1", content="dense", source_path="dense.py", score=0.9)]
+
+    vector_store = _DenseOnlyStore()
+
+    with (
+        patch("riskfolio_graphrag_agent.retrieval.retriever.GraphDatabase.driver", return_value=mock_driver),
+        patch(
+            "riskfolio_graphrag_agent.retrieval.retriever._sparse_query_hits",
+            return_value=[VectorHit(chunk_id="sparse-1", content="sparse", source_path="sparse.py", score=2.0)],
+        ),
+        patch(
+            "riskfolio_graphrag_agent.retrieval.retriever._graph_expand",
+            side_effect=lambda hit, session: RetrievalResult(
+                content=hit.content,
+                source_path=hit.source_path,
+                score=hit.score,
+                graph_neighbours=[],
+                related_entities=[],
+                metadata={},
+            ),
+        ),
+    ):
+        retriever = HybridRetriever(
+            neo4j_uri="bolt://localhost:7687",
+            neo4j_user="neo4j",
+            neo4j_password="password",
+            top_k=3,
+            vector_store=vector_store,
+            retrieval_mode="hybrid_rerank",
+        )
+        try:
+            results = retriever.retrieve("How does HRP relate to CVaR?")
+        finally:
+            retriever.close()
+
+    assert results
+    assert vector_store.search_calls == [6]

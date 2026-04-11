@@ -207,3 +207,44 @@ def test_kg_pipeline_accepts_llm_open_extractor(tmp_path):
 
     assert result.graph_quality.num_candidate_assertions >= 1
     assert result.graph_quality.num_ontology_properties >= 1
+
+
+def test_semantic_relation_patterns_extraction(tmp_path):
+    """Test that new semantic domain relations are correctly extracted."""
+    documents = [
+        Document(
+            content=(
+                "Risk Parity belongs to family of portfolio optimization methods. "
+                "Equal Weight is alternative to Minimum Variance. "
+                "Mean-Variance optimization requires return scenarios. "
+                "Standard Deviation measures market volatility. "
+                "Hierarchical Risk Parity method for portfolio construction. "
+                "Black-Litterman is based on Bayesian inference. "
+                "ChildOptimizer extends BaseOptimizer. "
+                "RiskEngine implements interface OptimizerProtocol."
+            ),
+            source_path=str(tmp_path / "semantic.md"),
+            chunk_index=0,
+            chunk_id="semantic.md::chunk:0",
+            content_hash="hash-semantic",
+            line_start=1,
+            line_end=5,
+            metadata={"source_type": "docs", "relative_path": "semantic.md", "module_name": "portfolio"},
+        )
+    ]
+
+    from riskfolio_graphrag_agent.extraction.pipeline import HeuristicOpenExtractor
+
+    extractor = HeuristicOpenExtractor()
+    extraction = extractor.extract_chunk(documents[0])
+
+    relation_guesses = {a.relation_guess for a in extraction.candidate_assertions}
+
+    assert "belongs_to_family" in relation_guesses
+    assert "alternative_to" in relation_guesses
+    assert "requires" in relation_guesses
+    assert "measures" in relation_guesses
+    assert "method_for" in relation_guesses
+    assert "based_on" in relation_guesses
+    assert "extends" in relation_guesses
+    assert "implements_interface" in relation_guesses

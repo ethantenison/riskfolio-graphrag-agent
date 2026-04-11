@@ -172,11 +172,30 @@ class HeuristicOpenExtractor:
         ),
         (
             re.compile(
-                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+implements\s+(?P<object>{_RELATION_ENDPOINT})\b",
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+implements\s+(?!"
+                rf"(?:the\s+)?interface\b)(?P<object>{_RELATION_ENDPOINT})\b",
                 re.IGNORECASE,
             ),
             "implements",
             "implementation",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+implements\s+(?:the\s+)?interface\s+"
+                rf"(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "implements_interface",
+            "interface_implementation",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+implements\s+(?P<object>{_RELATION_ENDPOINT})\s+"
+                rf"interface\b",
+                re.IGNORECASE,
+            ),
+            "implements_interface",
+            "interface_implementation",
         ),
         (
             re.compile(
@@ -203,6 +222,74 @@ class HeuristicOpenExtractor:
             ),
             "relates_to",
             "computation",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+belongs\s+to\s+(?:the\s+)?family\s+of\s+"
+                rf"(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "belongs_to_family",
+            "taxonomy",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+is\s+based\s+on\s+(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "based_on",
+            "dependency",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+based\s+on\s+(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "based_on",
+            "dependency",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+(?:is\s+)?(?:an?\s+)?alternative\s+to\s+"
+                rf"(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "alternative_to",
+            "alternatives",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+extends\s+(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "extends",
+            "inheritance",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+(?:requires|needs)\s+(?P<object>{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "requires",
+            "dependency",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+(?:measures|quantifies|calculates)\s+(?P<object>"
+                rf"{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "measures",
+            "measurement",
+        ),
+        (
+            re.compile(
+                rf"\b(?P<subject>{_RELATION_ENDPOINT})\s+(?:method|approach)\s+for\s+(?P<object>"
+                rf"{_RELATION_ENDPOINT})\b",
+                re.IGNORECASE,
+            ),
+            "method_for",
+            "methodology",
         ),
         (
             re.compile(

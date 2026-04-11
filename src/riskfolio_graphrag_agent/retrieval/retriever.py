@@ -24,8 +24,9 @@ This module supports four retrieval modes:
 - `dense`: embedding-based similarity over a vector store
 - `sparse`: lexical token matching over Neo4j `Chunk` nodes
 - `graph`: entity-seeded retrieval plus one-hop domain-concept expansion
-- `hybrid_rerank`: dense and sparse retrieval merged, then lightly boosted
-  using graph neighbourhood evidence
+- `hybrid_rerank`: dense and sparse retrieval merged from a broader candidate
+    pool, then lightly boosted using graph neighbourhood and query coverage
+    evidence
 
 Minimal working example:
     >>> from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
@@ -433,8 +434,8 @@ class HybridRetriever:
 
             In `graph` mode, the retriever seeds from matching entities and then
             performs one-hop expansion through selected domain relationships.
-            In `hybrid_rerank` mode, dense and sparse hits are merged before the
-            graph-context boost is applied.
+            In `hybrid_rerank` mode, dense and sparse hits are merged from a
+            wider candidate set before graph-context and query-coverage boosts.
         """
         retrieval_mode = mode_override or self._retrieval_mode
         logger.info("Retrieving for query: %r (top_k=%d mode=%s)", query, self._top_k, retrieval_mode)
@@ -455,9 +456,11 @@ class HybridRetriever:
             if hop_hits:
                 hits = _merge_hits(hits, hop_hits, top_k=self._top_k * 2)[: self._top_k]
         else:
-            dense_hits = self._vector_store.search(query, top_k=self._top_k)
-            sparse_hits = _sparse_query_hits(self._driver, query, top_k=self._top_k)
-            hits = _merge_hits(dense_hits, sparse_hits, top_k=self._top_k)
+            # Use a broader candidate pool in hybrid mode before final rerank.
+            candidate_k = max(self._top_k * 2, self._top_k)
+            dense_hits = self._vector_store.search(query, top_k=candidate_k)
+            sparse_hits = _sparse_query_hits(self._driver, query, top_k=candidate_k)
+            hits = _merge_hits(dense_hits, sparse_hits, top_k=candidate_k)
 
         if not hits:
             return []
@@ -468,12 +471,14 @@ class HybridRetriever:
                 results.append(_graph_expand(hit, session))
 
         if retrieval_mode == "hybrid_rerank":
+            query_tokens = set(_query_tokens(query))
             for result in results:
                 entity_count = len(result.related_entities)
                 neighbour_count = len(result.graph_neighbours)
                 entity_signal = min(1.0, math.log1p(entity_count) / math.log(6.0))
                 neighbour_signal = min(1.0, math.log1p(neighbour_count) / math.log(8.0))
-                evidence_boost = (0.12 * entity_signal) + (0.08 * neighbour_signal)
+                coverage_signal = _query_coverage_signal(query_tokens, result)
+                evidence_boost = (0.11 * entity_signal) + (0.07 * neighbour_signal) + (0.09 * coverage_signal)
                 result.score = round((0.85 * float(result.score)) + evidence_boost, 6)
 
         results.sort(key=lambda item: item.score, reverse=True)
@@ -490,6 +495,27 @@ def _query_tokens(query: str) -> list[str]:
         seen.add(token)
         deduped.append(token)
     return deduped[:12]
+
+
+def _query_coverage_signal(query_tokens: set[str], result: RetrievalResult) -> float:
+    """Estimate how much a result directly covers query terms.
+
+    Args:
+        query_tokens: Deduplicated query tokens.
+        result: Retrieved and graph-expanded result.
+
+    Returns:
+        Ratio in ``[0.0, 1.0]`` for token overlap between query and result.
+    """
+    if not query_tokens:
+        return 0.0
+    content_tokens = set(_query_tokens(result.content))
+    entity_tokens = {token for entity in result.related_entities for token in _query_tokens(entity)}
+    support_tokens = content_tokens | entity_tokens
+    if not support_tokens:
+        return 0.0
+    overlap = len(query_tokens & support_tokens)
+    return min(1.0, overlap / len(query_tokens))
 
 
 def _vector_search(query: str, top_k: int) -> list[RetrievalResult]:
