@@ -278,6 +278,8 @@ def create_app() -> FastAPI:
         openai_embedding_model=settings.embedding_model,
         openai_base_url=settings.openai_base_url,
         openai_timeout_seconds=settings.openai_timeout_seconds,
+        openai_retry_attempts=settings.openai_retry_attempts,
+        openai_retry_backoff_seconds=settings.openai_retry_backoff_seconds,
         ssl_context=ssl_context,
     ).provider
     llm_generate = None

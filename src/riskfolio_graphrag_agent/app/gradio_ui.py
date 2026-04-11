@@ -35,6 +35,8 @@ def run_query_with_graph(
         openai_embedding_model=settings.embedding_model,
         openai_base_url=settings.openai_base_url,
         openai_timeout_seconds=settings.openai_timeout_seconds,
+        openai_retry_attempts=settings.openai_retry_attempts,
+        openai_retry_backoff_seconds=settings.openai_retry_backoff_seconds,
     )
 
     retriever = HybridRetriever(
@@ -1363,6 +1365,8 @@ def create_gradio_app(
         openai_embedding_model=settings.embedding_model,
         openai_base_url=settings.openai_base_url,
         openai_timeout_seconds=settings.openai_timeout_seconds,
+        openai_retry_attempts=settings.openai_retry_attempts,
+        openai_retry_backoff_seconds=settings.openai_retry_backoff_seconds,
     )
 
     query_router = None

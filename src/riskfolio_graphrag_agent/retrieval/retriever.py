@@ -90,6 +90,16 @@ _QUERY_ONLY_CONCEPT_ALIASES: dict[str, tuple[str, ...]] = {
     "ADD": ("add",),
 }
 
+# Lightweight lexical expansions for sparse and graph retrieval seeding.
+_LEXICAL_TOKEN_SYNONYMS: dict[str, tuple[str, ...]] = {
+    "cvar": ("conditional", "tail", "risk"),
+    "cdar": ("drawdown", "risk"),
+    "ledoit": ("shrinkage",),
+    "lasso": ("graphical",),
+    "report": ("reports", "reporting", "summary"),
+    "plot": ("chart", "figure", "visualization"),
+}
+
 
 def _load_legacy_domain_aliases() -> dict[str, dict[str, tuple[str, ...]]]:
     """Load legacy domain aliases lazily for compatibility fallback.
@@ -497,6 +507,33 @@ def _query_tokens(query: str) -> list[str]:
     return deduped[:12]
 
 
+def _query_tokens_for_lexical_graph(query: str) -> list[str]:
+    """Return sparse/graph tokens with lightweight synonym expansion.
+
+    Args:
+        query: Natural-language query text.
+
+    Returns:
+        Deduplicated lexical tokens plus a bounded set of synonym tokens.
+    """
+    base_tokens = _query_tokens(query)
+    expanded: list[str] = []
+    seen: set[str] = set()
+
+    for token in base_tokens:
+        if token not in seen:
+            expanded.append(token)
+            seen.add(token)
+
+        for synonym in _LEXICAL_TOKEN_SYNONYMS.get(token, ()):
+            if synonym in seen:
+                continue
+            expanded.append(synonym)
+            seen.add(synonym)
+
+    return expanded[:24]
+
+
 def _query_coverage_signal(query_tokens: set[str], result: RetrievalResult) -> float:
     """Estimate how much a result directly covers query terms.
 
@@ -638,7 +675,7 @@ def _graph_expand(hit_or_result, session=None):
 def _sparse_query_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
     if top_k <= 0:
         return []
-    tokens = _query_tokens(query)
+    tokens = _query_tokens_for_lexical_graph(query)
     if not tokens:
         return []
 
@@ -688,7 +725,7 @@ def _sparse_query_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit
 
 
 def _graph_seed_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
-    tokens = _query_tokens(query)
+    tokens = _query_tokens_for_lexical_graph(query)
     if not tokens:
         return []
 
@@ -749,7 +786,7 @@ def _find_domain_concepts(query: str) -> list[str]:
 
 def _promoted_graph_seed_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
     """Seed graph hits from promoted canonical entities and assertions."""
-    tokens = _query_tokens(query)
+    tokens = _query_tokens_for_lexical_graph(query)
     if not tokens:
         return []
 
@@ -799,7 +836,7 @@ def _promoted_graph_seed_hits(driver: Driver, query: str, top_k: int) -> list[Ve
 
 def _promoted_graph_hop_expansion(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
     """Expand graph hits through ontology class neighborhoods in promoted graph."""
-    tokens = _query_tokens(query)
+    tokens = _query_tokens_for_lexical_graph(query)
     if not tokens:
         return []
 

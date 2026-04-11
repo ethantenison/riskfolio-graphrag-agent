@@ -20,6 +20,7 @@ from riskfolio_graphrag_agent.retrieval.retriever import (
     _merge_hits,
     _promoted_graph_hop_expansion,
     _promoted_graph_seed_hits,
+    _query_tokens_for_lexical_graph,
     _sparse_query_hits,
     _vector_search,
 )
@@ -264,6 +265,16 @@ def test_sparse_query_hits_supports_node_id_chunks():
     assert len(hits) == 1
     assert hits[0].chunk_id == "chunk:abc"
     assert hits[0].metadata["relative_path"] == "docs/risk.md"
+
+
+def test_query_tokens_for_lexical_graph_expands_synonyms():
+    tokens = _query_tokens_for_lexical_graph("Compare CVaR report plot")
+
+    assert "cvar" in tokens
+    assert "tail" in tokens
+    assert "risk" in tokens
+    assert "reporting" in tokens
+    assert "chart" in tokens
 
 
 def test_promoted_graph_seed_hits_reads_assertion_backed_chunks():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from urllib.error import URLError
 
 from riskfolio_graphrag_agent.retrieval.embeddings import (
     HashEmbeddingProvider,
@@ -87,3 +88,46 @@ def test_openai_embedding_provider_batches_requests(monkeypatch):
 
     assert requested_batch_sizes == [2, 2, 1]
     assert len(vectors) == 5
+
+
+def test_openai_embedding_provider_retries_transient_network_errors(monkeypatch):
+    calls = {"count": 0}
+
+    class _FakeResponse:
+        def __init__(self, payload: str) -> None:
+            self._payload = payload.encode("utf-8")
+
+        def read(self) -> bytes:
+            return self._payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            _ = exc_type, exc, tb
+            return False
+
+    def _fake_urlopen(req, timeout=None, context=None):
+        _ = req, timeout, context
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise URLError("temporary upstream timeout")
+        payload = {"data": [{"embedding": [0.0, 1.0, 2.0]}]}
+        return _FakeResponse(json.dumps(payload))
+
+    monkeypatch.setattr("riskfolio_graphrag_agent.retrieval.embeddings.request.urlopen", _fake_urlopen)
+
+    provider = OpenAIEmbeddingProvider(
+        api_key="test-key",
+        model="text-embedding-3-small",
+        base_url="https://api.openai.com/v1",
+        timeout_seconds=5.0,
+        dimension=3,
+        retry_attempts=1,
+        retry_backoff_seconds=0.0,
+    )
+
+    vectors = provider.embed_texts(["alpha"])
+
+    assert calls["count"] == 2
+    assert len(vectors) == 1

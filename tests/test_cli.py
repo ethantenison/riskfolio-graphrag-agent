@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
 from riskfolio_graphrag_agent import cli
-from riskfolio_graphrag_agent.cli import _resolve_eval_samples, _select_documents_for_build
+from riskfolio_graphrag_agent.cli import _default_eval_output_path, _resolve_eval_samples, _select_documents_for_build
 from riskfolio_graphrag_agent.ingestion.loader import Document
 
 runner = CliRunner()
@@ -150,6 +151,96 @@ def test_eval_cli_accepts_benchmark_samples_file(monkeypatch, tmp_path):
     assert output_path.exists()
     payload = json.loads(output_path.read_text())
     assert payload["num_samples"] > 0
+
+
+def test_eval_cli_uses_eval_top_k_default(monkeypatch, tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    samples_path = repo_root / "benchmarks" / "eval_samples_v1.json"
+    captured: dict[str, object] = {}
+
+    class _StubRetriever:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def retrieve(self, query: str):
+            _ = query
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        cli,
+        "_resolve_embedding",
+        lambda settings: SimpleNamespace(
+            provider=None,
+            selected_provider="stub",
+            fallback_reason=None,
+        ),
+    )
+    monkeypatch.setattr(cli, "HybridRetriever", lambda **kwargs: _StubRetriever(**kwargs))
+    monkeypatch.setattr(cli, "run_er_pipeline", lambda *args, **kwargs: SimpleNamespace(metrics=None))
+
+    output_path = tmp_path / "eval_results.json"
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval",
+            "--samples",
+            str(samples_path),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["top_k"] == 8
+
+
+def test_default_eval_output_path_uses_dated_eval_runs_folder():
+    out = _default_eval_output_path(retrieval_mode="hybrid_rerank", eval_top_k=8)
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    assert out == f"artifacts/eval_runs/{day}/eval_hybrid_rerank_top8.json"
+
+
+def test_eval_cli_writes_to_default_output_when_omitted(monkeypatch, tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    samples_path = repo_root / "benchmarks" / "eval_samples_v1.json"
+    default_path = tmp_path / "eval_auto.json"
+
+    class _StubRetriever:
+        def retrieve(self, query: str):
+            _ = query
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        cli,
+        "_resolve_embedding",
+        lambda settings: SimpleNamespace(
+            provider=None,
+            selected_provider="stub",
+            fallback_reason=None,
+        ),
+    )
+    monkeypatch.setattr(cli, "HybridRetriever", lambda **kwargs: _StubRetriever())
+    monkeypatch.setattr(cli, "run_er_pipeline", lambda *args, **kwargs: SimpleNamespace(metrics=None))
+    monkeypatch.setattr(cli, "_default_eval_output_path", lambda **kwargs: str(default_path))
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval",
+            "--samples",
+            str(samples_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert default_path.exists()
 
 
 def test_kg_run_cli_writes_summary(monkeypatch, tmp_path):

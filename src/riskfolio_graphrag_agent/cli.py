@@ -15,6 +15,7 @@ import json
 import logging
 import ssl
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib import request
 from urllib.error import HTTPError, URLError
@@ -73,6 +74,8 @@ def _resolve_embedding(settings: Settings):
         openai_embedding_model=settings.embedding_model,
         openai_base_url=settings.openai_base_url,
         openai_timeout_seconds=settings.openai_timeout_seconds,
+        openai_retry_attempts=settings.openai_retry_attempts,
+        openai_retry_backoff_seconds=settings.openai_retry_backoff_seconds,
         ssl_context=_build_ssl_context(),
     )
 
@@ -322,6 +325,22 @@ def _resolve_eval_samples(samples_path: str | None) -> list[EvalSample]:
     if samples_path is None:
         return build_default_eval_samples()
     return load_eval_samples(samples_path)
+
+
+def _default_eval_output_path(*, retrieval_mode: str, eval_top_k: int) -> str:
+    """Build a canonical eval artifact path under dated run folders.
+
+    Args:
+        retrieval_mode: Retrieval mode used for the run.
+        eval_top_k: Context count used for the run.
+
+    Returns:
+        Output path in ``artifacts/eval_runs/YYYY-MM-DD``.
+    """
+    run_day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    mode_slug = retrieval_mode.strip().lower().replace("-", "_") or "unknown"
+    filename = f"eval_{mode_slug}_top{max(1, int(eval_top_k))}.json"
+    return str(Path("artifacts") / "eval_runs" / run_day / filename)
 
 
 def _resolve_source_directories(source_dir: str | None, settings: Settings) -> list[Path]:
@@ -682,11 +701,11 @@ def graph_stats() -> None:
 
 @app.command(name="eval")
 def eval_command(
-    output_file: str = typer.Option(
-        "benchmarks/eval_results.json",
+    output_file: str | None = typer.Option(
+        None,
         "--output",
         "-o",
-        help="Path to write evaluation results JSON.",
+        help="Optional path to write evaluation results JSON. Defaults to artifacts/eval_runs/YYYY-MM-DD.",
     ),
     samples_path: str | None = typer.Option(
         None,
@@ -698,6 +717,12 @@ def eval_command(
         "--metric-profile",
         help="Evaluation metric profile to run: ragas-style or heuristic.",
         case_sensitive=False,
+    ),
+    eval_top_k: int = typer.Option(
+        8,
+        "--eval-top-k",
+        min=1,
+        help="Number of contexts to retrieve per sample for eval runs only.",
     ),
 ) -> None:
     """Run the retrieval-quality evaluation suite.
@@ -721,11 +746,16 @@ def eval_command(
         gold_pairs={("e1", "e2")},
         audit_dir="artifacts/er",
     )
+    resolved_output_file = output_file or _default_eval_output_path(
+        retrieval_mode=settings.retrieval_mode,
+        eval_top_k=eval_top_k,
+    )
+
     retriever = HybridRetriever(
         neo4j_uri=settings.neo4j_uri,
         neo4j_user=settings.neo4j_user,
         neo4j_password=settings.neo4j_password,
-        top_k=5,
+        top_k=eval_top_k,
         vector_store_backend=settings.vector_store_backend,
         chroma_persist_dir=settings.chroma_persist_dir,
         embedding_provider=provider_resolution.provider,
@@ -744,6 +774,7 @@ def eval_command(
             runtime_config={
                 "retrieval_mode": settings.retrieval_mode,
                 "embedding_provider": provider_resolution.selected_provider,
+                "eval_top_k": str(eval_top_k),
             },
             er_metrics={
                 "precision": er_result.metrics.precision if er_result.metrics else 0.0,
@@ -752,7 +783,8 @@ def eval_command(
             },
         )
         report = evaluator.run()
-        evaluator.save(output_file, report)
+        Path(resolved_output_file).parent.mkdir(parents=True, exist_ok=True)
+        evaluator.save(resolved_output_file, report)
     finally:
         retriever.close()
 
@@ -770,7 +802,7 @@ def eval_command(
             f"profile={report.metric_profile}"
         ),
     )
-    console.print(f"saved report to {output_file}")
+    console.print(f"saved report to {resolved_output_file}")
 
 
 @app.command(name="er-eval")

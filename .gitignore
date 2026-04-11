@@ -228,3 +228,4 @@ artifacts/kg_semantic_expansion
 benchmarks/eval_results_semantic_expansion_latest.json
 benchmarks/eval_results_semantic_expansion_retrieval_tuned.json
 benchmarks/eval_results_semantic_expansion.json
+artifacts/eval_runs/
