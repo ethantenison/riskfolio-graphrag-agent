@@ -243,6 +243,88 @@ def test_eval_cli_writes_to_default_output_when_omitted(monkeypatch, tmp_path):
     assert default_path.exists()
 
 
+def test_eval_ablation_cli_writes_mode_outputs_and_summary(monkeypatch, tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    samples_path = repo_root / "benchmarks" / "eval_samples_v1.json"
+    output_dir = tmp_path / "eval_runs"
+
+    class _StubRetriever:
+        def __init__(self, **kwargs):
+            _ = kwargs
+
+        def close(self):
+            return None
+
+    class _StubEvaluator:
+        def __init__(self, **kwargs):
+            runtime_config = kwargs["runtime_config"]
+            mode = runtime_config["retrieval_mode"]
+            self._report = SimpleNamespace(
+                num_samples=1,
+                context_recall=0.4 if mode == "dense" else 0.5,
+                context_precision=0.2,
+                answer_faithfulness=0.7,
+                answer_relevance=0.8,
+                grounding=0.6,
+                multi_hop_accuracy=0.3,
+                avg_latency_ms=10.0,
+                estimated_cost_usd=0.0001,
+                retrieval_mode=mode,
+                metric_profile="heuristic-overlap",
+                embedding_provider="stub",
+                run_at="now",
+            )
+
+        def run(self):
+            return self._report
+
+        def save(self, output_path, report=None):
+            payload = {
+                "context_recall": self._report.context_recall,
+                "context_precision": self._report.context_precision,
+            }
+            Path(output_path).write_text(json.dumps(payload))
+
+    monkeypatch.setattr(
+        cli,
+        "_resolve_embedding",
+        lambda settings: SimpleNamespace(
+            provider=None,
+            selected_provider="stub",
+            fallback_reason=None,
+        ),
+    )
+    monkeypatch.setattr(cli, "HybridRetriever", lambda **kwargs: _StubRetriever(**kwargs))
+    monkeypatch.setattr(cli, "Evaluator", lambda **kwargs: _StubEvaluator(**kwargs))
+    monkeypatch.setattr(cli, "run_er_pipeline", lambda *args, **kwargs: SimpleNamespace(metrics=None))
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval-ablation",
+            "--samples",
+            str(samples_path),
+            "--metric-profile",
+            "heuristic",
+            "--eval-top-k",
+            "8",
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (output_dir / "eval_dense_top8.json").exists()
+    assert (output_dir / "eval_sparse_top8.json").exists()
+    assert (output_dir / "eval_graph_top8.json").exists()
+    assert (output_dir / "eval_hybrid_rerank_top8.json").exists()
+
+    summary_file = output_dir / "ablation_summary_top8.json"
+    assert summary_file.exists()
+    summary_payload = json.loads(summary_file.read_text())
+    assert summary_payload["winner_by_recall_plus_precision"] in {"dense", "sparse", "graph", "hybrid_rerank"}
+
+
 def test_kg_run_cli_writes_summary(monkeypatch, tmp_path):
     captured: dict[str, object] = {}
 

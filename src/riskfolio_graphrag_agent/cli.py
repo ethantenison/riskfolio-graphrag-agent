@@ -7,6 +7,7 @@ build-graph Build the knowledge graph in Neo4j.
 kg-run      Run the redesigned KG induction pipeline and write review artifacts.
 graph-stats Show basic graph counts from Neo4j.
 eval        Run retrieval-quality evaluation suite.
+eval-ablation Run all retrieval modes and write one consolidated summary.
 serve       Start the FastAPI server.
 gradio      Start the Gradio chat interface.
 """
@@ -47,6 +48,7 @@ app = typer.Typer(
 )
 console = Console()
 logger = logging.getLogger(__name__)
+_ABLATION_RETRIEVAL_MODES = ("dense", "sparse", "graph", "hybrid_rerank")
 
 
 def _build_ssl_context() -> ssl.SSLContext | None:
@@ -341,6 +343,32 @@ def _default_eval_output_path(*, retrieval_mode: str, eval_top_k: int) -> str:
     mode_slug = retrieval_mode.strip().lower().replace("-", "_") or "unknown"
     filename = f"eval_{mode_slug}_top{max(1, int(eval_top_k))}.json"
     return str(Path("artifacts") / "eval_runs" / run_day / filename)
+
+
+def _report_metrics_snapshot(report: object) -> dict[str, float | int | str]:
+    """Extract the core metric fields used in eval ablation summaries.
+
+    Args:
+        report: Evaluator report object.
+
+    Returns:
+        Flat metric dictionary used for consolidated JSON summaries.
+    """
+    return {
+        "num_samples": int(getattr(report, "num_samples", 0)),
+        "context_recall": float(getattr(report, "context_recall", 0.0)),
+        "context_precision": float(getattr(report, "context_precision", 0.0)),
+        "answer_faithfulness": float(getattr(report, "answer_faithfulness", 0.0)),
+        "answer_relevance": float(getattr(report, "answer_relevance", 0.0)),
+        "grounding": float(getattr(report, "grounding", 0.0)),
+        "multi_hop_accuracy": float(getattr(report, "multi_hop_accuracy", 0.0)),
+        "avg_latency_ms": float(getattr(report, "avg_latency_ms", 0.0)),
+        "estimated_cost_usd": float(getattr(report, "estimated_cost_usd", 0.0)),
+        "retrieval_mode": str(getattr(report, "retrieval_mode", "")),
+        "metric_profile": str(getattr(report, "metric_profile", "")),
+        "embedding_provider": str(getattr(report, "embedding_provider", "")),
+        "run_at": str(getattr(report, "run_at", "")),
+    }
 
 
 def _resolve_source_directories(source_dir: str | None, settings: Settings) -> list[Path]:
@@ -803,6 +831,114 @@ def eval_command(
         ),
     )
     console.print(f"saved report to {resolved_output_file}")
+
+
+@app.command(name="eval-ablation")
+def eval_ablation_command(
+    output_dir: str | None = typer.Option(
+        None,
+        "--output-dir",
+        help="Optional directory for per-mode eval outputs and consolidated summary.",
+    ),
+    samples_path: str | None = typer.Option(
+        None,
+        "--samples",
+        help="Optional path to a JSON file containing evaluation samples.",
+    ),
+    metric_profile: str = typer.Option(
+        "ragas-style",
+        "--metric-profile",
+        help="Evaluation metric profile to run: ragas-style or heuristic.",
+        case_sensitive=False,
+    ),
+    eval_top_k: int = typer.Option(
+        8,
+        "--eval-top-k",
+        min=1,
+        help="Number of contexts to retrieve per sample for each ablation mode.",
+    ),
+) -> None:
+    """Run evaluation for all retrieval modes and write one consolidated summary."""
+    settings = Settings()
+    provider_resolution = _resolve_embedding(settings)
+    try:
+        samples = _resolve_eval_samples(samples_path)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--samples") from exc
+
+    normalized_profile = metric_profile.strip().lower()
+    if normalized_profile not in {"ragas-style", "heuristic"}:
+        raise typer.BadParameter("--metric-profile must be one of: ragas-style, heuristic")
+
+    er_entities = [
+        EntityRecord(entity_id="e1", name="Hierarchical Risk Parity", source="docs"),
+        EntityRecord(entity_id="e2", name="hierarchical-risk-parity", source="code"),
+        EntityRecord(entity_id="e3", name="CVaR", source="docs"),
+    ]
+    er_result = run_er_pipeline(
+        er_entities,
+        gold_pairs={("e1", "e2")},
+        audit_dir="artifacts/er",
+    )
+
+    default_dir = Path(_default_eval_output_path(retrieval_mode="ablation", eval_top_k=eval_top_k)).parent
+    resolved_output_dir = Path(output_dir) if output_dir else default_dir
+    resolved_output_dir.mkdir(parents=True, exist_ok=True)
+
+    summary_rows: dict[str, dict[str, float | int | str]] = {}
+    for mode in _ABLATION_RETRIEVAL_MODES:
+        retriever = HybridRetriever(
+            neo4j_uri=settings.neo4j_uri,
+            neo4j_user=settings.neo4j_user,
+            neo4j_password=settings.neo4j_password,
+            top_k=eval_top_k,
+            vector_store_backend=settings.vector_store_backend,
+            chroma_persist_dir=settings.chroma_persist_dir,
+            embedding_provider=provider_resolution.provider,
+            retrieval_mode=mode,
+        )
+        try:
+            evaluator = Evaluator(
+                samples=samples,
+                retriever=retriever,
+                metric_profile=normalized_profile,
+                runtime_config={
+                    "retrieval_mode": mode,
+                    "embedding_provider": provider_resolution.selected_provider,
+                    "eval_top_k": str(eval_top_k),
+                },
+                er_metrics={
+                    "precision": er_result.metrics.precision if er_result.metrics else 0.0,
+                    "recall": er_result.metrics.recall if er_result.metrics else 0.0,
+                    "f1": er_result.metrics.f1 if er_result.metrics else 0.0,
+                },
+            )
+            report = evaluator.run()
+            mode_output = resolved_output_dir / f"eval_{mode}_top{eval_top_k}.json"
+            evaluator.save(mode_output, report)
+            summary_rows[mode] = _report_metrics_snapshot(report)
+            console.print(
+                "[bold cyan]eval-ablation[/]",
+                f"mode={mode} recall={report.context_recall:.3f} precision={report.context_precision:.3f}",
+            )
+        finally:
+            retriever.close()
+
+    best_mode = max(
+        summary_rows,
+        key=lambda key: float(summary_rows[key]["context_recall"]) + float(summary_rows[key]["context_precision"]),
+    )
+
+    summary_payload = {
+        "eval_top_k": eval_top_k,
+        "metric_profile": normalized_profile,
+        "embedding_provider": provider_resolution.selected_provider,
+        "modes": summary_rows,
+        "winner_by_recall_plus_precision": best_mode,
+    }
+    summary_path = resolved_output_dir / f"ablation_summary_top{eval_top_k}.json"
+    summary_path.write_text(json.dumps(summary_payload, indent=2))
+    console.print(f"saved ablation summary to {summary_path}")
 
 
 @app.command(name="er-eval")
