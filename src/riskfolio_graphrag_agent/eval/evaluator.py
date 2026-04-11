@@ -108,6 +108,9 @@ class EvalReport:
         estimated_cost_usd: Mean estimated token cost per sample.
         retrieval_mode: Retrieval mode metadata for the run.
         embedding_provider: Embedding backend metadata for the run.
+        dense_index_refreshed: Whether dense vectors were refreshed before run.
+        dense_index_fingerprint: Fingerprint of refreshed chunk index contents.
+        dense_index_upserted: Number of chunks upserted during dense index refresh.
         metric_profile: Metric profile identifier used for scoring.
         run_at: ISO-8601 UTC timestamp recorded at the start of the evaluation run.
         per_sample: Per-sample metric dictionaries for artifact inspection,
@@ -131,6 +134,9 @@ class EvalReport:
     estimated_cost_usd: float = 0.0
     retrieval_mode: str = "hybrid_rerank"
     embedding_provider: str = "hash"
+    dense_index_refreshed: bool = False
+    dense_index_fingerprint: str = ""
+    dense_index_upserted: int = 0
     metric_profile: str = "heuristic-overlap"
     run_at: str = ""
     per_sample: list[dict[str, str | float | int | list[str]]] = field(default_factory=list)
@@ -327,6 +333,9 @@ class Evaluator:
             estimated_cost_usd=_mean(estimated_cost_scores),
             retrieval_mode=str(self._runtime_config.get("retrieval_mode", "hybrid_rerank")),
             embedding_provider=str(self._runtime_config.get("embedding_provider", "hash")),
+            dense_index_refreshed=str(self._runtime_config.get("dense_index_refreshed", "false")).lower() in {"1", "true", "yes"},
+            dense_index_fingerprint=str(self._runtime_config.get("dense_index_fingerprint", "")),
+            dense_index_upserted=int(float(str(self._runtime_config.get("dense_index_upserted", "0") or "0"))),
             metric_profile=self._metric_profile,
             run_at=run_at,
             per_sample=per_sample,

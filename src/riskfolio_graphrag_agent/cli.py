@@ -12,6 +12,7 @@ serve       Start the FastAPI server.
 gradio      Start the Gradio chat interface.
 """
 
+import hashlib
 import json
 import logging
 import ssl
@@ -367,8 +368,60 @@ def _report_metrics_snapshot(report: object) -> dict[str, float | int | str]:
         "retrieval_mode": str(getattr(report, "retrieval_mode", "")),
         "metric_profile": str(getattr(report, "metric_profile", "")),
         "embedding_provider": str(getattr(report, "embedding_provider", "")),
+        "dense_index_refreshed": str(getattr(report, "dense_index_refreshed", False)),
+        "dense_index_fingerprint": str(getattr(report, "dense_index_fingerprint", "")),
+        "dense_index_upserted": int(getattr(report, "dense_index_upserted", 0)),
         "run_at": str(getattr(report, "run_at", "")),
     }
+
+
+def _dense_index_fingerprint(documents: list[Document]) -> str:
+    """Compute a stable fingerprint for a set of chunked documents."""
+    digest = hashlib.sha256()
+    for doc in sorted(documents, key=lambda item: item.chunk_id):
+        digest.update(doc.chunk_id.encode("utf-8"))
+        digest.update(b"|")
+        digest.update(doc.content_hash.encode("utf-8"))
+        digest.update(b"|")
+        digest.update(str(doc.line_start).encode("utf-8"))
+        digest.update(b"|")
+        digest.update(str(doc.line_end).encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _refresh_dense_index(
+    *,
+    settings: Settings,
+    embedding_provider,
+    source_dir: str | None,
+) -> tuple[int, str]:
+    """Load current documents and refresh dense index vectors.
+
+    Returns:
+        Tuple of (upserted_chunks, index_fingerprint).
+    """
+    source_dirs = _resolve_focus_directories(source_dir, settings)
+    documents = _load_from_directories(source_dirs)
+    selected_documents = _select_documents_for_build(documents)
+    fingerprint = _dense_index_fingerprint(selected_documents)
+
+    retriever = HybridRetriever(
+        neo4j_uri=settings.neo4j_uri,
+        neo4j_user=settings.neo4j_user,
+        neo4j_password=settings.neo4j_password,
+        top_k=1,
+        vector_store_backend=settings.vector_store_backend,
+        chroma_persist_dir=settings.chroma_persist_dir,
+        embedding_provider=embedding_provider,
+        retrieval_mode=settings.retrieval_mode,
+    )
+    try:
+        upserted = retriever.upsert_documents(selected_documents)
+    finally:
+        retriever.close()
+
+    return upserted, fingerprint
 
 
 def _resolve_source_directories(source_dir: str | None, settings: Settings) -> list[Path]:
@@ -752,6 +805,17 @@ def eval_command(
         min=1,
         help="Number of contexts to retrieve per sample for eval runs only.",
     ),
+    refresh_dense_index: bool = typer.Option(
+        False,
+        "--refresh-dense-index",
+        help="Reload chunk docs and upsert vectors before running eval.",
+    ),
+    source_dir: str | None = typer.Option(
+        None,
+        "--source-dir",
+        "-s",
+        help="Path to Riskfolio-Lib source/docs root for dense index refresh.",
+    ),
 ) -> None:
     """Run the retrieval-quality evaluation suite.
 
@@ -774,6 +838,19 @@ def eval_command(
         gold_pairs={("e1", "e2")},
         audit_dir="artifacts/er",
     )
+    dense_index_upserted = 0
+    dense_index_fingerprint = ""
+    if refresh_dense_index:
+        dense_index_upserted, dense_index_fingerprint = _refresh_dense_index(
+            settings=settings,
+            embedding_provider=provider_resolution.provider,
+            source_dir=source_dir,
+        )
+        console.print(
+            "[bold cyan]eval[/]",
+            f"dense-index refreshed chunks={dense_index_upserted}",
+            f"fingerprint={dense_index_fingerprint[:12]}...",
+        )
     resolved_output_file = output_file or _default_eval_output_path(
         retrieval_mode=settings.retrieval_mode,
         eval_top_k=eval_top_k,
@@ -803,6 +880,9 @@ def eval_command(
                 "retrieval_mode": settings.retrieval_mode,
                 "embedding_provider": provider_resolution.selected_provider,
                 "eval_top_k": str(eval_top_k),
+                "dense_index_refreshed": str(refresh_dense_index),
+                "dense_index_fingerprint": dense_index_fingerprint,
+                "dense_index_upserted": str(dense_index_upserted),
             },
             er_metrics={
                 "precision": er_result.metrics.precision if er_result.metrics else 0.0,
@@ -857,6 +937,17 @@ def eval_ablation_command(
         min=1,
         help="Number of contexts to retrieve per sample for each ablation mode.",
     ),
+    refresh_dense_index: bool = typer.Option(
+        False,
+        "--refresh-dense-index",
+        help="Reload chunk docs and upsert vectors before running ablation.",
+    ),
+    source_dir: str | None = typer.Option(
+        None,
+        "--source-dir",
+        "-s",
+        help="Path to Riskfolio-Lib source/docs root for dense index refresh.",
+    ),
 ) -> None:
     """Run evaluation for all retrieval modes and write one consolidated summary."""
     settings = Settings()
@@ -880,6 +971,19 @@ def eval_ablation_command(
         gold_pairs={("e1", "e2")},
         audit_dir="artifacts/er",
     )
+    dense_index_upserted = 0
+    dense_index_fingerprint = ""
+    if refresh_dense_index:
+        dense_index_upserted, dense_index_fingerprint = _refresh_dense_index(
+            settings=settings,
+            embedding_provider=provider_resolution.provider,
+            source_dir=source_dir,
+        )
+        console.print(
+            "[bold cyan]eval-ablation[/]",
+            f"dense-index refreshed chunks={dense_index_upserted}",
+            f"fingerprint={dense_index_fingerprint[:12]}...",
+        )
 
     default_dir = Path(_default_eval_output_path(retrieval_mode="ablation", eval_top_k=eval_top_k)).parent
     resolved_output_dir = Path(output_dir) if output_dir else default_dir
@@ -906,6 +1010,9 @@ def eval_ablation_command(
                     "retrieval_mode": mode,
                     "embedding_provider": provider_resolution.selected_provider,
                     "eval_top_k": str(eval_top_k),
+                    "dense_index_refreshed": str(refresh_dense_index),
+                    "dense_index_fingerprint": dense_index_fingerprint,
+                    "dense_index_upserted": str(dense_index_upserted),
                 },
                 er_metrics={
                     "precision": er_result.metrics.precision if er_result.metrics else 0.0,
@@ -933,6 +1040,9 @@ def eval_ablation_command(
         "eval_top_k": eval_top_k,
         "metric_profile": normalized_profile,
         "embedding_provider": provider_resolution.selected_provider,
+        "dense_index_refreshed": refresh_dense_index,
+        "dense_index_fingerprint": dense_index_fingerprint,
+        "dense_index_upserted": dense_index_upserted,
         "modes": summary_rows,
         "winner_by_recall_plus_precision": best_mode,
     }
