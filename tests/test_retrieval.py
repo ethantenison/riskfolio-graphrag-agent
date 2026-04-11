@@ -14,6 +14,7 @@ from riskfolio_graphrag_agent.retrieval.retriever import (
     Neo4jLexicalStore,
     RetrievalResult,
     VectorHit,
+    _dense_query_variants,
     _find_domain_concepts,
     _graph_expand,
     _hash_embedding,
@@ -277,6 +278,15 @@ def test_query_tokens_for_lexical_graph_expands_synonyms():
     assert "chart" in tokens
 
 
+def test_dense_query_variants_adds_augmented_variant_for_synonyms():
+    variants = _dense_query_variants("Compare CVaR report plot")
+
+    assert variants[0] == "Compare CVaR report plot"
+    assert len(variants) == 2
+    assert "tail" in variants[1].lower()
+    assert "reporting" in variants[1].lower()
+
+
 def test_promoted_graph_seed_hits_reads_assertion_backed_chunks():
     rows = [
         _Row(
@@ -405,3 +415,57 @@ def test_hybrid_retriever_uses_wider_candidate_pool_in_hybrid_mode():
 
     assert results
     assert vector_store.search_calls == [6]
+
+
+def test_dense_retriever_uses_query_variants_and_wider_candidate_pool():
+    mock_session = MagicMock()
+    mock_session.__enter__ = MagicMock(return_value=mock_session)
+    mock_session.__exit__ = MagicMock(return_value=False)
+    mock_session.run.return_value = iter([])
+
+    mock_driver = MagicMock()
+    mock_driver.session.return_value = mock_session
+
+    class _DenseOnlyStore:
+        def __init__(self) -> None:
+            self.search_calls: list[tuple[str, int]] = []
+
+        def upsert(self, documents: list[Document]) -> int:
+            return len(documents)
+
+        def search(self, query: str, top_k: int) -> list[VectorHit]:
+            self.search_calls.append((query, top_k))
+            return [VectorHit(chunk_id=f"dense-{len(self.search_calls)}", content=query, source_path="dense.py", score=0.9)]
+
+    vector_store = _DenseOnlyStore()
+
+    with (
+        patch("riskfolio_graphrag_agent.retrieval.retriever.GraphDatabase.driver", return_value=mock_driver),
+        patch(
+            "riskfolio_graphrag_agent.retrieval.retriever._graph_expand",
+            side_effect=lambda hit, session: RetrievalResult(
+                content=hit.content,
+                source_path=hit.source_path,
+                score=hit.score,
+                graph_neighbours=[],
+                related_entities=[],
+                metadata={},
+            ),
+        ),
+    ):
+        retriever = HybridRetriever(
+            neo4j_uri="bolt://localhost:7687",
+            neo4j_user="neo4j",
+            neo4j_password="password",
+            top_k=3,
+            vector_store=vector_store,
+            retrieval_mode="dense",
+        )
+        try:
+            results = retriever.retrieve("How does CVaR report plotting work?")
+        finally:
+            retriever.close()
+
+    assert results
+    assert len(vector_store.search_calls) == 2
+    assert all(call_top_k == 6 for _, call_top_k in vector_store.search_calls)

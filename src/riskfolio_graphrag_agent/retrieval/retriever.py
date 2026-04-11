@@ -451,7 +451,12 @@ class HybridRetriever:
         logger.info("Retrieving for query: %r (top_k=%d mode=%s)", query, self._top_k, retrieval_mode)
 
         if retrieval_mode == "dense":
-            hits = self._vector_store.search(query, top_k=self._top_k)
+            # Dense mode uses lightweight query expansion and a broader candidate
+            # pool before final truncation.
+            candidate_k = max(self._top_k * 2, self._top_k)
+            query_variants = _dense_query_variants(query)
+            dense_variant_hits = [self._vector_store.search(variant, top_k=candidate_k) for variant in query_variants]
+            hits = _merge_dense_variant_hits(dense_variant_hits, top_k=candidate_k)
         elif retrieval_mode == "sparse":
             hits = _sparse_query_hits(self._driver, query, top_k=self._top_k)
         elif retrieval_mode == "graph":
@@ -480,16 +485,22 @@ class HybridRetriever:
             for hit in hits:
                 results.append(_graph_expand(hit, session))
 
-        if retrieval_mode == "hybrid_rerank":
-            query_tokens = set(_query_tokens(query))
+        if retrieval_mode in {"hybrid_rerank", "dense"}:
+            query_tokens = (
+                set(_query_tokens(query)) if retrieval_mode == "hybrid_rerank" else set(_query_tokens_for_lexical_graph(query))
+            )
             for result in results:
                 entity_count = len(result.related_entities)
                 neighbour_count = len(result.graph_neighbours)
                 entity_signal = min(1.0, math.log1p(entity_count) / math.log(6.0))
                 neighbour_signal = min(1.0, math.log1p(neighbour_count) / math.log(8.0))
                 coverage_signal = _query_coverage_signal(query_tokens, result)
-                evidence_boost = (0.11 * entity_signal) + (0.07 * neighbour_signal) + (0.09 * coverage_signal)
-                result.score = round((0.85 * float(result.score)) + evidence_boost, 6)
+                if retrieval_mode == "hybrid_rerank":
+                    evidence_boost = (0.11 * entity_signal) + (0.07 * neighbour_signal) + (0.09 * coverage_signal)
+                    result.score = round((0.85 * float(result.score)) + evidence_boost, 6)
+                else:
+                    evidence_boost = (0.07 * entity_signal) + (0.03 * neighbour_signal) + (0.08 * coverage_signal)
+                    result.score = round((0.88 * float(result.score)) + evidence_boost, 6)
 
         results.sort(key=lambda item: item.score, reverse=True)
         return results[: self._top_k]
@@ -532,6 +543,38 @@ def _query_tokens_for_lexical_graph(query: str) -> list[str]:
             seen.add(synonym)
 
     return expanded[:24]
+
+
+def _dense_query_variants(query: str) -> list[str]:
+    """Build lightweight dense-query variants from lexical synonym expansion.
+
+    Args:
+        query: Original natural-language query text.
+
+    Returns:
+        Deduplicated query variants with bounded synonym augmentation.
+    """
+    base_query = query.strip()
+    if not base_query:
+        return []
+
+    variants: list[str] = [base_query]
+    base_tokens = _query_tokens(base_query)
+    lexical_tokens = _query_tokens_for_lexical_graph(base_query)
+    base_token_set = set(base_tokens)
+    extra_tokens = [token for token in lexical_tokens if token not in base_token_set]
+    if extra_tokens:
+        variants.append(f"{base_query} {' '.join(extra_tokens[:6])}")
+
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in variants:
+        lowered = item.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(item)
+    return deduped[:2]
 
 
 def _query_coverage_signal(query_tokens: set[str], result: RetrievalResult) -> float:
@@ -1002,6 +1045,58 @@ def _merge_hits(dense_hits: list[VectorHit], sparse_hits: list[VectorHit], top_k
         calibrated = (dense_component + sparse_component) / max(channel_count, 1)
         overlap_bonus = 0.22 if channel_count == 2 else 0.0
         hit.score = (0.55 * rrf) + (0.23 * calibrated) + overlap_bonus
+
+    ordered = sorted(merged.values(), key=lambda item: item.score, reverse=True)
+    return ordered[:top_k]
+
+
+def _merge_dense_variant_hits(variant_hit_lists: list[list[VectorHit]], top_k: int) -> list[VectorHit]:
+    """Merge dense hit lists from multiple query variants.
+
+    Args:
+        variant_hit_lists: Dense hit lists ordered by query variant priority.
+        top_k: Maximum number of merged hits to return.
+
+    Returns:
+        Ranked dense hits merged with reciprocal-rank and calibrated scores.
+    """
+    if top_k <= 0:
+        return []
+
+    merged: dict[str, VectorHit] = {}
+    variant_ranks: list[dict[str, int]] = []
+    variant_scores: list[dict[str, float]] = []
+
+    for hits in variant_hit_lists:
+        variant_ranks.append({hit.chunk_id: index + 1 for index, hit in enumerate(hits)})
+        variant_scores.append(_normalize_scores({hit.chunk_id: float(hit.score) for hit in hits}))
+        for hit in hits:
+            if hit.chunk_id in merged:
+                continue
+            merged[hit.chunk_id] = VectorHit(
+                chunk_id=hit.chunk_id,
+                content=hit.content,
+                source_path=hit.source_path,
+                score=0.0,
+                metadata=dict(hit.metadata),
+            )
+
+    rrf_k = 60.0
+    for chunk_id, hit in merged.items():
+        rrf = 0.0
+        calibrated = 0.0
+        seen_variants = 0
+        for variant_index, rank_map in enumerate(variant_ranks):
+            rank = rank_map.get(chunk_id)
+            if rank is None:
+                continue
+            seen_variants += 1
+            rrf += 1.0 / (rrf_k + rank + (variant_index * 3))
+            calibrated += variant_scores[variant_index].get(chunk_id, 0.0)
+
+        overlap_bonus = 0.16 if seen_variants > 1 else 0.0
+        calibrated = calibrated / max(seen_variants, 1)
+        hit.score = (0.62 * rrf) + (0.22 * calibrated) + overlap_bonus
 
     ordered = sorted(merged.values(), key=lambda item: item.score, reverse=True)
     return ordered[:top_k]
