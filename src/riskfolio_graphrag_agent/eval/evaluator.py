@@ -42,6 +42,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import math
 import re
 import time
 from dataclasses import asdict, dataclass, field
@@ -52,7 +53,7 @@ from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever, Retrie
 
 logger = logging.getLogger(__name__)
 
-_SUPPORTED_METRIC_PROFILES: frozenset[str] = frozenset({"heuristic-overlap"})
+_SUPPORTED_METRIC_PROFILES: frozenset[str] = frozenset({"heuristic-overlap", "graph-order-sensitive"})
 
 
 @dataclass
@@ -104,10 +105,16 @@ class EvalReport:
         link_prediction_mrr: Proxy mean reciprocal rank derived from evidence hits.
         link_prediction_hits_at_3: Proxy hit rate within the top three contexts.
         link_prediction_hits_at_10: Proxy hit rate within the top ten contexts.
+        link_prediction_ndcg_at_3: Proxy NDCG@3 derived from expected-term coverage.
+        link_prediction_ndcg_at_10: Proxy NDCG@10 derived from expected-term coverage.
+        rank_quality: Weighted rank-quality aggregate emphasizing order-sensitive retrieval.
         avg_latency_ms: Mean retrieval latency per sample in milliseconds.
         estimated_cost_usd: Mean estimated token cost per sample.
         retrieval_mode: Retrieval mode metadata for the run.
         embedding_provider: Embedding backend metadata for the run.
+        dense_index_refreshed: Whether dense vectors were refreshed before run.
+        dense_index_fingerprint: Fingerprint of refreshed chunk index contents.
+        dense_index_upserted: Number of chunks upserted during dense index refresh.
         metric_profile: Metric profile identifier used for scoring.
         run_at: ISO-8601 UTC timestamp recorded at the start of the evaluation run.
         per_sample: Per-sample metric dictionaries for artifact inspection,
@@ -127,10 +134,16 @@ class EvalReport:
     link_prediction_mrr: float = 0.0
     link_prediction_hits_at_3: float = 0.0
     link_prediction_hits_at_10: float = 0.0
+    link_prediction_ndcg_at_3: float = 0.0
+    link_prediction_ndcg_at_10: float = 0.0
+    rank_quality: float = 0.0
     avg_latency_ms: float = 0.0
     estimated_cost_usd: float = 0.0
     retrieval_mode: str = "hybrid_rerank"
     embedding_provider: str = "hash"
+    dense_index_refreshed: bool = False
+    dense_index_fingerprint: str = ""
+    dense_index_upserted: int = 0
     metric_profile: str = "heuristic-overlap"
     run_at: str = ""
     per_sample: list[dict[str, str | float | int | list[str]]] = field(default_factory=list)
@@ -178,7 +191,13 @@ class Evaluator:
         self,
         samples: list[EvalSample],
         retriever: HybridRetriever | None = None,
-        metric_profile: Literal["heuristic-overlap", "ragas-style", "heuristic"] = "heuristic-overlap",
+        metric_profile: Literal[
+            "heuristic-overlap",
+            "graph-order-sensitive",
+            "ragas-style",
+            "heuristic",
+            "graph",
+        ] = "heuristic-overlap",
         runtime_config: dict[str, str] | None = None,
         er_metrics: dict[str, float] | None = None,
     ) -> None:
@@ -187,13 +206,12 @@ class Evaluator:
         Args:
             samples: Evaluation samples to score.
             retriever: Optional retriever used to gather evidence for each sample.
-            metric_profile: Name for the scoring profile metadata. The current
-                implementation only uses the heuristic overlap/support scoring
-                flow, so ``heuristic-overlap`` is the effective profile for all
-                runs. Legacy aliases ``ragas-style`` and ``heuristic`` are
-                accepted for backward compatibility and normalized to
-                ``heuristic-overlap`` rather than selecting different scoring
-                behavior. Any other value raises ``ValueError``.
+            metric_profile: Name for the scoring profile metadata. Supported
+                values are ``heuristic-overlap`` and
+                ``graph-order-sensitive``. Legacy aliases ``ragas-style`` and
+                ``heuristic`` normalize to ``heuristic-overlap``. Alias
+                ``graph`` normalizes to ``graph-order-sensitive``. Any other
+                value raises ``ValueError``.
             runtime_config: Run metadata such as retrieval mode or embedding backend.
             er_metrics: Optional entity-resolution summary metrics to include in
                 the final report.
@@ -203,11 +221,13 @@ class Evaluator:
         normalized_metric_profile = metric_profile.strip().lower()
         if normalized_metric_profile in {"ragas-style", "heuristic"}:
             normalized_metric_profile = "heuristic-overlap"
+        if normalized_metric_profile == "graph":
+            normalized_metric_profile = "graph-order-sensitive"
         if normalized_metric_profile not in _SUPPORTED_METRIC_PROFILES:
             raise ValueError(
                 f"Unknown metric_profile {normalized_metric_profile!r}. "
                 f"Supported values: {sorted(_SUPPORTED_METRIC_PROFILES)}. "
-                "Legacy aliases 'ragas-style' and 'heuristic' are also accepted."
+                "Legacy aliases 'ragas-style', 'heuristic', and 'graph' are also accepted."
             )
         self._metric_profile = normalized_metric_profile
         self._runtime_config = runtime_config or {}
@@ -232,6 +252,9 @@ class Evaluator:
         link_mrr_scores: list[float] = []
         link_hits_3_scores: list[float] = []
         link_hits_10_scores: list[float] = []
+        link_ndcg_3_scores: list[float] = []
+        link_ndcg_10_scores: list[float] = []
+        rank_quality_scores: list[float] = []
         latency_ms_scores: list[float] = []
         estimated_cost_scores: list[float] = []
         per_sample: list[dict[str, str | float | int | list[str]]] = []
@@ -282,6 +305,9 @@ class Evaluator:
             link_mrr_scores.append(link_prediction["mrr"])
             link_hits_3_scores.append(link_prediction["hits_at_3"])
             link_hits_10_scores.append(link_prediction["hits_at_10"])
+            link_ndcg_3_scores.append(link_prediction["ndcg_at_3"])
+            link_ndcg_10_scores.append(link_prediction["ndcg_at_10"])
+            rank_quality_scores.append(_rank_quality_score(link_prediction, self._metric_profile))
             latency_ms_scores.append(latency_ms)
             estimated_cost_scores.append(estimated_cost)
 
@@ -299,6 +325,10 @@ class Evaluator:
                     "answer_relevance": round(relevance, 4),
                     "grounding": round(grounding, 4),
                     "multi_hop_accuracy": round(multi_hop, 4),
+                    "link_prediction_mrr": round(link_prediction["mrr"], 4),
+                    "link_prediction_ndcg_at_3": round(link_prediction["ndcg_at_3"], 4),
+                    "link_prediction_ndcg_at_10": round(link_prediction["ndcg_at_10"], 4),
+                    "rank_quality": round(_rank_quality_score(link_prediction, self._metric_profile), 4),
                     "latency_ms": round(latency_ms, 2),
                     "estimated_cost_usd": round(estimated_cost, 6),
                     "retrieved_contexts": len(sample.retrieved_contexts),
@@ -323,10 +353,16 @@ class Evaluator:
             link_prediction_mrr=_mean(link_mrr_scores),
             link_prediction_hits_at_3=_mean(link_hits_3_scores),
             link_prediction_hits_at_10=_mean(link_hits_10_scores),
+            link_prediction_ndcg_at_3=_mean(link_ndcg_3_scores),
+            link_prediction_ndcg_at_10=_mean(link_ndcg_10_scores),
+            rank_quality=_mean(rank_quality_scores),
             avg_latency_ms=_mean(latency_ms_scores),
             estimated_cost_usd=_mean(estimated_cost_scores),
             retrieval_mode=str(self._runtime_config.get("retrieval_mode", "hybrid_rerank")),
             embedding_provider=str(self._runtime_config.get("embedding_provider", "hash")),
+            dense_index_refreshed=str(self._runtime_config.get("dense_index_refreshed", "false")).lower() in {"1", "true", "yes"},
+            dense_index_fingerprint=str(self._runtime_config.get("dense_index_fingerprint", "")),
+            dense_index_upserted=int(float(str(self._runtime_config.get("dense_index_upserted", "0") or "0"))),
             metric_profile=self._metric_profile,
             run_at=run_at,
             per_sample=per_sample,
@@ -722,36 +758,6 @@ def _context_recall(expected_terms: list[str], contexts: list[str]) -> float:
     return matched / len(expected_terms)
 
 
-def _context_precision(expected_terms: list[str], contexts: list[str]) -> float:
-    if not contexts:
-        return 0.0
-    expected_lower = [term.lower() for term in expected_terms]
-    relevant = 0
-    for context in contexts:
-        lowered = context.lower()
-        if any(term in lowered for term in expected_lower):
-            relevant += 1
-    return relevant / len(contexts)
-
-
-def _answer_faithfulness(answer: str, contexts: list[str]) -> float:
-    answer_tokens = set(_tokens(answer))
-    if not answer_tokens:
-        return 0.0
-    context_tokens = set(_tokens(" ".join(contexts)))
-    if not context_tokens:
-        return 0.0
-    return len(answer_tokens & context_tokens) / len(answer_tokens)
-
-
-def _answer_relevance(question: str, answer: str) -> float:
-    q_tokens = set(_tokens(question))
-    a_tokens = set(_tokens(answer))
-    if not q_tokens or not a_tokens:
-        return 0.0
-    return len(q_tokens & a_tokens) / len(q_tokens)
-
-
 def _grounding_score(answer: str, contexts: list[str], top_k: int = 3) -> float:
     """Estimate how well the answer is grounded in top-ranked retrieved evidence.
 
@@ -912,6 +918,19 @@ def _ragas_style_faithfulness(answer: str, contexts: list[str]) -> float:
     return supported / len(claims)
 
 
+def _answer_faithfulness(answer: str, contexts: list[str]) -> float:
+    """Backward-compatible alias for answer faithfulness scoring.
+
+    Args:
+        answer: Answer text to evaluate.
+        contexts: Retrieved evidence contexts.
+
+    Returns:
+        Deterministic faithfulness score in the range ``[0.0, 1.0]``.
+    """
+    return _ragas_style_faithfulness(answer, contexts)
+
+
 def _ragas_style_answer_relevance(question: str, answer: str) -> float:
     question_tokens = set(_tokens(question))
     answer_tokens = set(_tokens(answer))
@@ -1043,6 +1062,9 @@ def _contrastive_metric_deltas(baseline_report: EvalReport, candidate_report: Ev
         "link_prediction_mrr",
         "link_prediction_hits_at_3",
         "link_prediction_hits_at_10",
+        "link_prediction_ndcg_at_3",
+        "link_prediction_ndcg_at_10",
+        "rank_quality",
         "avg_latency_ms",
         "estimated_cost_usd",
     )
@@ -1146,7 +1168,13 @@ def _row_string_list(row: dict[str, str | float | int | list[str]], key: str) ->
 
 def _link_prediction_proxy(expected_terms: list[str], contexts: list[str]) -> dict[str, float]:
     if not contexts:
-        return {"mrr": 0.0, "hits_at_3": 0.0, "hits_at_10": 0.0}
+        return {
+            "mrr": 0.0,
+            "hits_at_3": 0.0,
+            "hits_at_10": 0.0,
+            "ndcg_at_3": 0.0,
+            "ndcg_at_10": 0.0,
+        }
 
     expected_lower = [term.lower() for term in expected_terms]
     first_hit_rank = 0
@@ -1157,13 +1185,81 @@ def _link_prediction_proxy(expected_terms: list[str], contexts: list[str]) -> di
             break
 
     if first_hit_rank == 0:
-        return {"mrr": 0.0, "hits_at_3": 0.0, "hits_at_10": 0.0}
+        return {
+            "mrr": 0.0,
+            "hits_at_3": 0.0,
+            "hits_at_10": 0.0,
+            "ndcg_at_3": _ndcg(expected_terms, contexts, k=3),
+            "ndcg_at_10": _ndcg(expected_terms, contexts, k=10),
+        }
 
     return {
         "mrr": round(1.0 / first_hit_rank, 4),
         "hits_at_3": 1.0 if first_hit_rank <= 3 else 0.0,
         "hits_at_10": 1.0 if first_hit_rank <= 10 else 0.0,
+        "ndcg_at_3": _ndcg(expected_terms, contexts, k=3),
+        "ndcg_at_10": _ndcg(expected_terms, contexts, k=10),
     }
+
+
+def _ndcg(expected_terms: list[str], contexts: list[str], *, k: int) -> float:
+    """Compute a deterministic proxy NDCG@k from expected-term coverage.
+
+    Args:
+        expected_terms: Terms expected in relevant evidence for a sample.
+        contexts: Ranked retrieved contexts.
+        k: Cutoff rank for NDCG.
+
+    Returns:
+        NDCG@k in the range ``[0.0, 1.0]``.
+    """
+    if k <= 0 or not contexts or not expected_terms:
+        return 0.0
+
+    expected_lower = [term.lower() for term in expected_terms if term.strip()]
+    if not expected_lower:
+        return 0.0
+
+    def _relevance(context: str) -> float:
+        lowered = context.lower()
+        return sum(1.0 for term in expected_lower if term in lowered) / len(expected_lower)
+
+    ranked = contexts[:k]
+    relevance_scores = [_relevance(context) for context in ranked]
+    ideal_scores = sorted((_relevance(context) for context in contexts), reverse=True)[:k]
+
+    dcg = _dcg(relevance_scores)
+    idcg = _dcg(ideal_scores)
+    if idcg <= 0.0:
+        return 0.0
+    return round(dcg / idcg, 4)
+
+
+def _dcg(relevance_scores: list[float]) -> float:
+    """Compute discounted cumulative gain for relevance scores."""
+    total = 0.0
+    for index, score in enumerate(relevance_scores, start=1):
+        if score <= 0.0:
+            continue
+        total += score / math.log2(index + 1)
+    return total
+
+
+def _rank_quality_score(link_prediction: dict[str, float], metric_profile: str) -> float:
+    """Return a profile-aware weighted rank-quality score."""
+    if metric_profile == "graph-order-sensitive":
+        score = (
+            (0.45 * float(link_prediction.get("mrr", 0.0)))
+            + (0.40 * float(link_prediction.get("ndcg_at_3", 0.0)))
+            + (0.15 * float(link_prediction.get("ndcg_at_10", 0.0)))
+        )
+    else:
+        score = (
+            (0.60 * float(link_prediction.get("mrr", 0.0)))
+            + (0.30 * float(link_prediction.get("ndcg_at_3", 0.0)))
+            + (0.10 * float(link_prediction.get("ndcg_at_10", 0.0)))
+        )
+    return round(score, 4)
 
 
 def _estimated_cost_usd(question: str, answer: str, contexts: list[str]) -> float:

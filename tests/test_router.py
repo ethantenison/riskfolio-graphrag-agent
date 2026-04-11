@@ -40,3 +40,10 @@ def test_router_routes_compare_query_to_hybrid_rerank():
     assert decision.mode == "hybrid_rerank", (
         f"Expected 'hybrid_rerank' for compare query, got '{decision.mode}' (reason: {decision.reason})"
     )
+
+
+def test_router_uses_hybrid_when_intent_is_ambiguous():
+    router = QueryToolRouter(min_confidence=0.1, ambiguity_margin=0.2)
+    decision = router.decide("Explain HRP and where its implementation lives")
+    assert decision.mode == "hybrid_rerank"
+    assert "ambiguous_intent" in decision.reason

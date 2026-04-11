@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import ssl
+import time
 from dataclasses import dataclass
 from typing import Protocol
 from urllib import request
@@ -55,6 +56,9 @@ class HashEmbeddingProvider:
 class OpenAIEmbeddingProvider:
     """OpenAI-compatible embeddings provider."""
 
+    _MAX_BATCH_TEXTS = 128
+    _MAX_ESTIMATED_TOKENS = 200000
+
     def __init__(
         self,
         *,
@@ -63,6 +67,8 @@ class OpenAIEmbeddingProvider:
         base_url: str,
         timeout_seconds: float,
         dimension: int,
+        retry_attempts: int = 2,
+        retry_backoff_seconds: float = 1.5,
         ssl_context: ssl.SSLContext | None = None,
     ) -> None:
         if not api_key.strip():
@@ -72,6 +78,8 @@ class OpenAIEmbeddingProvider:
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = max(1.0, float(timeout_seconds))
         self._dimension = max(8, int(dimension))
+        self._retry_attempts = max(0, int(retry_attempts))
+        self._retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
         self._ssl_context = ssl_context
 
     @property
@@ -79,6 +87,19 @@ class OpenAIEmbeddingProvider:
         return self._dimension
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+
+        vectors: list[list[float]] = []
+        for batch in _chunk_embedding_inputs(
+            texts,
+            max_batch_texts=self._MAX_BATCH_TEXTS,
+            max_estimated_tokens=self._MAX_ESTIMATED_TOKENS,
+        ):
+            vectors.extend(self._embed_batch(batch))
+        return vectors
+
+    def _embed_batch(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
@@ -98,14 +119,42 @@ class OpenAIEmbeddingProvider:
             },
         )
 
-        try:
-            with request.urlopen(req, timeout=self._timeout_seconds, context=self._ssl_context) as response:
-                raw = response.read().decode("utf-8")
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
-            raise RuntimeError(f"Embedding HTTP error {exc.code}: {detail}") from exc
-        except URLError as exc:
-            raise RuntimeError(f"Embedding endpoint unreachable: {exc}") from exc
+        max_attempts = self._retry_attempts + 1
+        raw = ""
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with request.urlopen(req, timeout=self._timeout_seconds, context=self._ssl_context) as response:
+                    raw = response.read().decode("utf-8")
+                break
+            except HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="ignore")
+                if exc.code in {408, 429, 500, 502, 503, 504} and attempt < max_attempts:
+                    sleep_seconds = self._retry_backoff_seconds * attempt
+                    logger.warning(
+                        "Embedding transient HTTP %s on attempt %d/%d; retrying in %.1fs",
+                        exc.code,
+                        attempt,
+                        max_attempts,
+                        sleep_seconds,
+                    )
+                    if sleep_seconds > 0:
+                        time.sleep(sleep_seconds)
+                    continue
+                raise RuntimeError(f"Embedding HTTP error {exc.code}: {detail}") from exc
+            except (URLError, TimeoutError) as exc:
+                if attempt < max_attempts:
+                    sleep_seconds = self._retry_backoff_seconds * attempt
+                    logger.warning(
+                        "Embedding request failed on attempt %d/%d (%s); retrying in %.1fs",
+                        attempt,
+                        max_attempts,
+                        exc,
+                        sleep_seconds,
+                    )
+                    if sleep_seconds > 0:
+                        time.sleep(sleep_seconds)
+                    continue
+                raise RuntimeError(f"Embedding endpoint unreachable: {exc}") from exc
 
         try:
             parsed = json.loads(raw)
@@ -127,6 +176,33 @@ class OpenAIEmbeddingProvider:
         return vectors
 
 
+def _chunk_embedding_inputs(
+    texts: list[str],
+    *,
+    max_batch_texts: int,
+    max_estimated_tokens: int,
+) -> list[list[str]]:
+    """Split inputs into embedding-safe batches using a conservative token estimate."""
+    batches: list[list[str]] = []
+    current_batch: list[str] = []
+    current_tokens = 0
+
+    for text in texts:
+        estimated_tokens = max(1, len(text) // 4)
+        if current_batch and (len(current_batch) >= max_batch_texts or current_tokens + estimated_tokens > max_estimated_tokens):
+            batches.append(current_batch)
+            current_batch = []
+            current_tokens = 0
+
+        current_batch.append(text)
+        current_tokens += estimated_tokens
+
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches
+
+
 def resolve_embedding_provider(
     *,
     provider_name: str,
@@ -135,6 +211,8 @@ def resolve_embedding_provider(
     openai_embedding_model: str,
     openai_base_url: str,
     openai_timeout_seconds: float,
+    openai_retry_attempts: int = 2,
+    openai_retry_backoff_seconds: float = 1.5,
     ssl_context: ssl.SSLContext | None = None,
 ) -> ProviderResolution:
     """Resolve requested embedding provider with deterministic fallback."""
@@ -148,6 +226,8 @@ def resolve_embedding_provider(
                 base_url=openai_base_url,
                 timeout_seconds=openai_timeout_seconds,
                 dimension=embedding_dim,
+                retry_attempts=openai_retry_attempts,
+                retry_backoff_seconds=openai_retry_backoff_seconds,
                 ssl_context=ssl_context,
             )
             return ProviderResolution(provider=provider, selected_provider="openai")

@@ -80,10 +80,10 @@ def test_reason_uses_llm_generate_when_available():
     def _fake_llm_generate(*, question: str, context: list[RetrievalResult], model_name: str) -> str:
         assert question == "How does HRP compare to Risk Parity?"
         assert context
-        assert model_name == "gpt-4o-mini"
+        assert model_name == "gpt-5.4-nano"
         return "HRP uses hierarchical clustering and risk-budgeting constraints."
 
-    state = _reason(state, llm_generate=_fake_llm_generate, model_name="gpt-4o-mini")
+    state = _reason(state, llm_generate=_fake_llm_generate, model_name="gpt-5.4-nano")
     assert state.answer.startswith("HRP uses hierarchical clustering")
     assert state.citations
 
@@ -95,7 +95,7 @@ def test_reason_skips_llm_for_simple_lookup_questions():
     def _fail_if_called(*, question: str, context: list[RetrievalResult], model_name: str) -> str:
         raise AssertionError("llm_generate should not be called for simple lookup questions")
 
-    state = _reason(state, llm_generate=_fail_if_called, model_name="gpt-4o-mini")
+    state = _reason(state, llm_generate=_fail_if_called, model_name="gpt-5.4-nano")
 
     assert "retrieved evidence indicates key concepts" in state.answer
     assert state.citations

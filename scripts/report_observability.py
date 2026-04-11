@@ -15,7 +15,7 @@ def main() -> int:
     data_last_updated = (now - timedelta(hours=6)).isoformat()
 
     report = build_observability_report(
-        eval_report_path="eval_results.json",
+        eval_report_path="benchmarks/eval_results.json",
         output_path=settings.observability_sli_path,
         data_last_updated_utc=data_last_updated,
         drift_score=0.08,

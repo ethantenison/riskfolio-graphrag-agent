@@ -9,22 +9,24 @@ the agent workflow. In the overall architecture, it sits between:
 - the agent workflow, which requests grounded context before answer generation
 
 Package fit:
-    - `riskfolio_graphrag_agent.ingestion.loader` creates the chunked documents
-      that can be upserted into a vector backend.
-    - `riskfolio_graphrag_agent.graph.builder` provides domain aliases used for
-      graph-oriented concept expansion.
-    - `riskfolio_graphrag_agent.retrieval.router` may choose which retrieval
-      mode to use per query.
-    - `riskfolio_graphrag_agent.agent.workflow` consumes `RetrievalResult`
-      objects as evidence for reasoning and citation building.
+        - `riskfolio_graphrag_agent.ingestion.loader` creates the chunked documents
+            that can be upserted into a vector backend.
+        - `riskfolio_graphrag_agent.kg_pipeline` and
+            `riskfolio_graphrag_agent.graph_materialization` provide the promoted
+            graph shape consumed by graph retrieval.
+        - `riskfolio_graphrag_agent.retrieval.router` may choose which retrieval
+            mode to use per query.
+        - `riskfolio_graphrag_agent.agent.workflow` consumes `RetrievalResult`
+            objects as evidence for reasoning and citation building.
 
 This module supports four retrieval modes:
 
 - `dense`: embedding-based similarity over a vector store
 - `sparse`: lexical token matching over Neo4j `Chunk` nodes
 - `graph`: entity-seeded retrieval plus one-hop domain-concept expansion
-- `hybrid_rerank`: dense and sparse retrieval merged, then lightly boosted
-  using graph neighbourhood evidence
+- `hybrid_rerank`: dense and sparse retrieval merged from a broader candidate
+    pool, then lightly boosted using graph neighbourhood and query coverage
+    evidence
 
 Minimal working example:
     >>> from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
@@ -45,12 +47,13 @@ Minimal working example:
 Non-obvious design decisions:
     - The vector backend is abstracted behind `VectorStore` so the retrieval
       flow can work with either Chroma or a Neo4j-backed fallback.
-    - Hybrid merging uses fixed weights rather than a learned reranker to keep
-      the system deterministic, lightweight, and testable.
-    - Graph expansion is intentionally shallow. It augments retrieval with local
-      entity and chunk context, but does not attempt deep graph reasoning.
-    - Domain-concept expansion uses curated aliases from the graph builder
-      rather than arbitrary NLP extraction at query time.
+        - Hybrid merging uses reciprocal-rank fusion with score calibration to keep
+            the system deterministic, lightweight, and less sensitive to score-scale
+            mismatch across backends.
+        - Graph expansion is intentionally shallow. It augments retrieval with local
+            entity and chunk context, but does not attempt deep graph reasoning.
+        - Retrieval now prefers the promoted assertion-aware graph shape and falls
+            back to legacy graph patterns when promoted nodes are unavailable.
 
 What this module does not do:
     - It does not chunk source files or create `Document` objects.
@@ -66,6 +69,7 @@ What this module does not do:
 from __future__ import annotations
 
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -73,7 +77,6 @@ from typing import Any, Literal, Protocol, cast
 
 from neo4j import Driver, GraphDatabase
 
-from riskfolio_graphrag_agent.graph.builder import DOMAIN_ALIASES
 from riskfolio_graphrag_agent.ingestion.loader import Document as IngestDocument
 from riskfolio_graphrag_agent.retrieval.embeddings import EmbeddingProvider, HashEmbeddingProvider, hash_embedding
 
@@ -86,6 +89,33 @@ _QUERY_ONLY_CONCEPT_ALIASES: dict[str, tuple[str, ...]] = {
     "RG": ("rg", "vrg"),
     "ADD": ("add",),
 }
+
+# Lightweight lexical expansions for sparse and graph retrieval seeding.
+_LEXICAL_TOKEN_SYNONYMS: dict[str, tuple[str, ...]] = {
+    "cvar": ("conditional", "tail", "risk"),
+    "cdar": ("drawdown", "risk"),
+    "ledoit": ("shrinkage",),
+    "lasso": ("graphical",),
+    "report": ("reports", "reporting", "summary"),
+    "plot": ("chart", "figure", "visualization"),
+}
+
+
+def _load_legacy_domain_aliases() -> dict[str, dict[str, tuple[str, ...]]]:
+    """Load legacy domain aliases lazily for compatibility fallback.
+
+    Returns:
+        Legacy domain alias registry, or an empty dictionary when unavailable.
+    """
+    try:
+        from riskfolio_graphrag_agent.graph.builder import DOMAIN_ALIASES
+
+        return DOMAIN_ALIASES
+    except Exception:  # pragma: no cover - defensive import fallback
+        return {}
+
+
+_LEGACY_DOMAIN_ALIASES = _load_legacy_domain_aliases()
 
 RetrievalMode = Literal["dense", "sparse", "graph", "hybrid_rerank"]
 
@@ -213,8 +243,8 @@ class ChromaVectorStore:
         self._collection.upsert(
             ids=ids,
             documents=texts,
-            embeddings=embeddings,
-            metadatas=metadatas,
+            embeddings=cast(Any, embeddings),
+            metadatas=cast(Any, metadatas),
         )
         return len(ids)
 
@@ -250,16 +280,43 @@ class ChromaVectorStore:
                     score=score,
                     metadata={
                         "relative_path": str(metadata.get("relative_path", "")),
-                        "chunk_index": int(metadata.get("chunk_index", 0)),
+                        "chunk_index": _as_int(metadata.get("chunk_index", 0), default=0),
                         "chunk_kind": str(metadata.get("chunk_kind", "")),
                         "section": str(metadata.get("section", "")),
-                        "line_start": int(metadata.get("line_start", 1)),
-                        "line_end": int(metadata.get("line_end", 1)),
+                        "line_start": _as_int(metadata.get("line_start", 1), default=1),
+                        "line_end": _as_int(metadata.get("line_end", 1), default=1),
                         "content_hash": str(metadata.get("content_hash", "")),
                     },
                 )
             )
         return hits
+
+
+def _as_int(value: object, *, default: int) -> int:
+    """Convert mixed metadata values into an integer with fallback.
+
+    Args:
+        value: Metadata value from a backend payload.
+        default: Default integer used when conversion fails.
+
+    Returns:
+        Coerced integer value.
+    """
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return default
+        try:
+            return int(float(stripped))
+        except ValueError:
+            return default
+    return default
 
 
 class Neo4jLexicalStore:
@@ -387,26 +444,48 @@ class HybridRetriever:
 
             In `graph` mode, the retriever seeds from matching entities and then
             performs one-hop expansion through selected domain relationships.
-            In `hybrid_rerank` mode, dense and sparse hits are merged before the
-            graph-context boost is applied.
+            In `hybrid_rerank` mode, dense and sparse hits are merged from a
+            wider candidate set before graph-context and query-coverage boosts.
         """
         retrieval_mode = mode_override or self._retrieval_mode
         logger.info("Retrieving for query: %r (top_k=%d mode=%s)", query, self._top_k, retrieval_mode)
 
         if retrieval_mode == "dense":
-            hits = self._vector_store.search(query, top_k=self._top_k)
+            # Dense mode uses lightweight query expansion and a broader candidate
+            # pool before final truncation.
+            candidate_k = max(self._top_k * 2, self._top_k)
+            query_variants = _dense_query_variants(query)
+            dense_variant_hits = [self._vector_store.search(variant, top_k=candidate_k) for variant in query_variants]
+            hits = _merge_dense_variant_hits(dense_variant_hits, top_k=candidate_k)
         elif retrieval_mode == "sparse":
             hits = _sparse_query_hits(self._driver, query, top_k=self._top_k)
         elif retrieval_mode == "graph":
-            hits = _graph_seed_hits(self._driver, query, top_k=self._top_k)
-            # Domain-concept graph-hop expansion: traverse IS_SUBTYPE_OF, ALTERNATIVE_TO, REQUIRES.
-            hop_hits = _graph_hop_expansion(self._driver, query, top_k=self._top_k)
-            if hop_hits:
-                hits = _merge_hits(hits, hop_hits, top_k=self._top_k * 2)[: self._top_k]
+            # Graph mode now builds a broader candidate pool before reranking.
+            candidate_k = max(self._top_k * 3, self._top_k)
+
+            # Prefer promoted assertion-aware traversal, fallback to legacy graph seeds.
+            seed_hits = _promoted_graph_seed_hits(self._driver, query, top_k=candidate_k)
+            if not seed_hits:
+                seed_hits = _graph_seed_hits(self._driver, query, top_k=candidate_k)
+
+            hop_hits = _promoted_graph_hop_expansion(self._driver, query, top_k=candidate_k)
+            if not hop_hits:
+                hop_hits = _graph_hop_expansion(self._driver, query, top_k=candidate_k)
+
+            bridge_hits = _promoted_graph_bridge_hits(self._driver, query, top_k=candidate_k)
+            sparse_backfill = _sparse_query_hits(self._driver, query, top_k=max(self._top_k, candidate_k // 2))
+
+            hits = _merge_hits(seed_hits, hop_hits, top_k=candidate_k)
+            if bridge_hits:
+                hits = _merge_hits(hits, bridge_hits, top_k=candidate_k)
+            if sparse_backfill:
+                hits = _merge_hits(hits, sparse_backfill, top_k=candidate_k)
         else:
-            dense_hits = self._vector_store.search(query, top_k=self._top_k)
-            sparse_hits = _sparse_query_hits(self._driver, query, top_k=self._top_k)
-            hits = _merge_hits(dense_hits, sparse_hits, top_k=self._top_k)
+            # Use a broader candidate pool in hybrid mode before final rerank.
+            candidate_k = max(self._top_k * 2, self._top_k)
+            dense_hits = self._vector_store.search(query, top_k=candidate_k)
+            sparse_hits = _sparse_query_hits(self._driver, query, top_k=candidate_k)
+            hits = _merge_hits(dense_hits, sparse_hits, top_k=candidate_k)
 
         if not hits:
             return []
@@ -416,10 +495,25 @@ class HybridRetriever:
             for hit in hits:
                 results.append(_graph_expand(hit, session))
 
-        if retrieval_mode == "hybrid_rerank":
+        if retrieval_mode in {"hybrid_rerank", "dense", "graph"}:
+            query_tokens = (
+                set(_query_tokens(query)) if retrieval_mode == "hybrid_rerank" else set(_query_tokens_for_lexical_graph(query))
+            )
             for result in results:
-                graph_boost = 0.03 * len(result.related_entities) + 0.015 * len(result.graph_neighbours)
-                result.score = round(float(result.score) + graph_boost, 6)
+                entity_count = len(result.related_entities)
+                neighbour_count = len(result.graph_neighbours)
+                entity_signal = min(1.0, math.log1p(entity_count) / math.log(6.0))
+                neighbour_signal = min(1.0, math.log1p(neighbour_count) / math.log(8.0))
+                coverage_signal = _query_coverage_signal(query_tokens, result)
+                if retrieval_mode == "hybrid_rerank":
+                    evidence_boost = (0.11 * entity_signal) + (0.07 * neighbour_signal) + (0.09 * coverage_signal)
+                    result.score = round((0.85 * float(result.score)) + evidence_boost, 6)
+                elif retrieval_mode == "graph":
+                    evidence_boost = (0.10 * entity_signal) + (0.05 * neighbour_signal) + (0.15 * coverage_signal)
+                    result.score = round((0.70 * float(result.score)) + evidence_boost, 6)
+                else:
+                    evidence_boost = (0.07 * entity_signal) + (0.03 * neighbour_signal) + (0.08 * coverage_signal)
+                    result.score = round((0.88 * float(result.score)) + evidence_boost, 6)
 
         results.sort(key=lambda item: item.score, reverse=True)
         return results[: self._top_k]
@@ -435,6 +529,86 @@ def _query_tokens(query: str) -> list[str]:
         seen.add(token)
         deduped.append(token)
     return deduped[:12]
+
+
+def _query_tokens_for_lexical_graph(query: str) -> list[str]:
+    """Return sparse/graph tokens with lightweight synonym expansion.
+
+    Args:
+        query: Natural-language query text.
+
+    Returns:
+        Deduplicated lexical tokens plus a bounded set of synonym tokens.
+    """
+    base_tokens = _query_tokens(query)
+    expanded: list[str] = []
+    seen: set[str] = set()
+
+    for token in base_tokens:
+        if token not in seen:
+            expanded.append(token)
+            seen.add(token)
+
+        for synonym in _LEXICAL_TOKEN_SYNONYMS.get(token, ()):
+            if synonym in seen:
+                continue
+            expanded.append(synonym)
+            seen.add(synonym)
+
+    return expanded[:24]
+
+
+def _dense_query_variants(query: str) -> list[str]:
+    """Build lightweight dense-query variants from lexical synonym expansion.
+
+    Args:
+        query: Original natural-language query text.
+
+    Returns:
+        Deduplicated query variants with bounded synonym augmentation.
+    """
+    base_query = query.strip()
+    if not base_query:
+        return []
+
+    variants: list[str] = [base_query]
+    base_tokens = _query_tokens(base_query)
+    lexical_tokens = _query_tokens_for_lexical_graph(base_query)
+    base_token_set = set(base_tokens)
+    extra_tokens = [token for token in lexical_tokens if token not in base_token_set]
+    if extra_tokens:
+        variants.append(f"{base_query} {' '.join(extra_tokens[:6])}")
+
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in variants:
+        lowered = item.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(item)
+    return deduped[:2]
+
+
+def _query_coverage_signal(query_tokens: set[str], result: RetrievalResult) -> float:
+    """Estimate how much a result directly covers query terms.
+
+    Args:
+        query_tokens: Deduplicated query tokens.
+        result: Retrieved and graph-expanded result.
+
+    Returns:
+        Ratio in ``[0.0, 1.0]`` for token overlap between query and result.
+    """
+    if not query_tokens:
+        return 0.0
+    content_tokens = set(_query_tokens(result.content))
+    entity_tokens = {token for entity in result.related_entities for token in _query_tokens(entity)}
+    support_tokens = content_tokens | entity_tokens
+    if not support_tokens:
+        return 0.0
+    overlap = len(query_tokens & support_tokens)
+    return min(1.0, overlap / len(query_tokens))
 
 
 def _vector_search(query: str, top_k: int) -> list[RetrievalResult]:
@@ -504,7 +678,20 @@ def _graph_expand(hit_or_result, session=None):
     if session is None:
         raise ValueError("session is required when expanding a VectorHit")
 
-    neighbour_cypher = (
+    promoted_cypher = (
+        "MATCH (c:Chunk) "
+        "WHERE coalesce(c.node_id, c.name) = $chunk_id "
+        "OPTIONAL MATCH (a:Assertion)-[:SUPPORTED_BY]->(c) "
+        "OPTIONAL MATCH (a)-[:ASSERTS_SUBJECT]->(s:CanonicalEntity) "
+        "OPTIONAL MATCH (a)-[:ASSERTS_OBJECT]->(o:CanonicalEntity) "
+        "OPTIONAL MATCH (d:SourceDocument)-[:HAS_CHUNK]->(c) "
+        "OPTIONAL MATCH (d)-[:HAS_CHUNK]->(near:Chunk) "
+        "WHERE coalesce(near.node_id, near.name) <> coalesce(c.node_id, c.name) "
+        "RETURN collect(DISTINCT s.preferred_label)[0..20] AS subject_entities, "
+        "collect(DISTINCT o.preferred_label)[0..20] AS object_entities, "
+        "collect(DISTINCT coalesce(near.node_id, near.name))[0..10] AS neighbour_chunks"
+    )
+    legacy_cypher = (
         "MATCH (c:Chunk {name: $chunk_id}) "
         "OPTIONAL MATCH (c)-[:MENTIONS]->(e) "
         "OPTIONAL MATCH (src)-[:HAS_CHUNK]->(c) "
@@ -513,9 +700,16 @@ def _graph_expand(hit_or_result, session=None):
         "collect(DISTINCT near.name)[0..10] AS neighbour_chunks"
     )
 
-    row = session.run(neighbour_cypher, chunk_id=hit.chunk_id).single()
-    entities = [str(item) for item in (row["entities"] if row else []) if item]
+    row = session.run(promoted_cypher, chunk_id=hit.chunk_id).single()
+    subject_entities = [str(item) for item in (row["subject_entities"] if row else []) if item]
+    object_entities = [str(item) for item in (row["object_entities"] if row else []) if item]
     neighbour_chunks = [str(item) for item in (row["neighbour_chunks"] if row else []) if item]
+
+    entities = sorted(set(subject_entities + object_entities))
+    if not entities and not neighbour_chunks:
+        row = session.run(legacy_cypher, chunk_id=hit.chunk_id).single()
+        entities = [str(item) for item in (row["entities"] if row else []) if item]
+        neighbour_chunks = [str(item) for item in (row["neighbour_chunks"] if row else []) if item]
 
     combined_neighbours = sorted(set(entities + neighbour_chunks))
     score = hit.score + (0.05 * len(entities)) + (0.02 * len(neighbour_chunks))
@@ -537,18 +731,27 @@ def _graph_expand(hit_or_result, session=None):
 def _sparse_query_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
     if top_k <= 0:
         return []
-    tokens = _query_tokens(query)
+    tokens = _query_tokens_for_lexical_graph(query)
     if not tokens:
         return []
 
     cypher = (
         "MATCH (c:Chunk) "
-        "WITH c, [t IN $tokens WHERE toLower(c.content) CONTAINS t] AS matched "
+        "WITH c, "
+        "toLower(coalesce(c.content, '')) + ' ' + "
+        "toLower(coalesce(c.section, '')) + ' ' + "
+        "toLower(coalesce(c.title, '')) AS haystack "
+        "WITH c, [t IN $tokens WHERE haystack CONTAINS t] AS matched "
         "WITH c, matched, size(matched) AS score "
         "WHERE score > 0 "
-        "RETURN c.name AS chunk_id, c.content AS content, c.source_path AS source_path, "
-        "c.relative_path AS relative_path, c.chunk_index AS chunk_index, "
-        "c.chunk_kind AS chunk_kind, c.line_start AS line_start, c.line_end AS line_end, score "
+        "RETURN coalesce(c.node_id, c.name) AS chunk_id, "
+        "coalesce(c.content, '') AS content, "
+        "coalesce(c.source_path, '') AS source_path, "
+        "coalesce(c.relative_path, c.source_path, '') AS relative_path, "
+        "coalesce(c.chunk_index, 0) AS chunk_index, "
+        "coalesce(c.chunk_kind, c.section, '') AS chunk_kind, "
+        "coalesce(c.line_start, 1) AS line_start, "
+        "coalesce(c.line_end, 1) AS line_end, score "
         "ORDER BY score DESC LIMIT $top_k"
     )
 
@@ -559,14 +762,14 @@ def _sparse_query_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit
     for row in rows:
         hits.append(
             VectorHit(
-                chunk_id=str(row["chunk_id"]),
-                content=str(row["content"]),
-                source_path=str(row["source_path"]),
+                chunk_id=str(row["chunk_id"] or ""),
+                content=str(row["content"] or ""),
+                source_path=str(row["source_path"] or ""),
                 score=float(row["score"]),
                 metadata={
-                    "relative_path": str(row["relative_path"]),
-                    "chunk_index": int(row["chunk_index"]),
-                    "chunk_kind": str(row["chunk_kind"]),
+                    "relative_path": str(row["relative_path"] or ""),
+                    "chunk_index": int(row["chunk_index"] or 0),
+                    "chunk_kind": str(row["chunk_kind"] or ""),
                     "section": "",
                     "line_start": int(row["line_start"] or 1),
                     "line_end": int(row["line_end"] or 1),
@@ -578,7 +781,7 @@ def _sparse_query_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit
 
 
 def _graph_seed_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
-    tokens = _query_tokens(query)
+    tokens = _query_tokens_for_lexical_graph(query)
     if not tokens:
         return []
 
@@ -626,7 +829,7 @@ def _find_domain_concepts(query: str) -> list[str]:
     """Return canonical concept names whose aliases appear in *query*."""
     lowered = query.lower()
     matched: list[str] = []
-    for concepts in DOMAIN_ALIASES.values():
+    for concepts in _LEGACY_DOMAIN_ALIASES.values():
         for canonical_name, aliases in concepts.items():
             candidate_aliases = tuple(alias.lower() for alias in aliases) + _QUERY_ONLY_CONCEPT_ALIASES.get(
                 canonical_name,
@@ -635,6 +838,169 @@ def _find_domain_concepts(query: str) -> list[str]:
             if canonical_name.lower() in lowered or any(alias in lowered for alias in candidate_aliases):
                 matched.append(canonical_name)
     return matched
+
+
+def _promoted_graph_seed_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
+    """Seed graph hits from promoted canonical entities and assertions."""
+    tokens = _query_tokens_for_lexical_graph(query)
+    if not tokens:
+        return []
+
+    cypher = (
+        "MATCH (e:CanonicalEntity) "
+        "WHERE any(t IN $tokens WHERE toLower(e.preferred_label) CONTAINS t "
+        "OR toLower(coalesce(e.normalized_label, '')) CONTAINS t) "
+        "OPTIONAL MATCH (a:Assertion)-[:ASSERTS_SUBJECT|ASSERTS_OBJECT]->(e) "
+        "OPTIONAL MATCH (a)-[:SUPPORTED_BY]->(c:Chunk) "
+        "WITH c, max(coalesce(a.confidence, 0.0)) AS score "
+        "WHERE c IS NOT NULL "
+        "RETURN coalesce(c.node_id, c.name) AS chunk_id, "
+        "coalesce(c.content, '') AS content, "
+        "coalesce(c.source_path, '') AS source_path, "
+        "coalesce(c.relative_path, c.source_path, '') AS relative_path, "
+        "coalesce(c.chunk_index, 0) AS chunk_index, "
+        "coalesce(c.chunk_kind, c.section, '') AS chunk_kind, "
+        "coalesce(c.line_start, 1) AS line_start, "
+        "coalesce(c.line_end, 1) AS line_end, score "
+        "ORDER BY score DESC LIMIT $top_k"
+    )
+
+    with driver.session() as session:
+        rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
+
+    hits: list[VectorHit] = []
+    for row in rows:
+        hits.append(
+            VectorHit(
+                chunk_id=str(row["chunk_id"] or ""),
+                content=str(row["content"] or ""),
+                source_path=str(row["source_path"] or ""),
+                score=float(row["score"]),
+                metadata={
+                    "relative_path": str(row["relative_path"] or ""),
+                    "chunk_index": int(row["chunk_index"] or 0),
+                    "chunk_kind": str(row["chunk_kind"] or ""),
+                    "section": "",
+                    "line_start": int(row["line_start"] or 1),
+                    "line_end": int(row["line_end"] or 1),
+                    "content_hash": "",
+                },
+            )
+        )
+    return hits
+
+
+def _promoted_graph_hop_expansion(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
+    """Expand graph hits through ontology class neighborhoods in promoted graph."""
+    tokens = _query_tokens_for_lexical_graph(query)
+    if not tokens:
+        return []
+
+    cypher = (
+        "MATCH (oc:OntologyClass)<-[:INSTANCE_OF]-(e:CanonicalEntity) "
+        "WHERE any(t IN $tokens WHERE toLower(oc.label) CONTAINS t "
+        "OR toLower(coalesce(oc.definition, '')) CONTAINS t) "
+        "MATCH (a:Assertion)-[:ASSERTS_SUBJECT|ASSERTS_OBJECT]->(e) "
+        "MATCH (a)-[:SUPPORTED_BY]->(c:Chunk) "
+        "RETURN coalesce(c.node_id, c.name) AS chunk_id, "
+        "coalesce(c.content, '') AS content, "
+        "coalesce(c.source_path, '') AS source_path, "
+        "coalesce(c.relative_path, c.source_path, '') AS relative_path, "
+        "coalesce(c.chunk_index, 0) AS chunk_index, "
+        "coalesce(c.chunk_kind, c.section, '') AS chunk_kind, "
+        "coalesce(c.line_start, 1) AS line_start, "
+        "coalesce(c.line_end, 1) AS line_end, "
+        "max(coalesce(a.confidence, 0.0)) AS score "
+        "ORDER BY score DESC LIMIT $top_k"
+    )
+
+    try:
+        with driver.session() as session:
+            rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
+    except Exception as exc:
+        logger.debug("Promoted graph-hop expansion query failed: %s", exc)
+        return []
+
+    hits: list[VectorHit] = []
+    for row in rows:
+        hits.append(
+            VectorHit(
+                chunk_id=str(row["chunk_id"] or ""),
+                content=str(row["content"] or ""),
+                source_path=str(row["source_path"] or ""),
+                score=float(row["score"]),
+                metadata={
+                    "relative_path": str(row["relative_path"] or ""),
+                    "chunk_index": int(row["chunk_index"] or 0),
+                    "chunk_kind": str(row["chunk_kind"] or ""),
+                    "section": "",
+                    "line_start": int(row["line_start"] or 1),
+                    "line_end": int(row["line_end"] or 1),
+                    "content_hash": "",
+                },
+            )
+        )
+    return hits
+
+
+def _promoted_graph_bridge_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
+    """Expand from seed entities to assertion-bridged peer entities.
+
+    This supplements seed and ontology-class traversal by traversing one
+    assertion hop to peer canonical entities, then collecting supporting chunks.
+    """
+    tokens = _query_tokens_for_lexical_graph(query)
+    if not tokens:
+        return []
+
+    cypher = (
+        "MATCH (seed:CanonicalEntity) "
+        "WHERE any(t IN $tokens WHERE toLower(seed.preferred_label) CONTAINS t "
+        "OR toLower(coalesce(seed.normalized_label, '')) CONTAINS t) "
+        "MATCH (a1:Assertion)-[:ASSERTS_SUBJECT|ASSERTS_OBJECT]->(seed) "
+        "MATCH (a1)-[:ASSERTS_SUBJECT|ASSERTS_OBJECT]->(peer:CanonicalEntity) "
+        "WHERE peer <> seed "
+        "MATCH (a2:Assertion)-[:ASSERTS_SUBJECT|ASSERTS_OBJECT]->(peer) "
+        "MATCH (a2)-[:SUPPORTED_BY]->(c:Chunk) "
+        "WITH c, max(coalesce(a1.confidence, 0.0) * 0.35 + coalesce(a2.confidence, 0.0) * 0.65) AS score "
+        "RETURN coalesce(c.node_id, c.name) AS chunk_id, "
+        "coalesce(c.content, '') AS content, "
+        "coalesce(c.source_path, '') AS source_path, "
+        "coalesce(c.relative_path, c.source_path, '') AS relative_path, "
+        "coalesce(c.chunk_index, 0) AS chunk_index, "
+        "coalesce(c.chunk_kind, c.section, '') AS chunk_kind, "
+        "coalesce(c.line_start, 1) AS line_start, "
+        "coalesce(c.line_end, 1) AS line_end, score "
+        "ORDER BY score DESC LIMIT $top_k"
+    )
+
+    try:
+        with driver.session() as session:
+            rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
+    except Exception as exc:
+        logger.debug("Promoted graph bridge expansion query failed: %s", exc)
+        return []
+
+    hits: list[VectorHit] = []
+    for row in rows:
+        hits.append(
+            VectorHit(
+                chunk_id=str(row["chunk_id"] or ""),
+                content=str(row["content"] or ""),
+                source_path=str(row["source_path"] or ""),
+                score=float(row["score"]),
+                metadata={
+                    "relative_path": str(row["relative_path"] or ""),
+                    "chunk_index": int(row["chunk_index"] or 0),
+                    "chunk_kind": str(row["chunk_kind"] or ""),
+                    "section": "",
+                    "line_start": int(row["line_start"] or 1),
+                    "line_end": int(row["line_end"] or 1),
+                    "content_hash": "",
+                },
+            )
+        )
+    return hits
 
 
 def _graph_hop_expansion(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
@@ -706,33 +1072,117 @@ def _graph_hop_expansion(driver: Driver, query: str, top_k: int) -> list[VectorH
 def _merge_hits(dense_hits: list[VectorHit], sparse_hits: list[VectorHit], top_k: int) -> list[VectorHit]:
     """Merge dense and sparse hit lists into a single ranking.
 
-    The current weighting favours dense retrieval (`0.65`) while still letting
-    exact lexical matches influence the final order (`0.35`). This is a fixed,
-    deterministic heuristic chosen for simplicity and predictable tests rather
-    than a learned ranking model.
+    Uses reciprocal-rank fusion (RRF) as the primary signal, then blends a
+    calibrated score channel and overlap bonus. This avoids brittle behavior
+    when dense/sparse raw scores live on different scales.
     """
-    merged: dict[str, VectorHit] = {}
-    for hit in dense_hits:
-        key = hit.chunk_id
-        merged[key] = hit
+    if top_k <= 0:
+        return []
 
-    for hit in sparse_hits:
+    merged: dict[str, VectorHit] = {}
+    dense_rank = {hit.chunk_id: index + 1 for index, hit in enumerate(dense_hits)}
+    sparse_rank = {hit.chunk_id: index + 1 for index, hit in enumerate(sparse_hits)}
+    dense_score = _normalize_scores({hit.chunk_id: float(hit.score) for hit in dense_hits})
+    sparse_score = _normalize_scores({hit.chunk_id: float(hit.score) for hit in sparse_hits})
+
+    for hit in dense_hits + sparse_hits:
         key = hit.chunk_id
-        existing = merged.get(key)
-        if existing is None:
-            merged[key] = VectorHit(
+        if key in merged:
+            existing = merged[key]
+            if not existing.content:
+                existing.content = hit.content
+            if not existing.source_path:
+                existing.source_path = hit.source_path
+            if not existing.metadata:
+                existing.metadata = dict(hit.metadata)
+            continue
+        merged[key] = VectorHit(
+            chunk_id=hit.chunk_id,
+            content=hit.content,
+            source_path=hit.source_path,
+            score=0.0,
+            metadata=dict(hit.metadata),
+        )
+
+    rrf_k = 60.0
+    for chunk_id, hit in merged.items():
+        rrf = 0.0
+        if chunk_id in dense_rank:
+            rrf += 1.0 / (rrf_k + dense_rank[chunk_id])
+        if chunk_id in sparse_rank:
+            rrf += 1.0 / (rrf_k + sparse_rank[chunk_id])
+
+        dense_component = dense_score.get(chunk_id, 0.0)
+        sparse_component = sparse_score.get(chunk_id, 0.0)
+        channel_count = int(chunk_id in dense_rank) + int(chunk_id in sparse_rank)
+        calibrated = (dense_component + sparse_component) / max(channel_count, 1)
+        overlap_bonus = 0.22 if channel_count == 2 else 0.0
+        hit.score = (0.55 * rrf) + (0.23 * calibrated) + overlap_bonus
+
+    ordered = sorted(merged.values(), key=lambda item: item.score, reverse=True)
+    return ordered[:top_k]
+
+
+def _merge_dense_variant_hits(variant_hit_lists: list[list[VectorHit]], top_k: int) -> list[VectorHit]:
+    """Merge dense hit lists from multiple query variants.
+
+    Args:
+        variant_hit_lists: Dense hit lists ordered by query variant priority.
+        top_k: Maximum number of merged hits to return.
+
+    Returns:
+        Ranked dense hits merged with reciprocal-rank and calibrated scores.
+    """
+    if top_k <= 0:
+        return []
+
+    merged: dict[str, VectorHit] = {}
+    variant_ranks: list[dict[str, int]] = []
+    variant_scores: list[dict[str, float]] = []
+
+    for hits in variant_hit_lists:
+        variant_ranks.append({hit.chunk_id: index + 1 for index, hit in enumerate(hits)})
+        variant_scores.append(_normalize_scores({hit.chunk_id: float(hit.score) for hit in hits}))
+        for hit in hits:
+            if hit.chunk_id in merged:
+                continue
+            merged[hit.chunk_id] = VectorHit(
                 chunk_id=hit.chunk_id,
                 content=hit.content,
                 source_path=hit.source_path,
                 score=0.0,
                 metadata=dict(hit.metadata),
             )
-            existing = merged[key]
 
-        existing.score = (0.65 * float(existing.score)) + (0.35 * float(hit.score))
-        for field_name in ("content", "source_path"):
-            if not getattr(existing, field_name):
-                setattr(existing, field_name, getattr(hit, field_name))
+    rrf_k = 60.0
+    for chunk_id, hit in merged.items():
+        rrf = 0.0
+        calibrated = 0.0
+        seen_variants = 0
+        for variant_index, rank_map in enumerate(variant_ranks):
+            rank = rank_map.get(chunk_id)
+            if rank is None:
+                continue
+            seen_variants += 1
+            rrf += 1.0 / (rrf_k + rank + (variant_index * 3))
+            calibrated += variant_scores[variant_index].get(chunk_id, 0.0)
+
+        overlap_bonus = 0.16 if seen_variants > 1 else 0.0
+        calibrated = calibrated / max(seen_variants, 1)
+        hit.score = (0.62 * rrf) + (0.22 * calibrated) + overlap_bonus
 
     ordered = sorted(merged.values(), key=lambda item: item.score, reverse=True)
     return ordered[:top_k]
+
+
+def _normalize_scores(raw_scores: dict[str, float]) -> dict[str, float]:
+    """Min-max normalize arbitrary backend scores to [0, 1]."""
+    if not raw_scores:
+        return {}
+
+    values = list(raw_scores.values())
+    minimum = min(values)
+    maximum = max(values)
+    if maximum <= minimum:
+        return {key: 1.0 for key in raw_scores}
+    return {key: (score - minimum) / (maximum - minimum) for key, score in raw_scores.items()}

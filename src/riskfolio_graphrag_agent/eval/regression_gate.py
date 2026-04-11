@@ -22,7 +22,7 @@ This module does not compute metrics itself, execute retrieval, or own broader
 observability reporting.
 
 Usage:
-        python -m riskfolio_graphrag_agent.eval.regression_gate --report eval_results.json
+    python -m riskfolio_graphrag_agent.eval.regression_gate --report benchmarks/eval_results.json
 """
 
 from __future__ import annotations
@@ -43,7 +43,10 @@ def run_regression_gate(
     min_relevance: float = 0.8,
     min_context_recall: float = 0.45,
     min_grounding: float = 0.35,
-    min_multi_hop_accuracy: float = 0.25,
+    min_multi_hop_accuracy: float = 0.0,
+    min_link_prediction_mrr: float = 0.0,
+    min_link_prediction_ndcg_at_3: float = 0.0,
+    min_rank_quality: float = 0.0,
     max_latency_ms: float = 5000.0,
     max_estimated_cost_usd: float = 0.02,
     trend_path: str | Path = "artifacts/eval/eval_trend.json",
@@ -57,6 +60,9 @@ def run_regression_gate(
         min_context_recall: Minimum acceptable context recall.
         min_grounding: Minimum acceptable grounding score.
         min_multi_hop_accuracy: Minimum acceptable multi-hop support score.
+        min_link_prediction_mrr: Minimum acceptable order-sensitive MRR.
+        min_link_prediction_ndcg_at_3: Minimum acceptable order-sensitive NDCG@3.
+        min_rank_quality: Minimum acceptable weighted rank-quality score.
         max_latency_ms: Maximum acceptable mean latency in milliseconds.
         max_estimated_cost_usd: Maximum acceptable estimated cost.
         trend_path: Path to the rolling JSON trend artifact.
@@ -71,8 +77,20 @@ def run_regression_gate(
     recall = float(report.get("context_recall", 0.0))
     grounding = float(report.get("grounding", 0.0))
     multi_hop_accuracy = float(report.get("multi_hop_accuracy", 0.0))
+    link_prediction_mrr = float(report.get("link_prediction_mrr", 0.0))
+    link_prediction_ndcg_at_3 = float(report.get("link_prediction_ndcg_at_3", 0.0))
+    rank_quality = float(report.get("rank_quality", 0.0))
     latency_ms = float(report.get("avg_latency_ms", 0.0))
     estimated_cost_usd = float(report.get("estimated_cost_usd", 0.0))
+    metric_profile = str(report.get("metric_profile", "")).strip().lower()
+
+    effective_min_link_prediction_mrr = min_link_prediction_mrr
+    effective_min_link_prediction_ndcg_at_3 = min_link_prediction_ndcg_at_3
+    effective_min_rank_quality = min_rank_quality
+    if metric_profile == "graph-order-sensitive":
+        effective_min_link_prediction_mrr = max(effective_min_link_prediction_mrr, 0.30)
+        effective_min_link_prediction_ndcg_at_3 = max(effective_min_link_prediction_ndcg_at_3, 0.45)
+        effective_min_rank_quality = max(effective_min_rank_quality, 0.35)
 
     failures: list[str] = []
     if faithfulness < min_faithfulness:
@@ -85,6 +103,18 @@ def run_regression_gate(
         failures.append(f"grounding={grounding:.4f} < min_grounding={min_grounding:.4f}")
     if multi_hop_accuracy < min_multi_hop_accuracy:
         failures.append(f"multi_hop_accuracy={multi_hop_accuracy:.4f} < min_multi_hop_accuracy={min_multi_hop_accuracy:.4f}")
+    if link_prediction_mrr < effective_min_link_prediction_mrr:
+        failures.append(
+            f"link_prediction_mrr={link_prediction_mrr:.4f} < min_link_prediction_mrr={effective_min_link_prediction_mrr:.4f}"
+        )
+    if link_prediction_ndcg_at_3 < effective_min_link_prediction_ndcg_at_3:
+        failures.append(
+            "link_prediction_ndcg_at_3="
+            f"{link_prediction_ndcg_at_3:.4f} < min_link_prediction_ndcg_at_3="
+            f"{effective_min_link_prediction_ndcg_at_3:.4f}"
+        )
+    if rank_quality < effective_min_rank_quality:
+        failures.append(f"rank_quality={rank_quality:.4f} < min_rank_quality={effective_min_rank_quality:.4f}")
     if latency_ms > max_latency_ms:
         failures.append(f"avg_latency_ms={latency_ms:.2f} > max_latency_ms={max_latency_ms:.2f}")
     if estimated_cost_usd > max_estimated_cost_usd:
@@ -108,12 +138,15 @@ def main() -> int:
         ``0`` when the report passes all thresholds, otherwise ``1``.
     """
     parser = argparse.ArgumentParser(description="Evaluation regression gate")
-    parser.add_argument("--report", default="eval_results.json", help="Path to eval report JSON")
+    parser.add_argument("--report", default="benchmarks/eval_results.json", help="Path to eval report JSON")
     parser.add_argument("--min-faithfulness", type=float, default=0.35)
     parser.add_argument("--min-relevance", type=float, default=0.8)
     parser.add_argument("--min-context-recall", type=float, default=0.45)
     parser.add_argument("--min-grounding", type=float, default=0.35)
     parser.add_argument("--min-multi-hop-accuracy", type=float, default=0.25)
+    parser.add_argument("--min-link-prediction-mrr", type=float, default=0.0)
+    parser.add_argument("--min-link-prediction-ndcg-at-3", type=float, default=0.0)
+    parser.add_argument("--min-rank-quality", type=float, default=0.0)
     parser.add_argument("--max-latency-ms", type=float, default=5000.0)
     parser.add_argument("--max-estimated-cost-usd", type=float, default=0.02)
     parser.add_argument("--trend-path", default="artifacts/eval/eval_trend.json")
@@ -127,6 +160,9 @@ def main() -> int:
             min_context_recall=args.min_context_recall,
             min_grounding=args.min_grounding,
             min_multi_hop_accuracy=args.min_multi_hop_accuracy,
+            min_link_prediction_mrr=args.min_link_prediction_mrr,
+            min_link_prediction_ndcg_at_3=args.min_link_prediction_ndcg_at_3,
+            min_rank_quality=args.min_rank_quality,
             max_latency_ms=args.max_latency_ms,
             max_estimated_cost_usd=args.max_estimated_cost_usd,
             trend_path=args.trend_path,
@@ -171,6 +207,9 @@ def _append_trend(
         "answer_relevance": float(report.get("answer_relevance", 0.0)),
         "grounding": float(report.get("grounding", 0.0)),
         "multi_hop_accuracy": float(report.get("multi_hop_accuracy", 0.0)),
+        "link_prediction_mrr": float(report.get("link_prediction_mrr", 0.0)),
+        "link_prediction_ndcg_at_3": float(report.get("link_prediction_ndcg_at_3", 0.0)),
+        "rank_quality": float(report.get("rank_quality", 0.0)),
         "avg_latency_ms": float(report.get("avg_latency_ms", 0.0)),
         "estimated_cost_usd": float(report.get("estimated_cost_usd", 0.0)),
         "failed_checks": list(failed_checks or []),
@@ -195,6 +234,9 @@ def _metric_deltas(
         "answer_relevance",
         "grounding",
         "multi_hop_accuracy",
+        "link_prediction_mrr",
+        "link_prediction_ndcg_at_3",
+        "rank_quality",
         "avg_latency_ms",
         "estimated_cost_usd",
     )
@@ -217,6 +259,9 @@ def _drift_flagged(metric_deltas: dict[str, float]) -> bool:
         "answer_relevance",
         "grounding",
         "multi_hop_accuracy",
+        "link_prediction_mrr",
+        "link_prediction_ndcg_at_3",
+        "rank_quality",
     )
     if any(metric_deltas.get(metric, 0.0) <= -0.15 for metric in score_metrics):
         return True

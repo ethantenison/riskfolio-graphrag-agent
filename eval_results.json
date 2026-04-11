@@ -1,23 +1,23 @@
 {
   "num_samples": 25,
-  "context_recall": 0.6259,
-  "context_precision": 0.2586,
+  "context_recall": 0.6109,
+  "context_precision": 0.2647,
   "answer_faithfulness": 0.84,
-  "answer_relevance": 0.8563,
-  "grounding": 0.7829,
-  "multi_hop_accuracy": 0.3264,
+  "answer_relevance": 0.8673,
+  "grounding": 0.8601,
+  "multi_hop_accuracy": 0.165,
   "er_precision": 1.0,
   "er_recall": 1.0,
   "er_f1": 1.0,
-  "link_prediction_mrr": 1.0,
+  "link_prediction_mrr": 0.94,
   "link_prediction_hits_at_3": 1.0,
   "link_prediction_hits_at_10": 1.0,
-  "avg_latency_ms": 273.7337,
+  "avg_latency_ms": 280.7303,
   "estimated_cost_usd": 0.0002,
   "retrieval_mode": "hybrid_rerank",
   "embedding_provider": "hash",
   "metric_profile": "heuristic-overlap",
-  "run_at": "2026-04-09T17:23:06.173134+00:00",
+  "run_at": "2026-04-10T01:59:42.814012+00:00",
   "per_sample": [
     {
       "question": "What is Hierarchical Risk Parity (HRP)?",
@@ -31,20 +31,20 @@
         "graph-helpful"
       ],
       "context_recall": 1.0,
-      "context_precision": 0.4859,
+      "context_precision": 0.5139,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8417,
-      "grounding": 0.8,
-      "multi_hop_accuracy": 0.6006,
-      "latency_ms": 707.98,
-      "estimated_cost_usd": 0.000255,
+      "answer_relevance": 0.8588,
+      "grounding": 0.75,
+      "multi_hop_accuracy": 0.324,
+      "latency_ms": 867.57,
+      "estimated_cost_usd": 0.000235,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst"
       ],
       "matched_terms": [
         "hrp",
@@ -69,11 +69,11 @@
       "context_recall": 0.6667,
       "context_precision": 0.2891,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.825,
-      "grounding": 0.8071,
-      "multi_hop_accuracy": 0.3331,
-      "latency_ms": 240.74,
-      "estimated_cost_usd": 0.000191,
+      "answer_relevance": 0.8286,
+      "grounding": 0.9062,
+      "multi_hop_accuracy": 0.12,
+      "latency_ms": 255.58,
+      "estimated_cost_usd": 0.000187,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py",
@@ -93,7 +93,8 @@
         "average"
       ],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -110,18 +111,18 @@
       "context_recall": 0.375,
       "context_precision": 0.0692,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8522,
-      "grounding": 0.8423,
-      "multi_hop_accuracy": 0.455,
-      "latency_ms": 290.27,
-      "estimated_cost_usd": 0.000257,
+      "answer_relevance": 0.86,
+      "grounding": 0.75,
+      "multi_hop_accuracy": 0.255,
+      "latency_ms": 257.99,
+      "estimated_cost_usd": 0.000253,
       "retrieved_contexts": 5,
       "retrieved_sources": [
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py"
       ],
       "matched_terms": [
         "historical",
@@ -151,17 +152,17 @@
         "optimization",
         "graph-helpful"
       ],
-      "context_recall": 0.5714,
-      "context_precision": 0.2616,
+      "context_recall": 0.4286,
+      "context_precision": 0.2388,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8462,
-      "grounding": 0.8438,
-      "multi_hop_accuracy": 0.3484,
-      "latency_ms": 256.82,
-      "estimated_cost_usd": 0.000244,
+      "answer_relevance": 0.8522,
+      "grounding": 0.9193,
+      "multi_hop_accuracy": 0.195,
+      "latency_ms": 269.56,
+      "estimated_cost_usd": 0.000258,
       "retrieved_contexts": 5,
       "retrieved_sources": [
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/course.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
@@ -170,16 +171,18 @@
       "matched_terms": [
         "constraint",
         "linear",
-        "graph",
         "risk contribution"
       ],
       "missed_terms": [
         "factor-exposure",
         "black-litterman",
+        "graph",
         "clustering"
       ],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_recall",
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -194,19 +197,19 @@
         "lexical"
       ],
       "context_recall": 0.5,
-      "context_precision": 0.184,
+      "context_precision": 0.2223,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8519,
-      "grounding": 0.781,
-      "multi_hop_accuracy": 0.3152,
-      "latency_ms": 262.59,
-      "estimated_cost_usd": 0.000241,
+      "answer_relevance": 0.8875,
+      "grounding": 0.7272,
+      "multi_hop_accuracy": 0.2057,
+      "latency_ms": 252.73,
+      "estimated_cost_usd": 0.000257,
       "retrieved_contexts": 5,
       "retrieved_sources": [
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/README.md",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/course.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/README.md",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/contributing.rst"
       ],
       "matched_terms": [
@@ -218,7 +221,8 @@
         "efficient frontier"
       ],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -232,20 +236,20 @@
         "constraints"
       ],
       "context_recall": 0.8333,
-      "context_precision": 0.2977,
+      "context_precision": 0.299,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8609,
-      "grounding": 0.8167,
-      "multi_hop_accuracy": 0.1943,
-      "latency_ms": 256.09,
-      "estimated_cost_usd": 0.000221,
+      "answer_relevance": 0.87,
+      "grounding": 0.8833,
+      "multi_hop_accuracy": 0.18,
+      "latency_ms": 254.29,
+      "estimated_cost_usd": 0.000247,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/__init__.py"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 23 - Dollar Neutral Portfolios.ipynb"
       ],
       "matched_terms": [
         "constraints",
@@ -273,17 +277,17 @@
         "estimation"
       ],
       "context_recall": 0.75,
-      "context_precision": 0.4759,
+      "context_precision": 0.5065,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8583,
-      "grounding": 0.84,
-      "multi_hop_accuracy": 0.2729,
-      "latency_ms": 248.82,
-      "estimated_cost_usd": 0.000211,
+      "answer_relevance": 0.8667,
+      "grounding": 0.9062,
+      "multi_hop_accuracy": 0.1929,
+      "latency_ms": 263.4,
+      "estimated_cost_usd": 0.000246,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py"
@@ -296,7 +300,9 @@
       "missed_terms": [
         "optimization"
       ],
-      "failure_reasons": []
+      "failure_reasons": [
+        "low_multi_hop_accuracy"
+      ]
     },
     {
       "question": "Which risk measures are related to CVaR?",
@@ -309,39 +315,41 @@
         "risk-measures",
         "graph-helpful"
       ],
-      "context_recall": 0.4545,
-      "context_precision": 0.2561,
+      "context_recall": 0.8333,
+      "context_precision": 0.3099,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8462,
-      "grounding": 0.8939,
-      "multi_hop_accuracy": 0.5158,
-      "latency_ms": 241.57,
-      "estimated_cost_usd": 0.000304,
+      "answer_relevance": 0.86,
+      "grounding": 0.9493,
+      "multi_hop_accuracy": 0.21,
+      "latency_ms": 257.28,
+      "estimated_cost_usd": 0.000284,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/index.rst",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/index.rst",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/hcportfolio.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 11 - Risk Parity Portfolio Optimization using Risk Factors and Stepwise Regression.ipynb",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 37 - OWA Portfolio Optimization.ipynb"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/hcportfolio.rst"
       ],
       "matched_terms": [
         "cvar",
         "var",
         "tail gini",
-        "evar",
-        "rlvar"
-      ],
-      "missed_terms": [
         "tg",
-        "vrg",
+        "evar",
+        "rlvar",
         "cvrg",
         "tgrg",
         "evrg",
         "rvrg"
       ],
+      "missed_terms": [
+        "wr",
+        "tail-loss"
+      ],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -355,31 +363,32 @@
         "examples",
         "graph-helpful"
       ],
-      "context_recall": 0.75,
-      "context_precision": 0.1998,
+      "context_recall": 0.25,
+      "context_precision": 0.1029,
       "answer_faithfulness": 1.0,
       "answer_relevance": 0.8538,
-      "grounding": 0.6125,
-      "multi_hop_accuracy": 0.1314,
-      "latency_ms": 245.53,
-      "estimated_cost_usd": 0.000226,
+      "grounding": 0.925,
+      "multi_hop_accuracy": 0.0514,
+      "latency_ms": 279.89,
+      "estimated_cost_usd": 0.000219,
       "retrieved_contexts": 5,
       "retrieved_sources": [
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/install.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/contributing.rst",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py"
       ],
       "matched_terms": [
-        "allocation",
-        "plot",
         "examples"
       ],
       "missed_terms": [
+        "allocation",
+        "plot",
         "report"
       ],
       "failure_reasons": [
+        "low_context_recall",
         "low_context_precision",
         "low_multi_hop_accuracy"
       ]
@@ -394,30 +403,30 @@
         "constraint",
         "lookup"
       ],
-      "context_recall": 0.2222,
-      "context_precision": 0.0996,
+      "context_recall": 0.1111,
+      "context_precision": 0.0638,
       "answer_faithfulness": 0.0,
-      "answer_relevance": 0.8385,
-      "grounding": 0.8625,
-      "multi_hop_accuracy": 0.282,
-      "latency_ms": 237.51,
-      "estimated_cost_usd": 0.000192,
+      "answer_relevance": 0.8435,
+      "grounding": 0.8056,
+      "multi_hop_accuracy": 0.108,
+      "latency_ms": 247.38,
+      "estimated_cost_usd": 0.000273,
       "retrieved_contexts": 5,
       "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 42 - Higher L-Moments OWA Portfolio Optimization.ipynb",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 37 - OWA Portfolio Optimization.ipynb",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 4 - Bond Portfolio Optimization and Immunization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 4 - Bond Portfolio Optimization and Immunization.ipynb",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 4 - Bond Portfolio Optimization and Immunization.ipynb"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py"
       ],
       "matched_terms": [
-        "constraint",
-        "long"
+        "constraint"
       ],
       "missed_terms": [
         "leverage",
         "budget",
         "short",
+        "long",
         "budgetsht",
         "upperlng",
         "uppersht",
@@ -426,7 +435,8 @@
       "failure_reasons": [
         "low_context_recall",
         "low_context_precision",
-        "low_answer_faithfulness"
+        "low_answer_faithfulness",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -442,18 +452,18 @@
       "context_recall": 0.5,
       "context_precision": 0.2506,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8526,
-      "grounding": 0.7929,
-      "multi_hop_accuracy": 0.3937,
-      "latency_ms": 248.34,
-      "estimated_cost_usd": 0.000283,
+      "answer_relevance": 0.8476,
+      "grounding": 0.9,
+      "multi_hop_accuracy": 0.18,
+      "latency_ms": 272.15,
+      "estimated_cost_usd": 0.000282,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py"
       ],
       "matched_terms": [
         "covariance",
@@ -466,7 +476,8 @@
         "clustering"
       ],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -480,19 +491,19 @@
         "plots"
       ],
       "context_recall": 0.75,
-      "context_precision": 0.2091,
+      "context_precision": 0.2441,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8778,
-      "grounding": 0.7222,
-      "multi_hop_accuracy": 0.2793,
-      "latency_ms": 251.79,
-      "estimated_cost_usd": 0.000223,
+      "answer_relevance": 0.8933,
+      "grounding": 0.85,
+      "multi_hop_accuracy": 0.1286,
+      "latency_ms": 262.49,
+      "estimated_cost_usd": 0.000215,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 13 - Riskfolio-Lib and Xlwings.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py"
       ],
       "matched_terms": [
@@ -504,7 +515,8 @@
         "optimization"
       ],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -519,20 +531,20 @@
         "graph-helpful"
       ],
       "context_recall": 1.0,
-      "context_precision": 0.2108,
+      "context_precision": 0.2441,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8581,
-      "grounding": 0.6313,
-      "multi_hop_accuracy": 0.3126,
-      "latency_ms": 261.49,
-      "estimated_cost_usd": 0.00025,
+      "answer_relevance": 0.8667,
+      "grounding": 0.9062,
+      "multi_hop_accuracy": 0.15,
+      "latency_ms": 253.46,
+      "estimated_cost_usd": 0.000234,
       "retrieved_contexts": 5,
       "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/DBHT.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/DBHT.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/DBHT.py"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py"
       ],
       "matched_terms": [
         "hrp",
@@ -542,7 +554,8 @@
       ],
       "missed_terms": [],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -556,20 +569,20 @@
         "definition"
       ],
       "context_recall": 0.5,
-      "context_precision": 0.2679,
+      "context_precision": 0.2354,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8571,
-      "grounding": 0.7677,
-      "multi_hop_accuracy": 0.1987,
-      "latency_ms": 252.22,
-      "estimated_cost_usd": 0.000218,
+      "answer_relevance": 0.8552,
+      "grounding": 0.6773,
+      "multi_hop_accuracy": 0.0563,
+      "latency_ms": 247.7,
+      "estimated_cost_usd": 0.000249,
       "retrieved_contexts": 5,
       "retrieved_sources": [
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/index.rst",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Reports.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py"
       ],
       "matched_terms": [
         "cvar",
@@ -597,18 +610,18 @@
       "context_recall": 1.0,
       "context_precision": 0.3846,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.88,
-      "grounding": 0.7409,
-      "multi_hop_accuracy": 0.42,
-      "latency_ms": 252.06,
-      "estimated_cost_usd": 0.000258,
+      "answer_relevance": 0.8857,
+      "grounding": 0.8721,
+      "multi_hop_accuracy": 0.225,
+      "latency_ms": 252.29,
+      "estimated_cost_usd": 0.000255,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Reports.py"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Reports.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst"
       ],
       "matched_terms": [
         "risk contribution",
@@ -618,7 +631,8 @@
       ],
       "missed_terms": [],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -634,15 +648,15 @@
       "context_recall": 0.8571,
       "context_precision": 0.2066,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8552,
-      "grounding": 0.7167,
-      "multi_hop_accuracy": 0.427,
-      "latency_ms": 252.63,
-      "estimated_cost_usd": 0.00026,
+      "answer_relevance": 0.8762,
+      "grounding": 0.8864,
+      "multi_hop_accuracy": 0.2138,
+      "latency_ms": 254.4,
+      "estimated_cost_usd": 0.000253,
       "retrieved_contexts": 5,
       "retrieved_sources": [
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py"
@@ -659,7 +673,8 @@
         "risk\u2011aversion"
       ],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -676,11 +691,11 @@
       "context_recall": 0.25,
       "context_precision": 0.17,
       "answer_faithfulness": 0.0,
-      "answer_relevance": 0.8522,
-      "grounding": 0.7188,
-      "multi_hop_accuracy": 0.2511,
-      "latency_ms": 241.82,
-      "estimated_cost_usd": 0.000184,
+      "answer_relevance": 0.86,
+      "grounding": 0.85,
+      "multi_hop_accuracy": 0.075,
+      "latency_ms": 246.32,
+      "estimated_cost_usd": 0.000182,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
@@ -700,7 +715,8 @@
       "failure_reasons": [
         "low_context_recall",
         "low_context_precision",
-        "low_answer_faithfulness"
+        "low_answer_faithfulness",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -716,17 +732,17 @@
       "context_recall": 0.25,
       "context_precision": 0.107,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.856,
-      "grounding": 0.7937,
-      "multi_hop_accuracy": 0.17,
-      "latency_ms": 247.38,
-      "estimated_cost_usd": 0.000237,
+      "answer_relevance": 0.8609,
+      "grounding": 0.9148,
+      "multi_hop_accuracy": 0.09,
+      "latency_ms": 241.47,
+      "estimated_cost_usd": 0.000236,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py"
       ],
       "matched_terms": [
@@ -755,20 +771,20 @@
         "graph-helpful"
       ],
       "context_recall": 0.5,
-      "context_precision": 0.3105,
+      "context_precision": 0.2771,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.85,
-      "grounding": 0.7375,
-      "multi_hop_accuracy": 0.3829,
-      "latency_ms": 249.2,
-      "estimated_cost_usd": 0.000249,
+      "answer_relevance": 0.8778,
+      "grounding": 0.85,
+      "multi_hop_accuracy": 0.18,
+      "latency_ms": 258.5,
+      "estimated_cost_usd": 0.000233,
       "retrieved_contexts": 5,
       "retrieved_sources": [
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/portfolio.rst",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py"
       ],
       "matched_terms": [
         "optimization",
@@ -779,7 +795,8 @@
         "allocation"
       ],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -795,11 +812,11 @@
       "context_recall": 1.0,
       "context_precision": 0.4061,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.864,
-      "grounding": 0.8429,
-      "multi_hop_accuracy": 0.2677,
-      "latency_ms": 261.37,
-      "estimated_cost_usd": 0.000239,
+      "answer_relevance": 0.8889,
+      "grounding": 0.8742,
+      "multi_hop_accuracy": 0.1463,
+      "latency_ms": 263.72,
+      "estimated_cost_usd": 0.000233,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
@@ -815,7 +832,9 @@
         "portfolio"
       ],
       "missed_terms": [],
-      "failure_reasons": []
+      "failure_reasons": [
+        "low_multi_hop_accuracy"
+      ]
     },
     {
       "question": "How are shrinkage estimators positioned relative to historical estimators?",
@@ -828,20 +847,20 @@
         "estimators"
       ],
       "context_recall": 1.0,
-      "context_precision": 0.371,
+      "context_precision": 0.502,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.85,
-      "grounding": 0.8639,
-      "multi_hop_accuracy": 0.384,
-      "latency_ms": 267.94,
-      "estimated_cost_usd": 0.000294,
+      "answer_relevance": 0.8636,
+      "grounding": 0.925,
+      "multi_hop_accuracy": 0.18,
+      "latency_ms": 247.95,
+      "estimated_cost_usd": 0.000295,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/parameters.rst",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py"
       ],
       "matched_terms": [
         "shrinkage",
@@ -851,7 +870,7 @@
       ],
       "missed_terms": [],
       "failure_reasons": [
-        "low_context_precision"
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -868,11 +887,11 @@
       "context_recall": 0.5,
       "context_precision": 0.3613,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.89,
-      "grounding": 0.7869,
-      "multi_hop_accuracy": 0.2878,
-      "latency_ms": 258.74,
-      "estimated_cost_usd": 0.000162,
+      "answer_relevance": 0.9125,
+      "grounding": 0.8409,
+      "multi_hop_accuracy": 0.15,
+      "latency_ms": 253.5,
+      "estimated_cost_usd": 0.00016,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
@@ -890,7 +909,8 @@
         "optimization"
       ],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -904,20 +924,20 @@
         "graph-maybe"
       ],
       "context_recall": 1.0,
-      "context_precision": 0.3217,
+      "context_precision": 0.3868,
       "answer_faithfulness": 1.0,
-      "answer_relevance": 0.8714,
-      "grounding": 0.7308,
-      "multi_hop_accuracy": 0.396,
-      "latency_ms": 276.55,
-      "estimated_cost_usd": 0.000234,
+      "answer_relevance": 0.8741,
+      "grounding": 0.9148,
+      "multi_hop_accuracy": 0.216,
+      "latency_ms": 267.7,
+      "estimated_cost_usd": 0.000267,
       "retrieved_contexts": 5,
       "retrieved_sources": [
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/hcportfolio.rst",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 21 - Constraints on Return and Risk Measures.ipynb",
-        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/course.rst"
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/hcportfolio.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/hcportfolio.rst"
       ],
       "matched_terms": [
         "risk measure",
@@ -927,7 +947,8 @@
       ],
       "missed_terms": [],
       "failure_reasons": [
-        "low_context_precision"
+        "low_context_precision",
+        "low_multi_hop_accuracy"
       ]
     },
     {
@@ -943,11 +964,11 @@
       "context_recall": 0.25,
       "context_precision": 0.1421,
       "answer_faithfulness": 0.0,
-      "answer_relevance": 0.8643,
-      "grounding": 0.8057,
-      "multi_hop_accuracy": 0.22,
-      "latency_ms": 273.02,
-      "estimated_cost_usd": 0.000253,
+      "answer_relevance": 0.8783,
+      "grounding": 0.8125,
+      "multi_hop_accuracy": 0.1,
+      "latency_ms": 254.71,
+      "estimated_cost_usd": 0.000248,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
@@ -982,13 +1003,13 @@
         "risk-measures"
       ],
       "context_recall": 0.1667,
-      "context_precision": 0.1272,
+      "context_precision": 0.0838,
       "answer_faithfulness": 0.0,
-      "answer_relevance": 0.8538,
-      "grounding": 0.8205,
-      "multi_hop_accuracy": 0.3214,
-      "latency_ms": 260.88,
-      "estimated_cost_usd": 0.000279,
+      "answer_relevance": 0.8609,
+      "grounding": 0.9062,
+      "multi_hop_accuracy": 0.1929,
+      "latency_ms": 236.22,
+      "estimated_cost_usd": 0.000278,
       "retrieved_contexts": 5,
       "retrieved_sources": [
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
@@ -998,19 +1019,26 @@
         "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py"
       ],
       "matched_terms": [
-        "risk"
+        "risk",
+        "rlvar"
       ],
       "missed_terms": [
         "tail",
         "cvar",
-        "worst",
-        "tail",
-        "range"
+        "tail gini",
+        "evar",
+        "worst realization",
+        "range",
+        "cvrg",
+        "tgrg",
+        "evrg",
+        "rvrg"
       ],
       "failure_reasons": [
         "low_context_recall",
         "low_context_precision",
-        "low_answer_faithfulness"
+        "low_answer_faithfulness",
+        "low_multi_hop_accuracy"
       ]
     }
   ]
