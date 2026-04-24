@@ -1,0 +1,1154 @@
+{
+  "num_samples": 25,
+  "context_recall": 0.75,
+  "context_precision": 0.3311,
+  "answer_faithfulness": 0.92,
+  "answer_relevance": 0.8497,
+  "grounding": 0.8685,
+  "multi_hop_accuracy": 0.2749,
+  "er_precision": 1.0,
+  "er_recall": 1.0,
+  "er_f1": 1.0,
+  "link_prediction_mrr": 0.96,
+  "link_prediction_hits_at_3": 1.0,
+  "link_prediction_hits_at_10": 1.0,
+  "link_prediction_ndcg_at_3": 0.8251,
+  "link_prediction_ndcg_at_10": 0.9301,
+  "rank_quality": 0.9016,
+  "avg_latency_ms": 448.3332,
+  "estimated_cost_usd": 0.0004,
+  "retrieval_mode": "sparse",
+  "embedding_provider": "openai",
+  "dense_index_refreshed": false,
+  "dense_index_fingerprint": "",
+  "dense_index_upserted": 0,
+  "metric_profile": "graph-order-sensitive",
+  "run_at": "2026-04-11T16:54:04.580502+00:00",
+  "per_sample": [
+    {
+      "question": "What is Hierarchical Risk Parity (HRP)?",
+      "domain": "portfolio-construction",
+      "difficulty": "easy",
+      "retrieval_type": "hybrid",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "definition",
+        "hrp",
+        "graph-helpful"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.5151,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8417,
+      "grounding": 0.7679,
+      "multi_hop_accuracy": 0.478,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.75,
+      "link_prediction_ndcg_at_10": 0.9171,
+      "rank_quality": 0.8876,
+      "latency_ms": 867.3,
+      "estimated_cost_usd": 0.000402,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/index.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/hcportfolio.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst"
+      ],
+      "matched_terms": [
+        "hrp",
+        "hierarchical risk parity",
+        "clustering",
+        "risk parity"
+      ],
+      "missed_terms": [],
+      "failure_reasons": []
+    },
+    {
+      "question": "How does Riskfolio compute CVaR-based optimization?",
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "hybrid",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "optimization",
+        "cvar",
+        "graph-maybe"
+      ],
+      "context_recall": 0.25,
+      "context_precision": 0.1316,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.83,
+      "grounding": 0.7804,
+      "multi_hop_accuracy": 0.1969,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.7654,
+      "link_prediction_ndcg_at_10": 0.9372,
+      "rank_quality": 0.8967,
+      "latency_ms": 367.14,
+      "estimated_cost_usd": 0.000262,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 35 - Gini Mean Difference (GMD) Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/course.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/index.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 4 - Bond Portfolio Optimization and Immunization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 4 - Bond Portfolio Optimization and Immunization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 47 - Risk Parity with Risk Factors.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 44 - Hierarchical Equal Risk Contribution (HERC) Portfolio Optimization with Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 48 - Classic Mean Variance Optimization with Risk Contribution Inequalities Constraints.ipynb"
+      ],
+      "matched_terms": [
+        "optimization"
+      ],
+      "missed_terms": [
+        "cvar",
+        "value at risk",
+        "risk measure"
+      ],
+      "failure_reasons": [
+        "low_context_recall",
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "Which estimators are used for covariance in Riskfolio?",
+      "domain": "estimation",
+      "difficulty": "medium",
+      "retrieval_type": "dense",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "estimators",
+        "covariance",
+        "shrinkage"
+      ],
+      "context_recall": 0.5,
+      "context_precision": 0.3459,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8412,
+      "grounding": 0.9278,
+      "multi_hop_accuracy": 0.5282,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 1.0,
+      "link_prediction_ndcg_at_10": 1.0,
+      "rank_quality": 1.0,
+      "latency_ms": 443.1,
+      "estimated_cost_usd": 0.000448,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 38 - Mean Kurtosis Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 39 - Mean Semi Kurtosis Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 49 - Mean Entropic Value at Risk Range (EVRG) Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 50 - Mean Relativistic Value at Risk Range (RVRG) Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 51 - Classic Mean Variance Optimization with Risk Factor Contribution Inequalities Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 46 - Classic Mean Risk Optimization with Network and Dendrogram Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 48 - Classic Mean Variance Optimization with Risk Contribution Inequalities Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 6 - Portfolio Optimization with Custom Parameters.ipynb"
+      ],
+      "matched_terms": [
+        "historical",
+        "covariance"
+      ],
+      "missed_terms": [
+        "ledoit",
+        "shrinkage"
+      ],
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "What constraints can be applied in Riskfolio optimization?",
+      "domain": "optimization",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "constraints",
+        "optimization",
+        "graph-helpful"
+      ],
+      "context_recall": 0.5,
+      "context_precision": 0.1617,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8333,
+      "grounding": 0.9254,
+      "multi_hop_accuracy": 0.3066,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 1.0,
+      "link_prediction_ndcg_at_10": 0.9608,
+      "rank_quality": 0.9941,
+      "latency_ms": 430.89,
+      "estimated_cost_usd": 0.000334,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 4 - Bond Portfolio Optimization and Immunization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 4 - Bond Portfolio Optimization and Immunization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 49 - Mean Entropic Value at Risk Range (EVRG) Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 50 - Mean Relativistic Value at Risk Range (RVRG) Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 52 - Portfolio Optimization with Integer Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 52 - Portfolio Optimization with Integer Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 52 - Portfolio Optimization with Integer Constraints.ipynb"
+      ],
+      "matched_terms": [
+        "constraint",
+        "risk contribution"
+      ],
+      "missed_terms": [
+        "budget",
+        "leverage"
+      ],
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "How do examples demonstrate portfolio reports and plots?",
+      "domain": "reporting",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "examples",
+        "plots",
+        "lexical"
+      ],
+      "context_recall": 0.5,
+      "context_precision": 0.1887,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8359,
+      "grounding": 0.867,
+      "multi_hop_accuracy": 0.2296,
+      "link_prediction_mrr": 0.5,
+      "link_prediction_ndcg_at_3": 0.3612,
+      "link_prediction_ndcg_at_10": 0.7136,
+      "rank_quality": 0.4765,
+      "latency_ms": 444.94,
+      "estimated_cost_usd": 0.000446,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 53 - Mean Kurtosis Optimization using Risk Factors.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/README.md",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/README.md",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/README.md",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/contributing.rst"
+      ],
+      "matched_terms": [
+        "examples",
+        "report"
+      ],
+      "missed_terms": [
+        "plot",
+        "efficient frontier"
+      ],
+      "failure_reasons": [
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "What does Riskfolio use to represent portfolio constraints?",
+      "domain": "optimization",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "api-lookup",
+        "constraints"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.5067,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8424,
+      "grounding": 0.9208,
+      "multi_hop_accuracy": 0.4579,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.926,
+      "link_prediction_ndcg_at_10": 0.9846,
+      "rank_quality": 0.9681,
+      "latency_ms": 447.66,
+      "estimated_cost_usd": 0.000404,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 32 - Relaxed Risk Parity Portfolio Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 7 - Index Tracking-Replicating Portfolios.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 33 - Risk Parity with Constraints using the Risk Budgeting Approach.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 23 - Dollar Neutral Portfolios.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py"
+      ],
+      "matched_terms": [
+        "constraints",
+        "portfolio",
+        "parameters",
+        "optimization"
+      ],
+      "missed_terms": [],
+      "failure_reasons": []
+    },
+    {
+      "question": "How is mean return estimation described in the documentation?",
+      "domain": "estimation",
+      "difficulty": "easy",
+      "retrieval_type": "dense",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "definition",
+        "estimation"
+      ],
+      "context_recall": 0.75,
+      "context_precision": 0.4864,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8368,
+      "grounding": 0.8795,
+      "multi_hop_accuracy": 0.3315,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.8436,
+      "link_prediction_ndcg_at_10": 0.9407,
+      "rank_quality": 0.9285,
+      "latency_ms": 382.71,
+      "estimated_cost_usd": 0.000416,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 53 - Mean Kurtosis Optimization using Risk Factors.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py"
+      ],
+      "matched_terms": [
+        "mean",
+        "return",
+        "estimation"
+      ],
+      "missed_terms": [
+        "optimization"
+      ],
+      "failure_reasons": []
+    },
+    {
+      "question": "Which risk measures are mentioned alongside CVaR?",
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "comparison",
+        "risk-measures",
+        "graph-helpful"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.5059,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8609,
+      "grounding": 0.9091,
+      "multi_hop_accuracy": 0.2955,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 1.0,
+      "link_prediction_ndcg_at_10": 1.0,
+      "rank_quality": 1.0,
+      "latency_ms": 458.44,
+      "estimated_cost_usd": 0.000449,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/index.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/index.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/hcportfolio.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 9 - Portfolio Optimization using Risk Factors and Principal Components Regression (PCR).ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 47 - Risk Parity with Risk Factors.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 47 - Risk Parity with Risk Factors.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py"
+      ],
+      "matched_terms": [
+        "cvar",
+        "var",
+        "risk measure",
+        "downside"
+      ],
+      "missed_terms": [],
+      "failure_reasons": []
+    },
+    {
+      "question": "How do examples connect allocation outputs to reporting visuals?",
+      "domain": "reporting",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "multi-hop",
+        "examples",
+        "graph-helpful"
+      ],
+      "context_recall": 0.75,
+      "context_precision": 0.1064,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8424,
+      "grounding": 0.8927,
+      "multi_hop_accuracy": 0.1041,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.7224,
+      "link_prediction_ndcg_at_10": 0.8446,
+      "rank_quality": 0.8657,
+      "latency_ms": 437.38,
+      "estimated_cost_usd": 0.000343,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/install.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/contributing.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 53 - Mean Kurtosis Optimization using Risk Factors.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 5 - Multi Assets Algorithmic Trading Backtesting with Backtrader.ipynb"
+      ],
+      "matched_terms": [
+        "plot",
+        "examples",
+        "optimization"
+      ],
+      "missed_terms": [
+        "allocation"
+      ],
+      "failure_reasons": [
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "What does the documentation say about leverage constraints?",
+      "domain": "optimization",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "constraint",
+        "lookup"
+      ],
+      "context_recall": 0.75,
+      "context_precision": 0.2603,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8485,
+      "grounding": 0.8769,
+      "multi_hop_accuracy": 0.3201,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.7346,
+      "link_prediction_ndcg_at_10": 0.9193,
+      "rank_quality": 0.8817,
+      "latency_ms": 450.83,
+      "estimated_cost_usd": 0.000368,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 51 - Classic Mean Variance Optimization with Risk Factor Contribution Inequalities Constraints.ipynb"
+      ],
+      "matched_terms": [
+        "constraint",
+        "optimization",
+        "budget"
+      ],
+      "missed_terms": [
+        "leverage"
+      ],
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "Which sections mention covariance shrinkage?",
+      "domain": "estimation",
+      "difficulty": "medium",
+      "retrieval_type": "dense",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "section-lookup",
+        "estimators"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.4584,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8313,
+      "grounding": 0.875,
+      "multi_hop_accuracy": 0.222,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.6441,
+      "link_prediction_ndcg_at_10": 0.8613,
+      "rank_quality": 0.8368,
+      "latency_ms": 431.73,
+      "estimated_cost_usd": 0.00044,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py"
+      ],
+      "matched_terms": [
+        "covariance",
+        "shrinkage",
+        "estimator",
+        "ledoit"
+      ],
+      "missed_terms": [],
+      "failure_reasons": [
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "How are efficient frontier plots presented in examples?",
+      "domain": "reporting",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "examples",
+        "plots"
+      ],
+      "context_recall": 0.5,
+      "context_precision": 0.3677,
+      "answer_faithfulness": 0.0,
+      "answer_relevance": 0.8933,
+      "grounding": 0.775,
+      "multi_hop_accuracy": 0.1286,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 1.0,
+      "link_prediction_ndcg_at_10": 1.0,
+      "rank_quality": 1.0,
+      "latency_ms": 446.33,
+      "estimated_cost_usd": 6.3e-05,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 13 - Riskfolio-Lib and Xlwings.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 7 - Index Tracking-Replicating Portfolios.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 53 - Mean Kurtosis Optimization using Risk Factors.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 49 - Mean Entropic Value at Risk Range (EVRG) Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 7 - Index Tracking-Replicating Portfolios.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 50 - Mean Relativistic Value at Risk Range (RVRG) Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 6 - Portfolio Optimization with Custom Parameters.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 6 - Portfolio Optimization with Custom Parameters.ipynb"
+      ],
+      "matched_terms": [
+        "efficient frontier",
+        "plot"
+      ],
+      "missed_terms": [
+        "examples",
+        "optimization"
+      ],
+      "failure_reasons": [
+        "low_context_precision",
+        "low_answer_faithfulness",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "What concepts are linked to HRP in the graph-oriented retrieval path?",
+      "domain": "portfolio-construction",
+      "difficulty": "hard",
+      "retrieval_type": "graph",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "graph-only",
+        "multi-hop",
+        "graph-helpful"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.2195,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8667,
+      "grounding": 0.6875,
+      "multi_hop_accuracy": 0.3008,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.5,
+      "link_prediction_ndcg_at_10": 0.8184,
+      "rank_quality": 0.7728,
+      "latency_ms": 363.47,
+      "estimated_cost_usd": 0.000346,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/tests/test_portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/DBHT.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/DBHT.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 45 - Nested Clustered Optimization (NCO) Portfolio Optimization with Constraints.ipynb"
+      ],
+      "matched_terms": [
+        "hrp",
+        "clustering",
+        "allocation",
+        "portfolio"
+      ],
+      "missed_terms": [],
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "How does Riskfolio describe downside risk in relation to CVaR?",
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "hybrid",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "risk-measures",
+        "definition"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.4202,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8552,
+      "grounding": 0.8221,
+      "multi_hop_accuracy": 0.1538,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.9501,
+      "link_prediction_ndcg_at_10": 0.9666,
+      "rank_quality": 0.975,
+      "latency_ms": 444.74,
+      "estimated_cost_usd": 0.000395,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/hcportfolio.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/index.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/index.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py"
+      ],
+      "matched_terms": [
+        "downside",
+        "cvar",
+        "risk",
+        "optimization"
+      ],
+      "missed_terms": [],
+      "failure_reasons": [
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "Which examples mention risk contribution charts?",
+      "domain": "reporting",
+      "difficulty": "medium",
+      "retrieval_type": "sparse",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "examples",
+        "charts"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.3729,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8429,
+      "grounding": 0.9167,
+      "multi_hop_accuracy": 0.278,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 1.0,
+      "link_prediction_ndcg_at_10": 1.0,
+      "rank_quality": 1.0,
+      "latency_ms": 469.53,
+      "estimated_cost_usd": 0.000423,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Reports.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/README.md",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/examples.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/README.md",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/README.md"
+      ],
+      "matched_terms": [
+        "risk contribution",
+        "chart",
+        "plot",
+        "examples"
+      ],
+      "missed_terms": [],
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "What input parameters are associated with optimization objectives?",
+      "domain": "optimization",
+      "difficulty": "medium",
+      "retrieval_type": "dense",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "api",
+        "parameters"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.4113,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8457,
+      "grounding": 0.9016,
+      "multi_hop_accuracy": 0.3045,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.9085,
+      "link_prediction_ndcg_at_10": 0.9739,
+      "rank_quality": 0.9595,
+      "latency_ms": 440.29,
+      "estimated_cost_usd": 0.000391,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py"
+      ],
+      "matched_terms": [
+        "parameters",
+        "objective",
+        "optimization",
+        "risk"
+      ],
+      "missed_terms": [],
+      "failure_reasons": []
+    },
+    {
+      "question": "How is clustering described across HRP-related material?",
+      "domain": "portfolio-construction",
+      "difficulty": "medium",
+      "retrieval_type": "graph",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "hrp",
+        "clustering",
+        "graph-helpful"
+      ],
+      "context_recall": 0.25,
+      "context_precision": 0.1293,
+      "answer_faithfulness": 0.0,
+      "answer_relevance": 0.8387,
+      "grounding": 0.844,
+      "multi_hop_accuracy": 0.2014,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 1.0,
+      "link_prediction_ndcg_at_10": 0.9838,
+      "rank_quality": 0.9976,
+      "latency_ms": 450.67,
+      "estimated_cost_usd": 0.000288,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 28 - Hierarchical Clustering and Networks.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Reports.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 5 - Multi Assets Algorithmic Trading Backtesting with Backtrader.ipynb"
+      ],
+      "matched_terms": [
+        "clustering"
+      ],
+      "missed_terms": [
+        "hrp",
+        "hierarchical",
+        "portfolio"
+      ],
+      "failure_reasons": [
+        "low_context_recall",
+        "low_context_precision",
+        "low_answer_faithfulness",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "Which estimator names appear near covariance documentation?",
+      "domain": "estimation",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "estimators",
+        "lookup"
+      ],
+      "context_recall": 0.75,
+      "context_precision": 0.1921,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8452,
+      "grounding": 0.8896,
+      "multi_hop_accuracy": 0.2654,
+      "link_prediction_mrr": 0.5,
+      "link_prediction_ndcg_at_3": 0.265,
+      "link_prediction_ndcg_at_10": 0.6259,
+      "rank_quality": 0.4249,
+      "latency_ms": 438.36,
+      "estimated_cost_usd": 0.000393,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 7 - Index Tracking-Replicating Portfolios.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ConstraintsFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/GerberStatistic.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/AuxFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/HCPortfolio.py"
+      ],
+      "matched_terms": [
+        "estimator",
+        "historical",
+        "covariance"
+      ],
+      "missed_terms": [
+        "shrinkage"
+      ],
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "How are portfolio reports linked to optimization results?",
+      "domain": "reporting",
+      "difficulty": "hard",
+      "retrieval_type": "graph",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "multi-hop",
+        "reporting",
+        "graph-helpful"
+      ],
+      "context_recall": 0.5,
+      "context_precision": 0.3248,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8778,
+      "grounding": 0.8875,
+      "multi_hop_accuracy": 0.2248,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.852,
+      "link_prediction_ndcg_at_10": 0.9584,
+      "rank_quality": 0.9346,
+      "latency_ms": 373.87,
+      "estimated_cost_usd": 0.000258,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/portfolio.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 53 - Mean Kurtosis Optimization using Risk Factors.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 46 - Classic Mean Risk Optimization with Network and Dendrogram Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 6 - Portfolio Optimization with Custom Parameters.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 45 - Nested Clustered Optimization (NCO) Portfolio Optimization with Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 44 - Hierarchical Equal Risk Contribution (HERC) Portfolio Optimization with Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 45 - Nested Clustered Optimization (NCO) Portfolio Optimization with Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 52 - Portfolio Optimization with Integer Constraints.ipynb"
+      ],
+      "matched_terms": [
+        "optimization",
+        "risk"
+      ],
+      "missed_terms": [
+        "report",
+        "allocation"
+      ],
+      "failure_reasons": [
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "What does the documentation say about budget constraints?",
+      "domain": "optimization",
+      "difficulty": "easy",
+      "retrieval_type": "sparse",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "constraint",
+        "lookup"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.4207,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8593,
+      "grounding": 0.8793,
+      "multi_hop_accuracy": 0.3079,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.9218,
+      "link_prediction_ndcg_at_10": 0.9892,
+      "rank_quality": 0.9671,
+      "latency_ms": 440.18,
+      "estimated_cost_usd": 0.000362,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 51 - Classic Mean Variance Optimization with Risk Factor Contribution Inequalities Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py"
+      ],
+      "matched_terms": [
+        "budget",
+        "constraint",
+        "optimization",
+        "portfolio"
+      ],
+      "missed_terms": [],
+      "failure_reasons": []
+    },
+    {
+      "question": "How are shrinkage estimators positioned relative to historical estimators?",
+      "domain": "estimation",
+      "difficulty": "hard",
+      "retrieval_type": "dense",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "comparison",
+        "estimators"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.564,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8636,
+      "grounding": 0.925,
+      "multi_hop_accuracy": 0.1849,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.7654,
+      "link_prediction_ndcg_at_10": 0.9481,
+      "rank_quality": 0.8984,
+      "latency_ms": 422.11,
+      "estimated_cost_usd": 0.000456,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/parameters.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/OwaWeights.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/ParamsEstimation.py"
+      ],
+      "matched_terms": [
+        "shrinkage",
+        "historical",
+        "estimator",
+        "covariance"
+      ],
+      "missed_terms": [],
+      "failure_reasons": [
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "Which graph-linked concepts appear around leverage and budget constraints?",
+      "domain": "optimization",
+      "difficulty": "hard",
+      "retrieval_type": "graph",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "graph-only",
+        "constraints",
+        "graph-helpful"
+      ],
+      "context_recall": 0.75,
+      "context_precision": 0.3558,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8581,
+      "grounding": 0.9057,
+      "multi_hop_accuracy": 0.203,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 1.0,
+      "link_prediction_ndcg_at_10": 1.0,
+      "rank_quality": 1.0,
+      "latency_ms": 451.51,
+      "estimated_cost_usd": 0.0003,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 8 - Short and Leveraged Portfolios.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py"
+      ],
+      "matched_terms": [
+        "leverage",
+        "budget",
+        "constraint"
+      ],
+      "missed_terms": [
+        "optimization"
+      ],
+      "failure_reasons": [
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "How do docs describe the relationship between risk measures and optimization?",
+      "domain": "risk-measures",
+      "difficulty": "medium",
+      "retrieval_type": "hybrid",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "relationship",
+        "graph-maybe"
+      ],
+      "context_recall": 1.0,
+      "context_precision": 0.3145,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8588,
+      "grounding": 0.9205,
+      "multi_hop_accuracy": 0.378,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 0.7186,
+      "link_prediction_ndcg_at_10": 0.9098,
+      "rank_quality": 0.8739,
+      "latency_ms": 483.73,
+      "estimated_cost_usd": 0.000376,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 21 - Constraints on Return and Risk Measures.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 53 - Mean Kurtosis Optimization using Risk Factors.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/PlotFunctions.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 46 - Classic Mean Risk Optimization with Network and Dendrogram Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/hcportfolio.rst",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 9 - Portfolio Optimization using Risk Factors and Principal Components Regression (PCR).ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/docs/source/hcportfolio.rst"
+      ],
+      "matched_terms": [
+        "risk measure",
+        "optimization",
+        "constraint",
+        "objective"
+      ],
+      "missed_terms": [],
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    },
+    {
+      "question": "Which examples are about plotting allocations rather than estimators?",
+      "domain": "reporting",
+      "difficulty": "medium",
+      "retrieval_type": "sparse",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "negative-control",
+        "graph-not-needed"
+      ],
+      "context_recall": 0.5,
+      "context_precision": 0.1797,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.8419,
+      "grounding": 0.842,
+      "multi_hop_accuracy": 0.0813,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 1.0,
+      "link_prediction_ndcg_at_10": 1.0,
+      "rank_quality": 1.0,
+      "latency_ms": 441.86,
+      "estimated_cost_usd": 0.000135,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 53 - Mean Kurtosis Optimization using Risk Factors.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 53 - Mean Kurtosis Optimization using Risk Factors.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 7 - Index Tracking-Replicating Portfolios.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 50 - Mean Relativistic Value at Risk Range (RVRG) Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 6 - Portfolio Optimization with Custom Parameters.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 6 - Portfolio Optimization with Custom Parameters.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 49 - Mean Entropic Value at Risk Range (EVRG) Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 7 - Index Tracking-Replicating Portfolios.ipynb"
+      ],
+      "matched_terms": [
+        "plot",
+        "portfolio"
+      ],
+      "missed_terms": [
+        "allocation",
+        "examples"
+      ],
+      "failure_reasons": [
+        "low_context_precision",
+        "low_multi_hop_accuracy"
+      ]
+    },
+    {
+      "question": "What does Riskfolio say about tail-risk measures beyond variance?",
+      "domain": "risk-measures",
+      "difficulty": "hard",
+      "retrieval_type": "hybrid",
+      "actual_retrieval_mode": "sparse",
+      "tags": [
+        "comparison",
+        "risk-measures"
+      ],
+      "context_recall": 0.5,
+      "context_precision": 0.3387,
+      "answer_faithfulness": 1.0,
+      "answer_relevance": 0.85,
+      "grounding": 0.8943,
+      "multi_hop_accuracy": 0.3893,
+      "link_prediction_mrr": 1.0,
+      "link_prediction_ndcg_at_3": 1.0,
+      "link_prediction_ndcg_at_10": 1.0,
+      "rank_quality": 1.0,
+      "latency_ms": 379.55,
+      "estimated_cost_usd": 0.000444,
+      "retrieved_contexts": 8,
+      "retrieved_sources": [
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 50 - Mean Relativistic Value at Risk Range (RVRG) Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 49 - Mean Entropic Value at Risk Range (EVRG) Optimization.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 51 - Classic Mean Variance Optimization with Risk Factor Contribution Inequalities Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 48 - Classic Mean Variance Optimization with Risk Contribution Inequalities Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 52 - Portfolio Optimization with Integer Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 46 - Classic Mean Risk Optimization with Network and Dendrogram Constraints.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/examples/Tutorial 6 - Portfolio Optimization with Custom Parameters.ipynb",
+        "/Users/et/Desktop/Data_Projects/Riskfolio-Lib/riskfolio/src/Portfolio.py"
+      ],
+      "matched_terms": [
+        "risk",
+        "variance"
+      ],
+      "missed_terms": [
+        "tail",
+        "cvar"
+      ],
+      "failure_reasons": [
+        "low_context_precision"
+      ]
+    }
+  ]
+}

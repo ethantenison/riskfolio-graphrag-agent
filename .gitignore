@@ -214,9 +214,14 @@ __marimo__/
 chroma/
 *.chroma
 *.chroma-wal
+benchmarks/.chroma_hash_clean/
+benchmarks/.chroma_openai_clean/
+benchmarks/**/*.sqlite3
+benchmarks/**/*.sqlite3-*
 .gradio/certificate.pem
 
 
 #MISC
 scripts/riskfolio_graphrag_system_slides/
 scripts/dell_graphrag_proposal_revealjs_files/
+artifacts/comparisons
