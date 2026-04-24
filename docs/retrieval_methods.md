@@ -64,7 +64,7 @@ Each mode operates in two stages:
 
 ## Graph Retrieval
 
-**Strategy**: Knowledge graph seeding and multi-hop assertion-aware expansion.
+**Strategy**: Knowledge graph seeding and shallow assertion-aware expansion.
 
 **How it works**:
 
@@ -213,35 +213,6 @@ Different retrieval pathways use slightly different tokenization to match their 
   - `ledoit` → `(shrinkage)`
   - And others as defined in `_LEXICAL_TOKEN_SYNONYMS`
 - Prevents query narrowing when exact terminology isn't user-provided
-
----
-
-## Promoted Graph vs Legacy Fallback
-
-The current implementation **prefers the promoted assertion-aware graph** and falls back to legacy patterns when promoted nodes are unavailable.
-
-### Promoted Pattern (Preferred)
-- `CanonicalEntity` with `preferred_label` and `normalized_label`
-- `Assertion` nodes with `confidence` scores linking entities to chunks
-- `OntologyClass` nodes with `INSTANCE_OF` relationships
-- Supports **bridge expansion** for multi-hop reasoning
-
-### Legacy Pattern (Fallback)
-- Generic entity nodes with `MENTION` edges
-- Direct `Chunk` node matching on raw `name` fields
-- Simple ontology-like edges (`IS_SUBTYPE_OF`, `ALTERNATIVE_TO`, `REQUIRES`, etc.)
-- Used when promoted nodes are not available
-
-Selection logic:
-```python
-seed_hits = _promoted_graph_seed_hits(...)
-if not seed_hits:
-    seed_hits = _graph_seed_hits(...)  # Fallback to legacy
-
-hop_hits = _promoted_graph_hop_expansion(...)
-if not hop_hits:
-    hop_hits = _graph_hop_expansion(...)  # Fallback to legacy
-```
 
 ---
 

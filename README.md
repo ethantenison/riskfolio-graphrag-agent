@@ -17,7 +17,7 @@ pinned: false
 
 ## Overview
 
-This repository is being redesigned away from a shallow, alias-driven graph builder and toward a staged knowledge graph induction system with:
+This repository implements a staged knowledge graph induction system with:
 
 - open chunk-level extraction,
 - mention and assertion persistence,
@@ -27,26 +27,11 @@ This repository is being redesigned away from a shallow, alias-driven graph buil
 - RDF/OWL/SKOS/PROV export over stabilized graph layers,
 - graph-quality evaluation in addition to answer-quality evaluation.
 
-The new pipeline is documented in [docs/kg-redesign.md](docs/kg-redesign.md). A migration note for the retired architecture is in [docs/kg-migration.md](docs/kg-migration.md).
-
 > Disclaimer: this repository is a technical system-design and engineering artifact. It does not provide financial advice.
-
-## Current Technical Stance
-
-The redesigned path treats the following as different things:
-
-- source documents and chunks,
-- extracted mentions,
-- candidate entities, assertions, and events,
-- canonical entities and predicates,
-- ontology and concept-scheme commitments,
-- final promoted retrieval graph.
-
-That separation matters because it keeps provenance, confidence, and review state visible instead of flattening everything into direct canonical edges too early.
 
 ## Main Components
 
-| Area | Current responsibility |
+| Area | Responsibility |
 |---|---|
 | [src/riskfolio_graphrag_agent/ingestion/loader.py](src/riskfolio_graphrag_agent/ingestion/loader.py) | Chunk source code, docs, examples, and tests into provenance-rich `Document` records |
 | [src/riskfolio_graphrag_agent/extraction/pipeline.py](src/riskfolio_graphrag_agent/extraction/pipeline.py) | Open extraction into mentions, candidate entities, candidate assertions, and candidate events |
@@ -55,7 +40,7 @@ That separation matters because it keeps provenance, confidence, and review stat
 | [src/riskfolio_graphrag_agent/graph_materialization/pipeline.py](src/riskfolio_graphrag_agent/graph_materialization/pipeline.py) | Materialize a narrower Neo4j retrieval graph with constraints and representative Cypher queries |
 | [src/riskfolio_graphrag_agent/semantic_export/pipeline.py](src/riskfolio_graphrag_agent/semantic_export/pipeline.py) | Export ontology and instance/provenance Turtle views using OWL, SKOS, and PROV-O |
 | [src/riskfolio_graphrag_agent/evaluation/graph_quality.py](src/riskfolio_graphrag_agent/evaluation/graph_quality.py) | Score graph-quality metrics such as compression, promotion yield, and schema support |
-| [src/riskfolio_graphrag_agent/kg_pipeline.py](src/riskfolio_graphrag_agent/kg_pipeline.py) | Orchestrate the end-to-end redesigned KG pipeline and artifact generation |
+| [src/riskfolio_graphrag_agent/kg_pipeline.py](src/riskfolio_graphrag_agent/kg_pipeline.py) | Orchestrate the end-to-end KG pipeline and artifact generation |
 | [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py) | Retrieval orchestration supporting four modes: dense (embedding), sparse (lexical), graph (assertion-aware), and hybrid_rerank (merged with graph context) |
 | [src/riskfolio_graphrag_agent/retrieval/router.py](src/riskfolio_graphrag_agent/retrieval/router.py) | Query router to select appropriate retrieval mode |
 | [src/riskfolio_graphrag_agent/agent/workflow.py](src/riskfolio_graphrag_agent/agent/workflow.py) | Plan-retrieve-reason-verify orchestration for answer generation |
@@ -105,13 +90,13 @@ Promoted Retrieval Graph
 
 ## Retrieval Methods
 
-The retrieval system supports four modes to serve different query characteristics and performance needs:
+The retrieval system supports four modes to serve different query characteristics:
 
 | Mode | Strategy | Best For | Candidate Pool |
 |------|----------|----------|-----------------|
 | **Dense** | Embedding-based semantic similarity with query expansion | Broad semantic queries; paraphrasing | 2×top_k |
 | **Sparse** | Direct lexical token matching on Neo4j chunks | Domain terminology; acronyms; exact phrases | 1×top_k |
-| **Graph** | Multi-stage assertion-aware traversal with entity seed, ontology-class expansion, assertion-bridged peers, and keyword backfill | Complex multi-hop relationships | 3×top_k |
+| **Graph** | Shallow assertion-aware traversal: entity seed, ontology-class expansion, assertion-bridged peers, keyword backfill | Relationship and entity-centric queries | 3×top_k |
 | **Hybrid Rerank** | Merged dense and sparse results with graph-contextualized evidence boosting (default) | General-purpose balanced precision/recall | 4×top_k |
 
 All modes (except sparse) apply optional reranking boosts based on:
@@ -122,8 +107,6 @@ All modes (except sparse) apply optional reranking boosts based on:
 For detailed mode descriptions, performance profiles, formulas, and troubleshooting, see [docs/retrieval_methods.md](docs/retrieval_methods.md).
 
 ## Commands
-
-### Recommended redesigned path
 
 ```bash
 poetry run riskfolio-agent ingest --source-dir /path/to/Riskfolio-Lib
@@ -146,14 +129,6 @@ To also write the promoted retrieval graph into Neo4j:
 ```bash
 poetry run riskfolio-agent kg-run --source-dir /path/to/Riskfolio-Lib --artifact-dir artifacts/kg --persist-neo4j
 ```
-
-### Legacy command
-
-```bash
-poetry run riskfolio-agent build-graph
-```
-
-`build-graph` is retained temporarily as a compatibility path for the older deterministic builder. It is not the recommended architecture and should not be treated as the serious KG induction path.
 
 ## Local Setup
 
@@ -181,7 +156,7 @@ Set the Neo4j and source-directory environment variables in `.env` or your shell
 docker compose up -d
 ```
 
-### Run the redesigned KG pipeline
+### Run the KG pipeline
 
 ```bash
 poetry run riskfolio-agent kg-run --source-dir /Users/et/Desktop/Data_Projects/Riskfolio-Lib --artifact-dir artifacts/kg
@@ -196,17 +171,14 @@ poetry run riskfolio-agent gradio --host 127.0.0.1 --port 7860
 
 ## Evaluation
 
-The repository currently has two evaluation layers:
+The repository has two evaluation layers:
 
 - answer and retrieval evaluation in [src/riskfolio_graphrag_agent/eval](src/riskfolio_graphrag_agent/eval),
 - graph-quality evaluation in [src/riskfolio_graphrag_agent/evaluation/graph_quality.py](src/riskfolio_graphrag_agent/evaluation/graph_quality.py).
 
-The graph-quality report produced by `kg-run` currently measures pipeline structure and promotion behavior. It is the first step toward fuller extraction, canonicalization, and retrieval-lift evaluation described in [docs/kg-redesign.md](docs/kg-redesign.md).
-
 ## Documentation
 
-- [docs/kg-redesign.md](docs/kg-redesign.md) — redesign goals, data model, pipeline, Cypher model, semantic export, and evaluation plan
-- [docs/kg-migration.md](docs/kg-migration.md) — what is being retired and which compatibility is intentionally dropped
+- [docs/kg-pipeline-design.md](docs/kg-pipeline-design.md) — KG pipeline design, data model, Cypher model, semantic export, and evaluation
 - [docs/architecture_module_map.md](docs/architecture_module_map.md) — architecture boundaries and package ownership
 - [docs/retrieval_methods.md](docs/retrieval_methods.md) — retrieval mode descriptions, formulas, performance profiles, and troubleshooting
 - [docs/quickstart.md](docs/quickstart.md) — concise local validation commands
@@ -221,9 +193,11 @@ poetry run ruff format src tests
 
 ## Known Limitations
 
-- The redesigned pipeline currently includes a structurally honest heuristic open extractor as the default vertical slice, not a production extraction model.
-- Retrieval now supports promoted-graph-aware graph mode with legacy fallback, but UI and some runtime surfaces still require deeper migration.
-- Semantic export is cleaner than the old direct registry dump, but it does not yet enforce SHACL validation or claim full ontology rigor.
+- The pipeline currently uses a structurally honest heuristic open extractor as the default, not a production extraction model.
+- Dense retrieval may run with hash-based embeddings in fallback or default demo configurations; not strong evidence of semantic retrieval quality.
+- The Neo4j fallback backend for dense retrieval is lexical search over `Chunk` text, not a true vector index.
+- Evaluation metrics are mostly heuristic overlap and support proxies, useful for regression tracking but not benchmark-grade evidence.
+- Graph retrieval quality depends on how well the promoted graph (CanonicalEntity, Assertion, OntologyClass nodes) has been populated via `kg-run`.
 
 ## License
 

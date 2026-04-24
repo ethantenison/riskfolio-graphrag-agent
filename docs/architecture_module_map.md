@@ -114,7 +114,7 @@ Outputs: ranked `RetrievalResult` evidence with citation-friendly metadata.
 
 - **Dense**: Embedding-based semantic similarity with query expansion. Uses `2×top_k` candidate pool before final truncation. Fast and broad; good for paraphrased queries.
 - **Sparse**: Lexical token matching over Neo4j chunks. Direct keyword search; precise for domain terminology but weak on synonyms.
-- **Graph**: Multi-stage assertion-aware traversal with `3×top_k` candidate pool. Combines seed matching, ontology-class expansion, assertion-bridged peer entities, and sparse backfill. Slowest but captures semantic relationships.
+- **Graph**: Shallow assertion-aware traversal with `3×top_k` candidate pool. Combines promoted seed matching (CanonicalEntity → Assertion → Chunk), ontology-class expansion (OntologyClass → CanonicalEntity → Assertion → Chunk), assertion-bridged peer entities, and sparse backfill. Slowest but captures semantic relationships.
 - **Hybrid Rerank**: Merges dense and sparse results from `2×top_k` each, then applies graph-contextualized evidence boosts. Balances precision and recall; default mode.
 
 All modes (except sparse) apply optional reranking boosts based on entity density, graph neighbourhood connectivity, and query token coverage. See `docs/retrieval_methods.md` for detailed mode descriptions, formulas, and performance profiles.
@@ -155,9 +155,9 @@ Must not: bury core business logic in handlers when it belongs in lower layers.
 | `src/riskfolio_graphrag_agent/semantic_export/pipeline.py` | OWL/SKOS/PROV export over stabilized layers | Replaces the old direct registry-dump style export path. |
 | `src/riskfolio_graphrag_agent/evaluation/graph_quality.py` | Graph-quality metrics for KG induction | Complements answer-quality evaluation in `eval/`. |
 | `src/riskfolio_graphrag_agent/kg_pipeline.py` | End-to-end redesigned KG orchestration | Writes stage artifacts and can persist the promoted graph to Neo4j. |
-| `src/riskfolio_graphrag_agent/graph/builder.py` | Legacy deterministic graph builder | Compatibility path only; not the recommended architecture. |
-| `src/riskfolio_graphrag_agent/graph/semantic_interop.py` | Legacy semantic export helpers | Compatibility path only; superseded by `semantic_export/`. |
-| `src/riskfolio_graphrag_agent/retrieval/retriever.py` | Evidence retrieval and graph-aware reranking | Implements four retrieval modes: dense, sparse, graph, and hybrid_rerank. Prefers promoted assertion-aware graph with legacy fallback. See `docs/retrieval_methods.md` for detailed mode descriptions and performance profiles. |
+| `src/riskfolio_graphrag_agent/graph/builder.py` | Deterministic graph builder using domain aliases and taxonomy edges | Used by server and Gradio UI for graph stats and subgraph queries; also provides the `build-graph` CLI path for alias-driven graph construction. |
+| `src/riskfolio_graphrag_agent/graph/semantic_interop.py` | Semantic export helpers for RDF/OWL output from the legacy graph | Superseded by `semantic_export/` for new KG pipeline runs; still used for structural validation tests. |
+| `src/riskfolio_graphrag_agent/retrieval/retriever.py` | Evidence retrieval and graph-aware reranking | Implements four retrieval modes: dense, sparse, graph, and hybrid_rerank. Graph mode uses the promoted assertion-aware graph (CanonicalEntity, Assertion, OntologyClass) with sparse backfill for coverage gaps. See `docs/retrieval_methods.md` for detailed mode descriptions and performance profiles. |
 | `src/riskfolio_graphrag_agent/retrieval/router.py` | Query-to-retrieval-mode routing | Chooses between dense, sparse, graph, and hybrid modes based on query characteristics. |
 | `src/riskfolio_graphrag_agent/agent/workflow.py` | Multi-step plan, retrieve, reason, verify flow | Orchestrates answer production over retrieved evidence. |
 | `src/riskfolio_graphrag_agent/eval/evaluator.py` | Retrieval and answer quality evaluation | Existing answer-quality harness. |
@@ -187,9 +187,9 @@ Must not: bury core business logic in handlers when it belongs in lower layers.
 ## Documentation Split
 
 - `.github/copilot-instructions.md`: strict rules for generated code and docs.
-- `README.md`: project overview, setup, and honest current status.
+- `README.md`: project overview, setup, and current status.
 - `docs/quickstart.md`: concise local validation commands.
-- `docs/kg-redesign.md`: detailed redesign rationale and graph-layer design.
+- `docs/kg-pipeline-design.md`: graph-layer design rationale, data model, pipeline, Cypher model, semantic export, and evaluation.
 - `docs/retrieval_methods.md`: retrieval mode descriptions, formulas, performance profiles, and troubleshooting.
 - This document: architecture map, boundaries, entry points, and design guardrails.
 

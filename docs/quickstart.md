@@ -1,6 +1,6 @@
 # Quickstart
 
-## Option A: Redesigned KG path
+## Option A: KG pipeline
 
 ```bash
 poetry install
@@ -37,12 +37,4 @@ poetry run riskfolio-agent eval --samples benchmarks/eval_samples_v1.json
 poetry run riskfolio-agent er-eval
 poetry run python scripts/report_observability.py
 ```
-
-## Legacy compatibility path
-
-```bash
-poetry run riskfolio-agent build-graph
-```
-
-Use this only if you specifically need the older deterministic graph builder for comparison or migration work.
 
