@@ -10,21 +10,16 @@ from riskfolio_graphrag_agent.retrieval.embeddings import HashEmbeddingProvider
 from riskfolio_graphrag_agent.retrieval.retriever import (
     ChromaVectorStore,
     HybridRetriever,
-    Neo4jChunkVectorStore,
-    Neo4jLexicalStore,
     RetrievalResult,
     VectorHit,
     _dense_query_variants,
-    _find_domain_concepts,
     _graph_expand,
-    _hash_embedding,
     _merge_hits,
     _promoted_graph_bridge_hits,
     _promoted_graph_hop_expansion,
     _promoted_graph_seed_hits,
     _query_tokens_for_lexical_graph,
     _sparse_query_hits,
-    _vector_search,
 )
 
 
@@ -143,12 +138,6 @@ def test_retrieval_result_dataclass():
     assert result.graph_neighbours == []
 
 
-def test_vector_search_stub():
-    """_vector_search stub should return an empty list without raising."""
-    results = _vector_search("test query", top_k=3)
-    assert isinstance(results, list)
-
-
 def test_chroma_vector_store_upsert_and_query():
     client = _FakeChromaClient()
     store = ChromaVectorStore(
@@ -223,25 +212,6 @@ def test_hybrid_retriever_retrieve_stub():
             assert isinstance(results, list)
         finally:
             retriever.close()
-
-
-def test_hash_embedding_is_deterministic():
-    first = _hash_embedding("risk parity", dim=64)
-    second = _hash_embedding("risk parity", dim=64)
-    assert first == second
-
-
-def test_neo4j_lexical_store_alias():
-    assert Neo4jChunkVectorStore is Neo4jLexicalStore
-
-
-def test_find_domain_concepts_matches_short_risk_measure_aliases():
-    concepts = _find_domain_concepts("Compare TG, EVRG, MV, and CDaR for tail-risk analysis")
-
-    assert "Tail Gini" in concepts
-    assert "EVRG" in concepts
-    assert "MV" in concepts
-    assert "CDaR" in concepts
 
 
 def test_sparse_query_hits_supports_node_id_chunks():

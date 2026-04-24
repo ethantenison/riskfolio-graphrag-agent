@@ -46,4 +46,4 @@ Measured against the live Neo4j graph (3,590 nodes, 9,478 edges) using the deter
 | dense | 0.24 | 0.0750 |
 | hybrid_rerank | 0.12 | 0.0518 |
 
-Sparse is the default. The router automatically promotes code/API queries to sparse and graph-traversal queries to graph mode. Full results: `benchmarks/retrieval_ablation_results.md`.
+The default retrieval mode is `hybrid_rerank`. The router may prefer `sparse` for exact code/API queries and `graph` for relationship-oriented queries. Full results: `benchmarks/retrieval_ablation_results.md`.

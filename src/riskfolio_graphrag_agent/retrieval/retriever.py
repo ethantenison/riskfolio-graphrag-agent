@@ -52,8 +52,9 @@ Non-obvious design decisions:
             mismatch across backends.
         - Graph expansion is intentionally shallow. It augments retrieval with local
             entity and chunk context, but does not attempt deep graph reasoning.
-        - Retrieval now prefers the promoted assertion-aware graph shape and falls
-            back to legacy graph patterns when promoted nodes are unavailable.
+        - Graph mode uses the promoted assertion-aware graph shape (CanonicalEntity,
+            Assertion, OntologyClass) and falls back to sparse keyword search when
+            promoted nodes are not yet populated.
 
 What this module does not do:
     - It does not chunk source files or create `Document` objects.
@@ -78,17 +79,9 @@ from typing import Any, Literal, Protocol, cast
 from neo4j import Driver, GraphDatabase
 
 from riskfolio_graphrag_agent.ingestion.loader import Document as IngestDocument
-from riskfolio_graphrag_agent.retrieval.embeddings import EmbeddingProvider, HashEmbeddingProvider, hash_embedding
+from riskfolio_graphrag_agent.retrieval.embeddings import EmbeddingProvider, HashEmbeddingProvider
 
 logger = logging.getLogger(__name__)
-
-_QUERY_ONLY_CONCEPT_ALIASES: dict[str, tuple[str, ...]] = {
-    "MV": ("mv",),
-    "KT": ("kt",),
-    "WR": ("wr",),
-    "RG": ("rg", "vrg"),
-    "ADD": ("add",),
-}
 
 # Lightweight lexical expansions for sparse and graph retrieval seeding.
 _LEXICAL_TOKEN_SYNONYMS: dict[str, tuple[str, ...]] = {
@@ -100,22 +93,6 @@ _LEXICAL_TOKEN_SYNONYMS: dict[str, tuple[str, ...]] = {
     "plot": ("chart", "figure", "visualization"),
 }
 
-
-def _load_legacy_domain_aliases() -> dict[str, dict[str, tuple[str, ...]]]:
-    """Load legacy domain aliases lazily for compatibility fallback.
-
-    Returns:
-        Legacy domain alias registry, or an empty dictionary when unavailable.
-    """
-    try:
-        from riskfolio_graphrag_agent.graph.builder import DOMAIN_ALIASES
-
-        return DOMAIN_ALIASES
-    except Exception:  # pragma: no cover - defensive import fallback
-        return {}
-
-
-_LEGACY_DOMAIN_ALIASES = _load_legacy_domain_aliases()
 
 RetrievalMode = Literal["dense", "sparse", "graph", "hybrid_rerank"]
 
@@ -347,7 +324,6 @@ class Neo4jLexicalStore:
         return _sparse_query_hits(self._driver, query, top_k=top_k)
 
 
-Neo4jChunkVectorStore = Neo4jLexicalStore
 
 
 class HybridRetriever:
@@ -463,15 +439,10 @@ class HybridRetriever:
             # Graph mode now builds a broader candidate pool before reranking.
             candidate_k = max(self._top_k * 3, self._top_k)
 
-            # Prefer promoted assertion-aware traversal, fallback to legacy graph seeds.
+            # Prefer promoted assertion-aware traversal; sparse backfill covers gaps when
+            # promoted graph nodes are unavailable.
             seed_hits = _promoted_graph_seed_hits(self._driver, query, top_k=candidate_k)
-            if not seed_hits:
-                seed_hits = _graph_seed_hits(self._driver, query, top_k=candidate_k)
-
             hop_hits = _promoted_graph_hop_expansion(self._driver, query, top_k=candidate_k)
-            if not hop_hits:
-                hop_hits = _graph_hop_expansion(self._driver, query, top_k=candidate_k)
-
             bridge_hits = _promoted_graph_bridge_hits(self._driver, query, top_k=candidate_k)
             sparse_backfill = _sparse_query_hits(self._driver, query, top_k=max(self._top_k, candidate_k // 2))
 
@@ -611,12 +582,6 @@ def _query_coverage_signal(query_tokens: set[str], result: RetrievalResult) -> f
     return min(1.0, overlap / len(query_tokens))
 
 
-def _vector_search(query: str, top_k: int) -> list[RetrievalResult]:
-    """Compatibility helper retained for existing tests."""
-    logger.debug("_vector_search helper called for %r (top_k=%d)", query, top_k)
-    return []
-
-
 def _build_default_vector_store(
     backend: str,
     chroma_persist_dir: str,
@@ -656,11 +621,6 @@ def _sanitize_metadata_for_chroma(doc: IngestDocument) -> dict[str, str | int | 
         "line_end": doc.line_end,
         "content_hash": doc.content_hash,
     }
-
-
-def _hash_embedding(text: str, dim: int = 256) -> list[float]:
-    """Compatibility wrapper kept for existing tests."""
-    return hash_embedding(text, dim=dim)
 
 
 def _graph_expand(hit_or_result, session=None):
@@ -778,66 +738,6 @@ def _sparse_query_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit
             )
         )
     return hits
-
-
-def _graph_seed_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
-    tokens = _query_tokens_for_lexical_graph(query)
-    if not tokens:
-        return []
-
-    cypher = (
-        "MATCH (e) "
-        "WHERE e.name IS NOT NULL "
-        "AND any(t IN $tokens WHERE toLower(e.name) CONTAINS t) "
-        "WITH e, size([t IN $tokens WHERE toLower(e.name) CONTAINS t]) AS entity_score "
-        "OPTIONAL MATCH (c:Chunk)-[:MENTIONS]->(e) "
-        "WHERE c.name IS NOT NULL "
-        "WITH c, max(entity_score) AS score "
-        "WHERE c IS NOT NULL "
-        "RETURN c.name AS chunk_id, c.content AS content, c.source_path AS source_path, "
-        "c.relative_path AS relative_path, c.chunk_index AS chunk_index, "
-        "c.chunk_kind AS chunk_kind, c.line_start AS line_start, c.line_end AS line_end, score "
-        "ORDER BY score DESC LIMIT $top_k"
-    )
-
-    with driver.session() as session:
-        rows = list(session.run(cypher, tokens=tokens, top_k=top_k))
-
-    hits: list[VectorHit] = []
-    for row in rows:
-        hits.append(
-            VectorHit(
-                chunk_id=str(row["chunk_id"]),
-                content=str(row["content"]),
-                source_path=str(row["source_path"]),
-                score=float(row["score"]),
-                metadata={
-                    "relative_path": str(row["relative_path"]),
-                    "chunk_index": int(row["chunk_index"]),
-                    "chunk_kind": str(row["chunk_kind"]),
-                    "section": "",
-                    "line_start": int(row["line_start"] or 1),
-                    "line_end": int(row["line_end"] or 1),
-                    "content_hash": "",
-                },
-            )
-        )
-    return hits
-
-
-def _find_domain_concepts(query: str) -> list[str]:
-    """Return canonical concept names whose aliases appear in *query*."""
-    lowered = query.lower()
-    matched: list[str] = []
-    for concepts in _LEGACY_DOMAIN_ALIASES.values():
-        for canonical_name, aliases in concepts.items():
-            candidate_aliases = tuple(alias.lower() for alias in aliases) + _QUERY_ONLY_CONCEPT_ALIASES.get(
-                canonical_name,
-                (),
-            )
-            if canonical_name.lower() in lowered or any(alias in lowered for alias in candidate_aliases):
-                matched.append(canonical_name)
-    return matched
 
 
 def _promoted_graph_seed_hits(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
@@ -993,72 +893,6 @@ def _promoted_graph_bridge_hits(driver: Driver, query: str, top_k: int) -> list[
                     "relative_path": str(row["relative_path"] or ""),
                     "chunk_index": int(row["chunk_index"] or 0),
                     "chunk_kind": str(row["chunk_kind"] or ""),
-                    "section": "",
-                    "line_start": int(row["line_start"] or 1),
-                    "line_end": int(row["line_end"] or 1),
-                    "content_hash": "",
-                },
-            )
-        )
-    return hits
-
-
-def _graph_hop_expansion(driver: Driver, query: str, top_k: int) -> list[VectorHit]:
-    """Find additional graph-relevant chunks from one-hop domain relations.
-
-    This expansion is limited to curated ontology-like edges so retrieval
-    remains interpretable and bounded in cost.
-    """
-    concepts = _find_domain_concepts(query)
-    if not concepts:
-        return []
-
-    cypher = (
-        "UNWIND $concepts AS concept_name "
-        "MATCH (e) WHERE toLower(e.name) = toLower(concept_name) "
-        "OPTIONAL MATCH (e)-[:IS_SUBTYPE_OF]->(parent) "
-        "OPTIONAL MATCH (e)-[:ALTERNATIVE_TO]-(alt) "
-        "OPTIONAL MATCH (e)-[:REQUIRES]->(req) "
-        "OPTIONAL MATCH (e)-[:BELONGS_TO_FAMILY]->(family:RiskMeasureFamily) "
-        "OPTIONAL MATCH (family)<-[:BELONGS_TO_FAMILY]-(family_peer:RiskMeasure) "
-        "OPTIONAL MATCH (e)<-[:RANGE_VERSION_OF]-(range_variant:RiskMeasure) "
-        "OPTIONAL MATCH (e)-[:RANGE_VERSION_OF]->(range_base:RiskMeasure) "
-        "OPTIONAL MATCH (e)<-[:DRAWDOWN_ANALOG_OF]-(drawdown_variant:RiskMeasure) "
-        "OPTIONAL MATCH (e)-[:DRAWDOWN_ANALOG_OF]->(return_analog:RiskMeasure) "
-        "WITH collect(DISTINCT parent) + collect(DISTINCT alt) + collect(DISTINCT req) + "
-        "collect(DISTINCT family) + collect(DISTINCT family_peer) + collect(DISTINCT range_variant) + "
-        "collect(DISTINCT range_base) + collect(DISTINCT drawdown_variant) + "
-        "collect(DISTINCT return_analog) AS related_nodes "
-        "UNWIND related_nodes AS rn "
-        "WHERE rn IS NOT NULL "
-        "OPTIONAL MATCH (c:Chunk)-[:MENTIONS]->(rn) WHERE c.name IS NOT NULL "
-        "WITH c, max(1) AS score WHERE c IS NOT NULL "
-        "RETURN c.name AS chunk_id, c.content AS content, "
-        "c.source_path AS source_path, c.relative_path AS relative_path, "
-        "c.chunk_index AS chunk_index, c.chunk_kind AS chunk_kind, "
-        "c.line_start AS line_start, c.line_end AS line_end, score "
-        "ORDER BY score DESC LIMIT $top_k"
-    )
-
-    try:
-        with driver.session() as session:
-            rows = list(session.run(cypher, concepts=concepts, top_k=top_k))
-    except Exception as exc:
-        logger.debug("Graph-hop expansion query failed: %s", exc)
-        return []
-
-    hits: list[VectorHit] = []
-    for row in rows:
-        hits.append(
-            VectorHit(
-                chunk_id=str(row["chunk_id"]),
-                content=str(row["content"]),
-                source_path=str(row["source_path"]),
-                score=float(row["score"]),
-                metadata={
-                    "relative_path": str(row["relative_path"]),
-                    "chunk_index": int(row["chunk_index"]),
-                    "chunk_kind": str(row["chunk_kind"]),
                     "section": "",
                     "line_start": int(row["line_start"] or 1),
                     "line_end": int(row["line_end"] or 1),

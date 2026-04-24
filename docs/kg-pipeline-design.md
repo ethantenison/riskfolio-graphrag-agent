@@ -1,8 +1,8 @@
-# KG Redesign
+# KG Pipeline Design
 
 ## Goals
 
-The redesign replaces the old deterministic, alias-driven graph builder with a staged knowledge graph induction system that is credible as knowledge engineering work rather than as a demo taxonomy dump.
+This pipeline replaces the old deterministic, alias-driven graph builder with a staged knowledge graph induction system.
 
 The primary goals are:
 
@@ -201,25 +201,5 @@ The implemented vertical slice now reports:
 ## Tradeoffs and Risks
 
 - The current extractor is structurally honest but not yet strong enough to be the final extraction system.
-- Retrieval remains partly coupled to the legacy graph until downstream migration lands.
 - Schema induction is reviewable, but formal validation and schema version governance still need deeper implementation.
 - The semantic export is disciplined enough to be meaningful, but not yet a full ontology management stack.
-
-## What Is Implemented Now
-
-- shared typed models for all graph layers,
-- open extraction vertical slice,
-- canonicalization scaffolding and decision records,
-- schema induction artifacts,
-- Neo4j write plans and write functions,
-- RDF/OWL/SKOS/PROV export split,
-- graph-quality evaluation,
-- `kg-run` CLI entry point.
-
-## What Still Needs Work
-
-- stronger extraction models,
-- richer canonicalization features such as embeddings and adjudication,
-- retrieval migration onto the promoted graph,
-- semantic validation beyond lightweight structural export,
-- graph-quality regression gating in CI.
