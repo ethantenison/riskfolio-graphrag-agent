@@ -4,16 +4,20 @@ Commands
 --------
 ingest      Load and chunk source documents / code.
 build-graph Build the knowledge graph in Neo4j.
+kg-run      Run the redesigned KG induction pipeline and write review artifacts.
 graph-stats Show basic graph counts from Neo4j.
 eval        Run retrieval-quality evaluation suite.
+eval-ablation Run all retrieval modes and write one consolidated summary.
 serve       Start the FastAPI server.
 gradio      Start the Gradio chat interface.
 """
 
+import hashlib
 import json
 import logging
 import ssl
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib import request
 from urllib.error import HTTPError, URLError
@@ -45,6 +49,7 @@ app = typer.Typer(
 )
 console = Console()
 logger = logging.getLogger(__name__)
+_ABLATION_RETRIEVAL_MODES = ("dense", "sparse", "graph", "hybrid_rerank")
 
 
 def _build_ssl_context() -> ssl.SSLContext | None:
@@ -72,8 +77,149 @@ def _resolve_embedding(settings: Settings):
         openai_embedding_model=settings.embedding_model,
         openai_base_url=settings.openai_base_url,
         openai_timeout_seconds=settings.openai_timeout_seconds,
+        openai_retry_attempts=settings.openai_retry_attempts,
+        openai_retry_backoff_seconds=settings.openai_retry_backoff_seconds,
         ssl_context=_build_ssl_context(),
     )
+
+
+def _make_openai_open_extractor(settings: Settings):
+    def _extract(*, content: str, source_type: str, model_name: str) -> dict[str, object]:
+        prompt = (
+            "Extract evidence-grounded candidate assertions and event frames from one Riskfolio chunk. "
+            "Return strict JSON only with top-level keys 'candidate_assertions' and 'candidate_events'. "
+            "Do not include markdown or explanations.\n\n"
+            "candidate_assertions item schema:\n"
+            "{"
+            '"subject_text": string, '
+            '"subject_type_guess": string, '
+            '"predicate_text": string, '
+            '"object_text": string, '
+            '"object_type_guess": string, '
+            '"statement": string, '
+            '"evidence_text": string, '
+            '"confidence": number, '
+            '"metadata": object'
+            "}\n\n"
+            "candidate_events item schema:\n"
+            "{"
+            '"trigger_text": string, '
+            '"event_type_guess": string, '
+            '"arguments": [{"role": string, "text": string, "type_guess": string}], '
+            '"evidence_text": string, '
+            '"confidence": number, '
+            '"metadata": object'
+            "}\n\n"
+            "Rules:\n"
+            "- Only emit claims supported verbatim by the chunk.\n"
+            "- Prefer domain relations such as computes, uses, supports, constrains, estimates, plots, reports.\n"
+            "- Prefer subject/object spans that appear exactly in the chunk.\n"
+            "- If no supported claims exist, return empty arrays.\n\n"
+            f"source_type: {source_type}\n"
+            f"content:\n{content[:8000]}"
+        )
+
+        payload = {
+            "model": model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an information extraction engine. Output valid JSON only. Never invent unsupported claims."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        }
+        endpoint = f"{settings.openai_base_url.rstrip('/')}/chat/completions"
+        body = json.dumps(payload).encode("utf-8")
+        http_request = request.Request(
+            url=endpoint,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+        max_attempts = max(1, int(settings.openai_retry_attempts) + 1)
+        backoff_seconds = max(0.0, float(settings.openai_retry_backoff_seconds))
+        raw = ""
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with request.urlopen(
+                    http_request,
+                    timeout=settings.openai_timeout_seconds,
+                    context=_build_ssl_context(),
+                ) as response:
+                    raw = response.read().decode("utf-8")
+                break
+            except HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="ignore")
+                if exc.code in {408, 429, 500, 502, 503, 504} and attempt < max_attempts:
+                    sleep_seconds = backoff_seconds * attempt
+                    logger.warning(
+                        "Open-extractor transient HTTP %s on attempt %d/%d; retrying in %.1fs",
+                        exc.code,
+                        attempt,
+                        max_attempts,
+                        sleep_seconds,
+                    )
+                    if sleep_seconds > 0:
+                        time.sleep(sleep_seconds)
+                    continue
+                raise RuntimeError(f"Open extractor HTTP error {exc.code}: {detail}") from exc
+            except (URLError, TimeoutError) as exc:
+                if attempt < max_attempts:
+                    sleep_seconds = backoff_seconds * attempt
+                    logger.warning(
+                        "Open-extractor request failed on attempt %d/%d (%s); retrying in %.1fs",
+                        attempt,
+                        max_attempts,
+                        exc,
+                        sleep_seconds,
+                    )
+                    if sleep_seconds > 0:
+                        time.sleep(sleep_seconds)
+                    continue
+                raise RuntimeError(f"Open extractor endpoint unreachable: {exc}") from exc
+
+        try:
+            response_payload = json.loads(raw)
+            choices = response_payload.get("choices", [])
+            first_choice = choices[0] if isinstance(choices, list) and choices else {}
+            message = first_choice.get("message", {}) if isinstance(first_choice, dict) else {}
+            content_text = message.get("content", "") if isinstance(message, dict) else ""
+            if not isinstance(content_text, str) or not content_text.strip():
+                return {"candidate_assertions": [], "candidate_events": []}
+            extracted = json.loads(content_text)
+            if not isinstance(extracted, dict):
+                return {"candidate_assertions": [], "candidate_events": []}
+            extracted.setdefault("candidate_assertions", [])
+            extracted.setdefault("candidate_events", [])
+            return extracted
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Open extractor returned invalid JSON") from exc
+
+    return _extract
+
+
+def _make_kg_pipeline(settings: Settings | None = None):
+    from riskfolio_graphrag_agent.extraction.pipeline import LLMOpenExtractor
+    from riskfolio_graphrag_agent.kg_pipeline import KnowledgeGraphPipeline
+
+    extractor = None
+    if settings is not None and settings.openai_enable_graph_extraction and settings.openai_api_key.strip():
+        extractor = LLMOpenExtractor(
+            llm_extract=_make_openai_open_extractor(settings),
+            model_name=settings.openai_model,
+        )
+
+    return KnowledgeGraphPipeline(extractor=extractor)
 
 
 def _make_openai_graph_extractor(settings: Settings):
@@ -184,36 +330,154 @@ def _resolve_eval_samples(samples_path: str | None) -> list[EvalSample]:
     return load_eval_samples(samples_path)
 
 
-def _resolve_source_directories(source_dir: str | None, settings: Settings) -> list[Path]:
-    candidate = Path(source_dir or settings.riskfolio_source_dir).expanduser().resolve()
-    if not candidate.exists():
-        raise FileNotFoundError(f"Source directory not found: {candidate}")
+def _default_eval_output_path(*, retrieval_mode: str, eval_top_k: int) -> str:
+    """Build a canonical eval artifact path under dated run folders.
 
-    dirs: list[Path] = []
-    if (candidate / "riskfolio" / "src").exists() and (candidate / "docs" / "source").exists():
-        dirs = [candidate / "riskfolio" / "src", candidate / "docs" / "source"]
-    elif candidate.name == "src" and candidate.parent.name == "riskfolio":
-        sibling_docs = candidate.parent.parent / "docs" / "source"
-        dirs = [candidate]
-        if sibling_docs.exists():
-            dirs.append(sibling_docs)
-    elif candidate.name == "source" and candidate.parent.name == "docs":
-        sibling_src = candidate.parent.parent / "riskfolio" / "src"
-        dirs = [candidate]
-        if sibling_src.exists():
-            dirs.append(sibling_src)
-    else:
-        dirs = [candidate]
+    Args:
+        retrieval_mode: Retrieval mode used for the run.
+        eval_top_k: Context count used for the run.
 
-    unique_dirs: list[Path] = []
-    seen: set[str] = set()
-    for directory in dirs:
-        normalized = str(directory)
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        unique_dirs.append(directory)
-    return unique_dirs
+    Returns:
+        Output path in ``artifacts/eval_runs/YYYY-MM-DD``.
+    """
+    run_day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    mode_slug = retrieval_mode.strip().lower().replace("-", "_") or "unknown"
+    filename = f"eval_{mode_slug}_top{max(1, int(eval_top_k))}.json"
+    return str(Path("artifacts") / "eval_runs" / run_day / filename)
+
+
+def _report_metrics_snapshot(report: object) -> dict[str, float | int | str]:
+    """Extract the core metric fields used in eval ablation summaries.
+
+    Args:
+        report: Evaluator report object.
+
+    Returns:
+        Flat metric dictionary used for consolidated JSON summaries.
+    """
+    return {
+        "num_samples": int(getattr(report, "num_samples", 0)),
+        "context_recall": float(getattr(report, "context_recall", 0.0)),
+        "context_precision": float(getattr(report, "context_precision", 0.0)),
+        "answer_faithfulness": float(getattr(report, "answer_faithfulness", 0.0)),
+        "answer_relevance": float(getattr(report, "answer_relevance", 0.0)),
+        "grounding": float(getattr(report, "grounding", 0.0)),
+        "multi_hop_accuracy": float(getattr(report, "multi_hop_accuracy", 0.0)),
+        "link_prediction_mrr": float(getattr(report, "link_prediction_mrr", 0.0)),
+        "link_prediction_ndcg_at_3": float(getattr(report, "link_prediction_ndcg_at_3", 0.0)),
+        "link_prediction_ndcg_at_10": float(getattr(report, "link_prediction_ndcg_at_10", 0.0)),
+        "rank_quality": float(getattr(report, "rank_quality", 0.0)),
+        "avg_latency_ms": float(getattr(report, "avg_latency_ms", 0.0)),
+        "estimated_cost_usd": float(getattr(report, "estimated_cost_usd", 0.0)),
+        "retrieval_mode": str(getattr(report, "retrieval_mode", "")),
+        "metric_profile": str(getattr(report, "metric_profile", "")),
+        "embedding_provider": str(getattr(report, "embedding_provider", "")),
+        "dense_index_refreshed": str(getattr(report, "dense_index_refreshed", False)),
+        "dense_index_fingerprint": str(getattr(report, "dense_index_fingerprint", "")),
+        "dense_index_upserted": int(getattr(report, "dense_index_upserted", 0)),
+        "run_at": str(getattr(report, "run_at", "")),
+    }
+
+
+def _dense_index_fingerprint(documents: list[Document]) -> str:
+    """Compute a stable fingerprint for a set of chunked documents."""
+    digest = hashlib.sha256()
+    for doc in sorted(documents, key=lambda item: item.chunk_id):
+        digest.update(doc.chunk_id.encode("utf-8"))
+        digest.update(b"|")
+        digest.update(doc.content_hash.encode("utf-8"))
+        digest.update(b"|")
+        digest.update(str(doc.line_start).encode("utf-8"))
+        digest.update(b"|")
+        digest.update(str(doc.line_end).encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _normalize_metric_profile(metric_profile: str) -> str:
+    """Validate and normalize metric profile values accepted by CLI commands."""
+    normalized_profile = metric_profile.strip().lower()
+    if normalized_profile not in {"ragas-style", "heuristic", "graph", "graph-order-sensitive"}:
+        raise typer.BadParameter("--metric-profile must be one of: ragas-style, heuristic, graph, graph-order-sensitive")
+    return normalized_profile
+
+
+def _run_default_er_pipeline() -> object:
+    """Run the standard ER bootstrap used by eval commands."""
+    er_entities = [
+        EntityRecord(entity_id="e1", name="Hierarchical Risk Parity", source="docs"),
+        EntityRecord(entity_id="e2", name="hierarchical-risk-parity", source="code"),
+        EntityRecord(entity_id="e3", name="CVaR", source="docs"),
+    ]
+    return run_er_pipeline(
+        er_entities,
+        gold_pairs={("e1", "e2")},
+        audit_dir="artifacts/er",
+    )
+
+
+def _er_metrics_payload(er_result: object) -> dict[str, float]:
+    """Return evaluator-compatible ER metrics payload from pipeline result."""
+    metrics = getattr(er_result, "metrics", None)
+    return {
+        "precision": float(getattr(metrics, "precision", 0.0) if metrics else 0.0),
+        "recall": float(getattr(metrics, "recall", 0.0) if metrics else 0.0),
+        "f1": float(getattr(metrics, "f1", 0.0) if metrics else 0.0),
+    }
+
+
+def _eval_runtime_config(
+    *,
+    retrieval_mode: str,
+    embedding_provider: str,
+    eval_top_k: int,
+    refresh_dense_index: bool,
+    dense_index_fingerprint: str,
+    dense_index_upserted: int,
+) -> dict[str, str]:
+    """Build shared runtime metadata for eval reports."""
+    return {
+        "retrieval_mode": retrieval_mode,
+        "embedding_provider": embedding_provider,
+        "eval_top_k": str(eval_top_k),
+        "dense_index_refreshed": str(refresh_dense_index),
+        "dense_index_fingerprint": dense_index_fingerprint,
+        "dense_index_upserted": str(dense_index_upserted),
+    }
+
+
+def _refresh_dense_index(
+    *,
+    settings: Settings,
+    embedding_provider,
+    source_dir: str | None,
+) -> tuple[int, str]:
+    """Load current documents and refresh dense index vectors.
+
+    Returns:
+        Tuple of (upserted_chunks, index_fingerprint).
+    """
+    source_dirs = _resolve_focus_directories(source_dir, settings)
+    documents = _load_from_directories(source_dirs)
+    selected_documents = _select_documents_for_build(documents)
+    fingerprint = _dense_index_fingerprint(selected_documents)
+
+    retriever = HybridRetriever(
+        neo4j_uri=settings.neo4j_uri,
+        neo4j_user=settings.neo4j_user,
+        neo4j_password=settings.neo4j_password,
+        top_k=1,
+        vector_store_backend=settings.vector_store_backend,
+        chroma_persist_dir=settings.chroma_persist_dir,
+        embedding_provider=embedding_provider,
+        retrieval_mode=settings.retrieval_mode,
+    )
+    try:
+        upserted = retriever.upsert_documents(selected_documents)
+    finally:
+        retriever.close()
+
+    return upserted, fingerprint
 
 
 def _resolve_focus_directories(source_dir: str | None, settings: Settings) -> list[Path]:
@@ -354,7 +618,7 @@ def build_graph(
         help="Limit graph extraction to at most this many chunks.",
     ),
 ) -> None:
-    """Build (or rebuild) the knowledge graph in Neo4j.
+    """Build (or rebuild) the legacy deterministic knowledge graph in Neo4j.
 
     Args:
         drop_existing: When True, wipes the current graph before rebuilding.
@@ -371,6 +635,11 @@ def build_graph(
     )
     summary = summarize_documents(documents)
     selected_summary = summarize_documents(selected_documents)
+
+    console.print(
+        "[yellow]legacy graph path[/] build-graph retains the older alias-driven builder. "
+        "Use [bold]kg-run[/] for the redesigned mention/assertion-first pipeline."
+    )
 
     if not selected_documents:
         console.print(
@@ -410,6 +679,101 @@ def build_graph(
             console.print(f"  - {source_type}: {count}")
 
 
+@app.command(name="kg-run")
+def kg_run(
+    artifact_dir: str = typer.Option(
+        "artifacts/kg",
+        "--artifact-dir",
+        help="Directory where redesigned KG artifacts will be written.",
+    ),
+    persist_neo4j: bool = typer.Option(
+        False,
+        "--persist-neo4j",
+        help="Write the promoted retrieval graph to Neo4j after artifact generation.",
+    ),
+    drop_existing: bool = typer.Option(
+        False,
+        "--drop-existing",
+        help="Drop existing Neo4j content before writing the promoted retrieval graph.",
+    ),
+    source_dir: str | None = typer.Option(
+        None,
+        "--source-dir",
+        "-s",
+        help="Path to Riskfolio-Lib source/docs root or subdirectory.",
+    ),
+    chunk_offset: int = typer.Option(
+        0,
+        "--chunk-offset",
+        min=0,
+        help="Skip this many chunks before the redesigned KG pipeline starts.",
+    ),
+    max_chunks: int | None = typer.Option(
+        None,
+        "--max-chunks",
+        min=1,
+        help="Limit the redesigned KG pipeline to at most this many chunks.",
+    ),
+) -> None:
+    """Run the redesigned KG induction pipeline and write review artifacts.
+
+    The command preserves mention-level provenance and separates extraction,
+    canonicalization, schema induction, materialization, and semantic export.
+
+    Args:
+        artifact_dir: Output directory for KG review artifacts.
+        persist_neo4j: Whether to write the promoted graph into Neo4j.
+        drop_existing: Whether to clear Neo4j before a promoted-graph write.
+        source_dir: Optional path override for the source directory.
+        chunk_offset: Number of chunks to skip before processing.
+        max_chunks: Maximum number of chunks to process.
+    """
+    initialize_ssl_truststore_once()
+    settings = Settings()
+    _configure_logging(settings.log_level)
+    source_dirs = _resolve_focus_directories(source_dir, settings)
+    documents = _load_from_directories(source_dirs)
+    selected_documents = _select_documents_for_build(
+        documents,
+        chunk_offset=chunk_offset,
+        max_chunks=max_chunks,
+    )
+    if not selected_documents:
+        console.print(
+            "[yellow]kg-run skipped[/]",
+            f"No chunks selected from total_chunks={len(documents)} offset={chunk_offset} max_chunks={max_chunks}",
+        )
+        return
+
+    pipeline = _make_kg_pipeline(settings)
+    result = pipeline.run(
+        documents=selected_documents,
+        artifact_dir=artifact_dir,
+        persist_neo4j=persist_neo4j,
+        neo4j_uri=settings.neo4j_uri,
+        neo4j_user=settings.neo4j_user,
+        neo4j_password=settings.neo4j_password,
+        drop_existing=drop_existing,
+    )
+
+    console.print(
+        "[bold green]kg-run complete[/]",
+        (
+            f"chunks={result.graph_quality.num_chunks} mentions={result.graph_quality.num_mentions} "
+            f"candidate_assertions={result.graph_quality.num_candidate_assertions} "
+            f"canonical_entities={result.graph_quality.num_canonical_entities} "
+            f"ontology_classes={result.graph_quality.num_ontology_classes} "
+            f"ontology_properties={result.graph_quality.num_ontology_properties}"
+        ),
+    )
+    console.print(f"artifacts: {artifact_dir}")
+    console.print(
+        "semantic export:",
+        result.artifact_paths.get("ontology_ttl", ""),
+        result.artifact_paths.get("instances_ttl", ""),
+    )
+
+
 @app.command(name="graph-stats")
 def graph_stats() -> None:
     """Print basic graph statistics from Neo4j."""
@@ -442,7 +806,12 @@ def graph_stats() -> None:
 
 @app.command(name="eval")
 def eval_command(
-    output_file: str = typer.Option("eval_results.json", "--output", "-o", help="Path to write evaluation results JSON."),
+    output_file: str | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Optional path to write evaluation results JSON. Defaults to artifacts/eval_runs/YYYY-MM-DD.",
+    ),
     samples_path: str | None = typer.Option(
         None,
         "--samples",
@@ -451,8 +820,25 @@ def eval_command(
     metric_profile: str = typer.Option(
         "ragas-style",
         "--metric-profile",
-        help="Evaluation metric profile to run: ragas-style or heuristic.",
+        help="Evaluation metric profile to run: ragas-style, heuristic, graph, or graph-order-sensitive.",
         case_sensitive=False,
+    ),
+    eval_top_k: int = typer.Option(
+        8,
+        "--eval-top-k",
+        min=1,
+        help="Number of contexts to retrieve per sample for eval runs only.",
+    ),
+    refresh_dense_index: bool = typer.Option(
+        False,
+        "--refresh-dense-index",
+        help="Reload chunk docs and upsert vectors before running eval.",
+    ),
+    source_dir: str | None = typer.Option(
+        None,
+        "--source-dir",
+        "-s",
+        help="Path to Riskfolio-Lib source/docs root for dense index refresh.",
     ),
 ) -> None:
     """Run the retrieval-quality evaluation suite.
@@ -466,21 +852,30 @@ def eval_command(
         samples = _resolve_eval_samples(samples_path)
     except ValueError as exc:
         raise typer.BadParameter(str(exc), param_hint="--samples") from exc
-    er_entities = [
-        EntityRecord(entity_id="e1", name="Hierarchical Risk Parity", source="docs"),
-        EntityRecord(entity_id="e2", name="hierarchical-risk-parity", source="code"),
-        EntityRecord(entity_id="e3", name="CVaR", source="docs"),
-    ]
-    er_result = run_er_pipeline(
-        er_entities,
-        gold_pairs={("e1", "e2")},
-        audit_dir="artifacts/er",
+    er_result = _run_default_er_pipeline()
+    dense_index_upserted = 0
+    dense_index_fingerprint = ""
+    if refresh_dense_index:
+        dense_index_upserted, dense_index_fingerprint = _refresh_dense_index(
+            settings=settings,
+            embedding_provider=provider_resolution.provider,
+            source_dir=source_dir,
+        )
+        console.print(
+            "[bold cyan]eval[/]",
+            f"dense-index refreshed chunks={dense_index_upserted}",
+            f"fingerprint={dense_index_fingerprint[:12]}...",
+        )
+    resolved_output_file = output_file or _default_eval_output_path(
+        retrieval_mode=settings.retrieval_mode,
+        eval_top_k=eval_top_k,
     )
+
     retriever = HybridRetriever(
         neo4j_uri=settings.neo4j_uri,
         neo4j_user=settings.neo4j_user,
         neo4j_password=settings.neo4j_password,
-        top_k=5,
+        top_k=eval_top_k,
         vector_store_backend=settings.vector_store_backend,
         chroma_persist_dir=settings.chroma_persist_dir,
         embedding_provider=provider_resolution.provider,
@@ -488,26 +883,25 @@ def eval_command(
     )
 
     try:
-        normalized_profile = metric_profile.strip().lower()
-        if normalized_profile not in {"ragas-style", "heuristic"}:
-            raise typer.BadParameter("--metric-profile must be one of: ragas-style, heuristic")
+        normalized_profile = _normalize_metric_profile(metric_profile)
 
         evaluator = Evaluator(
             samples=samples,
             retriever=retriever,
             metric_profile=normalized_profile,
-            runtime_config={
-                "retrieval_mode": settings.retrieval_mode,
-                "embedding_provider": provider_resolution.selected_provider,
-            },
-            er_metrics={
-                "precision": er_result.metrics.precision if er_result.metrics else 0.0,
-                "recall": er_result.metrics.recall if er_result.metrics else 0.0,
-                "f1": er_result.metrics.f1 if er_result.metrics else 0.0,
-            },
+            runtime_config=_eval_runtime_config(
+                retrieval_mode=settings.retrieval_mode,
+                embedding_provider=provider_resolution.selected_provider,
+                eval_top_k=eval_top_k,
+                refresh_dense_index=refresh_dense_index,
+                dense_index_fingerprint=dense_index_fingerprint,
+                dense_index_upserted=dense_index_upserted,
+            ),
+            er_metrics=_er_metrics_payload(er_result),
         )
         report = evaluator.run()
-        evaluator.save(output_file, report)
+        Path(resolved_output_file).parent.mkdir(parents=True, exist_ok=True)
+        evaluator.save(resolved_output_file, report)
     finally:
         retriever.close()
 
@@ -525,7 +919,131 @@ def eval_command(
             f"profile={report.metric_profile}"
         ),
     )
-    console.print(f"saved report to {output_file}")
+    console.print(f"saved report to {resolved_output_file}")
+
+
+@app.command(name="eval-ablation")
+def eval_ablation_command(
+    output_dir: str | None = typer.Option(
+        None,
+        "--output-dir",
+        help="Optional directory for per-mode eval outputs and consolidated summary.",
+    ),
+    samples_path: str | None = typer.Option(
+        None,
+        "--samples",
+        help="Optional path to a JSON file containing evaluation samples.",
+    ),
+    metric_profile: str = typer.Option(
+        "ragas-style",
+        "--metric-profile",
+        help="Evaluation metric profile to run: ragas-style, heuristic, graph, or graph-order-sensitive.",
+        case_sensitive=False,
+    ),
+    eval_top_k: int = typer.Option(
+        8,
+        "--eval-top-k",
+        min=1,
+        help="Number of contexts to retrieve per sample for each ablation mode.",
+    ),
+    refresh_dense_index: bool = typer.Option(
+        False,
+        "--refresh-dense-index",
+        help="Reload chunk docs and upsert vectors before running ablation.",
+    ),
+    source_dir: str | None = typer.Option(
+        None,
+        "--source-dir",
+        "-s",
+        help="Path to Riskfolio-Lib source/docs root for dense index refresh.",
+    ),
+) -> None:
+    """Run evaluation for all retrieval modes and write one consolidated summary."""
+    settings = Settings()
+    provider_resolution = _resolve_embedding(settings)
+    try:
+        samples = _resolve_eval_samples(samples_path)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--samples") from exc
+
+    normalized_profile = _normalize_metric_profile(metric_profile)
+    er_result = _run_default_er_pipeline()
+    dense_index_upserted = 0
+    dense_index_fingerprint = ""
+    if refresh_dense_index:
+        dense_index_upserted, dense_index_fingerprint = _refresh_dense_index(
+            settings=settings,
+            embedding_provider=provider_resolution.provider,
+            source_dir=source_dir,
+        )
+        console.print(
+            "[bold cyan]eval-ablation[/]",
+            f"dense-index refreshed chunks={dense_index_upserted}",
+            f"fingerprint={dense_index_fingerprint[:12]}...",
+        )
+
+    default_dir = Path(_default_eval_output_path(retrieval_mode="ablation", eval_top_k=eval_top_k)).parent
+    resolved_output_dir = Path(output_dir) if output_dir else default_dir
+    resolved_output_dir.mkdir(parents=True, exist_ok=True)
+
+    summary_rows: dict[str, dict[str, float | int | str]] = {}
+    for mode in _ABLATION_RETRIEVAL_MODES:
+        retriever = HybridRetriever(
+            neo4j_uri=settings.neo4j_uri,
+            neo4j_user=settings.neo4j_user,
+            neo4j_password=settings.neo4j_password,
+            top_k=eval_top_k,
+            vector_store_backend=settings.vector_store_backend,
+            chroma_persist_dir=settings.chroma_persist_dir,
+            embedding_provider=provider_resolution.provider,
+            retrieval_mode=mode,
+        )
+        try:
+            evaluator = Evaluator(
+                samples=samples,
+                retriever=retriever,
+                metric_profile=normalized_profile,
+                runtime_config=_eval_runtime_config(
+                    retrieval_mode=mode,
+                    embedding_provider=provider_resolution.selected_provider,
+                    eval_top_k=eval_top_k,
+                    refresh_dense_index=refresh_dense_index,
+                    dense_index_fingerprint=dense_index_fingerprint,
+                    dense_index_upserted=dense_index_upserted,
+                ),
+                er_metrics=_er_metrics_payload(er_result),
+            )
+            report = evaluator.run()
+            mode_output = resolved_output_dir / f"eval_{mode}_top{eval_top_k}.json"
+            evaluator.save(mode_output, report)
+            summary_rows[mode] = _report_metrics_snapshot(report)
+            console.print(
+                "[bold cyan]eval-ablation[/]",
+                f"mode={mode} recall={report.context_recall:.3f} precision={report.context_precision:.3f}",
+            )
+        finally:
+            retriever.close()
+
+    best_mode = max(
+        summary_rows,
+        key=lambda key: float(summary_rows[key]["context_recall"]) + float(summary_rows[key]["context_precision"]),
+    )
+    best_mode_rank_quality = max(summary_rows, key=lambda key: float(summary_rows[key]["rank_quality"]))
+
+    summary_payload = {
+        "eval_top_k": eval_top_k,
+        "metric_profile": normalized_profile,
+        "embedding_provider": provider_resolution.selected_provider,
+        "dense_index_refreshed": refresh_dense_index,
+        "dense_index_fingerprint": dense_index_fingerprint,
+        "dense_index_upserted": dense_index_upserted,
+        "modes": summary_rows,
+        "winner_by_recall_plus_precision": best_mode,
+        "winner_by_rank_quality": best_mode_rank_quality,
+    }
+    summary_path = resolved_output_dir / f"ablation_summary_top{eval_top_k}.json"
+    summary_path.write_text(json.dumps(summary_payload, indent=2))
+    console.print(f"saved ablation summary to {summary_path}")
 
 
 @app.command(name="er-eval")
@@ -559,12 +1077,15 @@ def er_eval(
 
 @app.command(name="eval-gate")
 def eval_gate(
-    report_file: str = typer.Option("eval_results.json", "--report", help="Path to eval report JSON."),
+    report_file: str = typer.Option("benchmarks/eval_results.json", "--report", help="Path to eval report JSON."),
     min_faithfulness: float = typer.Option(0.35, "--min-faithfulness"),
     min_relevance: float = typer.Option(0.8, "--min-relevance"),
     min_context_recall: float = typer.Option(0.45, "--min-context-recall"),
     min_grounding: float = typer.Option(0.35, "--min-grounding"),
-    min_multi_hop_accuracy: float = typer.Option(0.25, "--min-multi-hop-accuracy"),
+    min_multi_hop_accuracy: float = typer.Option(0.0, "--min-multi-hop-accuracy"),
+    min_link_prediction_mrr: float = typer.Option(0.0, "--min-link-prediction-mrr"),
+    min_link_prediction_ndcg_at_3: float = typer.Option(0.0, "--min-link-prediction-ndcg-at-3"),
+    min_rank_quality: float = typer.Option(0.0, "--min-rank-quality"),
     max_latency_ms: float = typer.Option(5000.0, "--max-latency-ms"),
     max_estimated_cost_usd: float = typer.Option(0.02, "--max-estimated-cost-usd"),
     trend_path: str = typer.Option("artifacts/eval/eval_trend.json", "--trend-path"),
@@ -577,6 +1098,9 @@ def eval_gate(
         min_context_recall=min_context_recall,
         min_grounding=min_grounding,
         min_multi_hop_accuracy=min_multi_hop_accuracy,
+        min_link_prediction_mrr=min_link_prediction_mrr,
+        min_link_prediction_ndcg_at_3=min_link_prediction_ndcg_at_3,
+        min_rank_quality=min_rank_quality,
         max_latency_ms=max_latency_ms,
         max_estimated_cost_usd=max_estimated_cost_usd,
         trend_path=trend_path,

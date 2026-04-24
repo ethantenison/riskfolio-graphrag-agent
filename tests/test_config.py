@@ -11,6 +11,7 @@ def test_settings_defaults():
     assert settings.neo4j_uri == "bolt://localhost:7687"
     assert settings.neo4j_user == "neo4j"
     assert settings.log_level == "INFO"
+    assert settings.embedding_provider == "openai"
     assert settings.embedding_dim == 1536
     assert settings.vector_store_backend == "chroma"
     assert settings.openai_base_url == "https://api.openai.com/v1"

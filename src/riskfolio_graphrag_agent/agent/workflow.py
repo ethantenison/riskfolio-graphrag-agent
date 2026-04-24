@@ -97,7 +97,7 @@ class AgentWorkflow:
     def __init__(
         self,
         retriever: RetrieverProtocol | None,
-        model_name: str = "gpt-4o-mini",
+        model_name: str = "gpt-5.4-nano",
         llm_generate: LLMGenerateProtocol | None = None,
         query_router: QueryRouterProtocol | None = None,
     ) -> None:
@@ -376,7 +376,7 @@ def _retrieve(
 def _reason(
     state: AgentState,
     llm_generate: LLMGenerateProtocol | None = None,
-    model_name: str = "gpt-4o-mini",
+    model_name: str = "gpt-5.4-nano",
 ) -> AgentState:
     """Generate a draft answer with chain-of-thought over retrieved context.
 

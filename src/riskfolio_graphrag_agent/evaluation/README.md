@@ -1,0 +1,1 @@
+This package contains graph-quality evaluation helpers for the redesigned KG induction pipeline.

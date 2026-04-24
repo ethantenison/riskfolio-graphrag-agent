@@ -11,179 +11,149 @@ pinned: false
 
 # riskfolio-graphrag-agent
 
-> **GraphRAG / hybrid retrieval demo and evaluation scaffold** over the [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) codebase and documentation.
+> Provenance-first knowledge graph induction and GraphRAG over the Riskfolio-Lib codebase and documentation.
 
 [![CI](https://github.com/ethantenison/riskfolio-graphrag-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ethantenison/riskfolio-graphrag-agent/actions/workflows/ci.yml)
 
----
+## Overview
 
-## Goals
+This repository is being redesigned away from a shallow, alias-driven graph builder and toward a staged knowledge graph induction system with:
 
-This is a **portfolio project** that demonstrates:
+- open chunk-level extraction,
+- mention and assertion persistence,
+- explicit canonicalization decisions,
+- reviewable schema induction,
+- controlled Neo4j materialization for retrieval,
+- RDF/OWL/SKOS/PROV export over stabilized graph layers,
+- graph-quality evaluation in addition to answer-quality evaluation.
 
-- **Knowledge graph construction** – entities (functions, classes, parameters, concepts) extracted from the Riskfolio-Lib source and docs are stored in Neo4j.
-- **Hybrid retrieval (GraphRAG)** – queries combine vector similarity search with graph-neighbourhood traversal for richer, more precise context.
-- **Agentic workflow** – a LangGraph-based multi-step agent plans, retrieves, reasons, and verifies before answering.
-- **Explainability & provenance** – every answer is accompanied by citations linking back to the original source files and graph nodes.
-- **Evaluation** – a built-in evaluation suite uses heuristic overlap/support metrics for regression tracking and small benchmark comparisons.
+The new pipeline is documented in [docs/kg-redesign.md](docs/kg-redesign.md). A migration note for the retired architecture is in [docs/kg-migration.md](docs/kg-migration.md).
 
-> **Disclaimer:** This project is a technical demo only. It does not provide financial advice.
+> Disclaimer: this repository is a technical system-design and engineering artifact. It does not provide financial advice.
 
----
+## Current Technical Stance
 
-## Role Fit (Knowledge Graph / GraphRAG / Agentic AI)
+The redesigned path treats the following as different things:
 
-This repository is intentionally structured as evidence for senior roles involving knowledge graphs, GraphRAG, semantic modeling, and agentic AI systems. The mapping below is written to be reusable across similar roles rather than tailored to one company or posting.
+- source documents and chunks,
+- extracted mentions,
+- candidate entities, assertions, and events,
+- canonical entities and predicates,
+- ontology and concept-scheme commitments,
+- final promoted retrieval graph.
 
-### Capability-to-Evidence Mapping
+That separation matters because it keeps provenance, confidence, and review state visible instead of flattening everything into direct canonical edges too early.
 
-| Capability area | Evidence in this portfolio | Broader experience alignment |
-|---|---|---|
-| End-to-end LLM, RAG/GraphRAG, and agentic architecture with observability, governance, and cost awareness | End-to-end flow across [src/riskfolio_graphrag_agent/ingestion/loader.py](src/riskfolio_graphrag_agent/ingestion/loader.py), [src/riskfolio_graphrag_agent/graph/builder.py](src/riskfolio_graphrag_agent/graph/builder.py), [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py), [src/riskfolio_graphrag_agent/agent/workflow.py](src/riskfolio_graphrag_agent/agent/workflow.py), and [src/riskfolio_graphrag_agent/app/server.py](src/riskfolio_graphrag_agent/app/server.py); observability and SLI/SLO reporting in [src/riskfolio_graphrag_agent/observability/reporting.py](src/riskfolio_graphrag_agent/observability/reporting.py) | Aligns with prior delivery of production AI systems that required deployment discipline, monitoring, and cost-aware design |
-| Taxonomy, ontology, and semantic modeling | Ontology-aware entity and relationship extraction plus curated domain aliases in [src/riskfolio_graphrag_agent/graph/builder.py](src/riskfolio_graphrag_agent/graph/builder.py); semantic export and validation helpers in [src/riskfolio_graphrag_agent/graph/semantic_interop.py](src/riskfolio_graphrag_agent/graph/semantic_interop.py) | Aligns with prior work on typed content hierarchies, canonical concepts, and retrieval-aware information design |
-| Build and operate knowledge graphs with Neo4j, RDF/OWL, Cypher, and SPARQL-oriented workflows | Neo4j graph construction and stats in [src/riskfolio_graphrag_agent/graph/builder.py](src/riskfolio_graphrag_agent/graph/builder.py); guarded graph querying in [src/riskfolio_graphrag_agent/graph/nl2cypher_guard.py](src/riskfolio_graphrag_agent/graph/nl2cypher_guard.py); RDF/OWL-style export and SPARQL examples in [src/riskfolio_graphrag_agent/graph/semantic_interop.py](src/riskfolio_graphrag_agent/graph/semantic_interop.py) and [benchmarks/sparql_examples.rq](benchmarks/sparql_examples.rq) | Demonstrates practical graph engineering with semantic-web interoperability rather than graph storage alone |
-| Extraction and linking pipelines with disambiguation, deduplication, canonicalization, and QA | Entity-resolution pipeline in [src/riskfolio_graphrag_agent/er/pipeline.py](src/riskfolio_graphrag_agent/er/pipeline.py); supporting audit artifacts in [artifacts/er/er_audit.json](artifacts/er/er_audit.json) | Aligns with prior extraction and normalization work where content quality and canonical linking mattered operationally |
-| Production LLM and agentic workflows using frameworks such as LangGraph and related orchestration stacks | Plan-retrieve-reason-verify orchestration in [src/riskfolio_graphrag_agent/agent/workflow.py](src/riskfolio_graphrag_agent/agent/workflow.py); request orchestration in [src/riskfolio_graphrag_agent/app/server.py](src/riskfolio_graphrag_agent/app/server.py) | Aligns with broader production experience using LLM-backed workflows and orchestration patterns beyond a single demo |
-| Safe tool use, tracing, and human-in-the-loop style controls | Safe NL-to-Cypher guardrails and audit logging in [src/riskfolio_graphrag_agent/graph/nl2cypher_guard.py](src/riskfolio_graphrag_agent/graph/nl2cypher_guard.py); tracing and request lifecycle visibility in [src/riskfolio_graphrag_agent/app/server.py](src/riskfolio_graphrag_agent/app/server.py) | Shows a safety-first approach to letting models interact with structured systems |
-| Advanced retrieval blending vector, symbolic, and KG retrieval | Dense, sparse, graph, and hybrid retrieval in [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py); adaptive routing in [src/riskfolio_graphrag_agent/retrieval/router.py](src/riskfolio_graphrag_agent/retrieval/router.py) | Demonstrates hybrid retrieval design and ontology-guided search patterns rather than plain vector search |
-| Evaluation and observability for RAG/GraphRAG and graph systems | Evaluation logic in [src/riskfolio_graphrag_agent/eval/evaluator.py](src/riskfolio_graphrag_agent/eval/evaluator.py) and [src/riskfolio_graphrag_agent/eval/regression_gate.py](src/riskfolio_graphrag_agent/eval/regression_gate.py); output artifacts in [eval_results.json](eval_results.json) and [artifacts/observability/sli_report.json](artifacts/observability/sli_report.json) | Covers grounding, faithfulness, latency, drift, and operational quality in a way that supports governance discussions |
-| Strong Python and AI/ML engineering | Typed Python modules, configuration, testing, CI, and deployment-facing app surfaces across [src/riskfolio_graphrag_agent](src/riskfolio_graphrag_agent) and [tests](tests) | Complements broader ML and production engineering experience in optimization, experimentation, and platform delivery |
-| Graph ML, reranking, and multi-hop reasoning patterns | Embedding-backed retrieval, hybrid reranking, graph expansion, and multi-hop style evidence gathering in [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py) | Strong on graph-aware retrieval and reasoning; lighter on learned graph neural models specifically |
-| Communication, leadership, and stakeholder-facing system design | This repository emphasizes explainability, architectural clarity, documentation, and evidence traceability across [README.md](README.md), [docs/architecture_module_map.md](docs/architecture_module_map.md), and the app surfaces | Best paired with resume and interview examples showing mentoring, cross-functional delivery, and product influence |
+## Main Components
 
-### What this repository demonstrates especially well
-
-- **Semantic architecture and KG design** through ontology-aware extraction, canonical graph representation, and graph-backed retrieval.
-- **Graph + GenAI integration** through GraphRAG retrieval, agentic orchestration, and grounded answer generation.
-- **Governance and explainability** through citations, route visibility, NL-to-Cypher safety controls, and auditability.
-- **Evaluation and observability** through measurable quality gates, tracing, latency/cost reporting, and drift-aware operational artifacts.
-
-### Notes on evidence scope
-
-- This repository provides **public, inspectable implementation evidence** for the core technical areas above.
-- Some capabilities, especially **leadership, stakeholder influence, and proprietary production deployments**, are more fully demonstrated in resume and interview materials than in a public code repository.
-- For interview review, this README plus [docs/architecture_module_map.md](docs/architecture_module_map.md) and the [artifacts](artifacts) directory provide concrete evidence of architecture choices, quality measurement, and execution discipline.
-
----
+| Area | Current responsibility |
+|---|---|
+| [src/riskfolio_graphrag_agent/ingestion/loader.py](src/riskfolio_graphrag_agent/ingestion/loader.py) | Chunk source code, docs, examples, and tests into provenance-rich `Document` records |
+| [src/riskfolio_graphrag_agent/extraction/pipeline.py](src/riskfolio_graphrag_agent/extraction/pipeline.py) | Open extraction into mentions, candidate entities, candidate assertions, and candidate events |
+| [src/riskfolio_graphrag_agent/canonicalization/pipeline.py](src/riskfolio_graphrag_agent/canonicalization/pipeline.py) | Canonicalize open extraction outputs into reviewable entity, predicate, and event-type clusters |
+| [src/riskfolio_graphrag_agent/schema_induction/pipeline.py](src/riskfolio_graphrag_agent/schema_induction/pipeline.py) | Aggregate open semantic guesses into schema candidates and induced ontology elements |
+| [src/riskfolio_graphrag_agent/graph_materialization/pipeline.py](src/riskfolio_graphrag_agent/graph_materialization/pipeline.py) | Materialize a narrower Neo4j retrieval graph with constraints and representative Cypher queries |
+| [src/riskfolio_graphrag_agent/semantic_export/pipeline.py](src/riskfolio_graphrag_agent/semantic_export/pipeline.py) | Export ontology and instance/provenance Turtle views using OWL, SKOS, and PROV-O |
+| [src/riskfolio_graphrag_agent/evaluation/graph_quality.py](src/riskfolio_graphrag_agent/evaluation/graph_quality.py) | Score graph-quality metrics such as compression, promotion yield, and schema support |
+| [src/riskfolio_graphrag_agent/kg_pipeline.py](src/riskfolio_graphrag_agent/kg_pipeline.py) | Orchestrate the end-to-end redesigned KG pipeline and artifact generation |
+| [src/riskfolio_graphrag_agent/retrieval/retriever.py](src/riskfolio_graphrag_agent/retrieval/retriever.py) | Retrieval orchestration supporting four modes: dense (embedding), sparse (lexical), graph (assertion-aware), and hybrid_rerank (merged with graph context) |
+| [src/riskfolio_graphrag_agent/retrieval/router.py](src/riskfolio_graphrag_agent/retrieval/router.py) | Query router to select appropriate retrieval mode |
+| [src/riskfolio_graphrag_agent/agent/workflow.py](src/riskfolio_graphrag_agent/agent/workflow.py) | Plan-retrieve-reason-verify orchestration for answer generation |
 
 ## Architecture
 
+```text
+Source Files / Docs
+        │
+        ▼
+Ingestion → Chunk Records
+        │
+        ▼
+Open Extraction
+  - MentionRecord
+  - CandidateEntityRecord
+  - CandidateAssertionRecord
+  - CandidateEventRecord
+        │
+        ▼
+Canonicalization
+  - CanonicalEntity
+  - CanonicalPredicate
+  - CanonicalEventType
+  - CanonicalizationDecision
+        │
+        ▼
+Schema Induction
+  - SchemaInductionCandidate
+  - OntologyClass
+  - OntologyProperty
+  - ConceptScheme
+        │
+        ├──► Semantic Export
+        │     - ontology.ttl
+        │     - instances.ttl
+        │
+        ▼
+Graph Materialization
+  - GraphWritePlan
+  - Neo4j constraints / writes
+  - retrieval-oriented Cypher
+        │
+        ▼
+Promoted Retrieval Graph
 ```
-┌──────────────────┐   ┌────────────────┐   ┌─────────────────┐
-│  Gradio UI /     │──▶│  Query Router  │──▶│  Agent (plan,   │
-│  CLI / FastAPI   │   │  (dense/sparse │   │  retrieve,      │
-└──────────────────┘   │   /graph/      │   │  reason,        │
-                       │   hybrid)      │   │  verify/retry)  │
-                       └────────────────┘   └────────┬────────┘
-                                                     │
-                                    ┌────────────────┼────────────────┐
-                                    ▼                ▼                ▼
-                         ┌──────────────┐  ┌──────────────┐  ┌────────────┐
-                         │  Dense:      │  │  Sparse:     │  │  Graph:    │
-                         │  Embedding   │  │  Neo4j       │  │  Neo4j     │
-                         │  Provider +  │  │  Cypher      │  │  1-hop     │
-                         │  Vector Store│  │  lexical     │  │  expansion │
-                         └──────┬───────┘  └──────┬───────┘  └─────┬──────┘
-                                │                  │                │
-                                └──────────────────┴────────────────┘
-                                                   │
-                                    ┌──────────────▼──────────────┐
-                                    │  LLM (OpenAI / compatible)  │
-                                    │  reason step → answer +     │
-                                    │  citations                  │
-                                    └─────────────────────────────┘
-                                    ▲
-                                    │ embed + upsert
-                             ┌──────┴──────┐
-                             │  Ingestion  │
-                             │  (chunker,  │
-                             │   extractor)│
-                             └──────┬──────┘
-                                    │
-                             ┌──────┴──────┐
-                             │ Riskfolio-  │
-                             │ Lib source  │
-                             │ + docs      │
-                             └─────────────┘
-```
 
-The **Query Router** (`retrieval/router.py`) inspects each question with
-rule-based intent detection and lightweight embedding similarity to pick the
-best retrieval mode before the agent workflow begins.  The **Agent Workflow**
-(`agent/workflow.py`) is a four-node LangGraph state machine: *plan* decomposes
-the question into sub-questions; *retrieve* calls `HybridRetriever`; *reason*
-generates the answer via the LLM; *verify* checks grounding and retries the
-reason step up to twice if needed.  The Gradio UI additionally issues a
-`GraphBuilder.get_query_subgraph()` call after the workflow to populate the
-interactive graph visualisation panel.
+## Retrieval Methods
 
+The retrieval system supports four modes to serve different query characteristics and performance needs:
 
-### Observability & Tracing
+| Mode | Strategy | Best For | Candidate Pool |
+|------|----------|----------|-----------------|
+| **Dense** | Embedding-based semantic similarity with query expansion | Broad semantic queries; paraphrasing | 2×top_k |
+| **Sparse** | Direct lexical token matching on Neo4j chunks | Domain terminology; acronyms; exact phrases | 1×top_k |
+| **Graph** | Multi-stage assertion-aware traversal with entity seed, ontology-class expansion, assertion-bridged peers, and keyword backfill | Complex multi-hop relationships | 3×top_k |
+| **Hybrid Rerank** | Merged dense and sparse results with graph-contextualized evidence boosting (default) | General-purpose balanced precision/recall | 4×top_k |
 
-This project is instrumented with OpenTelemetry and LangSmith for full agent workflow tracing and evaluation:
+All modes (except sparse) apply optional reranking boosts based on:
+- **Entity signal**: Richness of related entity context (~log scale, max 0.07–0.11 boost)
+- **Neighbour signal**: Graph connectivity (~log scale, max 0.03–0.07 boost)
+- **Coverage signal**: Fraction of query tokens present in text (0–0.09 boost)
 
-- Agent workflow, retrieval, and graph operations are traced with OpenTelemetry spans.
-- LangSmith tracing decorates agentic workflow for step-level inspection.
-- FastAPI exposes `/trace` endpoint for trace status and demo.
-- Evaluation suite includes faithfulness, grounding, precision/recall, and multi-hop metrics.
-- Retrieval includes a lexical Neo4j fallback for deterministic local runs; this repository should be treated as a demo scaffold rather than a production-ready deployment package.
+For detailed mode descriptions, performance profiles, formulas, and troubleshooting, see [docs/retrieval_methods.md](docs/retrieval_methods.md).
 
-#### OpenTelemetry + Jaeger Setup
+## Commands
 
-To view traces in Jaeger:
+### Recommended redesigned path
 
-1. Start Jaeger with OTLP enabled:
-       ```bash
-       docker run -d --name jaeger \
-         -e COLLECTOR_OTLP_ENABLED=true \
-         -p 4317:4317 \
-         -p 16686:16686 \
-         jaegertracing/all-in-one:latest
-       ```
-       - Port 4317 is for OTLP gRPC (traces from FastAPI).
-       - Port 16686 is for the Jaeger web UI (http://localhost:16686).
-
-2. Restart your FastAPI app:
-       ```bash
-       poetry run riskfolio-agent serve --host 127.0.0.1 --port 8000
-       ```
-
-3. Submit queries (e.g. with curl):
-       ```bash
-       curl -X POST http://127.0.0.1:8000/query -H "Content-Type: application/json" -d '{"question":"HRP in Riskfolio?","top_k":3}'
-       ```
-
-4. Open Jaeger UI at http://localhost:16686 and search for traces from "riskfolio-graphrag-agent".
-
-You’ll see spans for each request, including agent workflow steps (plan, retrieve, reason, verify).
-
-#### LangSmith Tracing
-
-To use LangSmith, set your API key:
 ```bash
-export LANGCHAIN_TRACING_V2=true
-export LANGCHAIN_API_KEY=your-key-here
-export LANGCHAIN_PROJECT=RiskfolioGraphRAG
+poetry run riskfolio-agent ingest --source-dir /path/to/Riskfolio-Lib
+poetry run riskfolio-agent kg-run --source-dir /path/to/Riskfolio-Lib --artifact-dir artifacts/kg
 ```
-Restart your app and view traces in your LangSmith dashboard.
 
-This demonstrates observability and governance patterns that are useful for portfolio review, while still leaving substantial validation and hardening work for any production setting.
+The `kg-run` command writes reviewable artifacts including:
 
-### Module Map
+- `artifacts/kg/extractions.json`
+- `artifacts/kg/canonicalization.json`
+- `artifacts/kg/schema_candidates.json`
+- `artifacts/kg/schema_review.md`
+- `artifacts/kg/materialized_graph.json`
+- `artifacts/kg/graph_quality.json`
+- `artifacts/kg/semantic/ontology.ttl`
+- `artifacts/kg/semantic/instances.ttl`
 
-| Package | Responsibility |
-|---|---|
-| `config/` | Pydantic-Settings based configuration from env/`.env` |
-| `ingestion/` | Walk source dirs, chunk files, produce `Document` objects |
-| `graph/` | Extract entities from chunks, upsert nodes/edges to Neo4j |
-| `retrieval/retriever.py` | Hybrid vector + graph search returning cited `RetrievalResult` |
-| `retrieval/router.py` | Adaptive query routing: selects `dense`, `sparse`, `graph`, or `hybrid_rerank` per question |
-| `agent/` | LangGraph workflow: plan → retrieve → reason → verify (with self-correction retry) |
-| `eval/` | Evaluation harness (context recall, faithfulness, relevance) |
-| `app/server.py` | FastAPI endpoints (`/health`, `/query`, `/graph/stats`) with OTel tracing |
-| `app/gradio_ui.py` | Gradio chat UI, interactive graph visualisation panel, and insight displays |
+To also write the promoted retrieval graph into Neo4j:
 
----
+```bash
+poetry run riskfolio-agent kg-run --source-dir /path/to/Riskfolio-Lib --artifact-dir artifacts/kg --persist-neo4j
+```
+
+### Legacy command
+
+```bash
+poetry run riskfolio-agent build-graph
+```
+
+`build-graph` is retained temporarily as a compatibility path for the older deterministic builder. It is not the recommended architecture and should not be treated as the serious KG induction path.
 
 ## Local Setup
 
@@ -191,9 +161,9 @@ This demonstrates observability and governance patterns that are useful for port
 
 - Python 3.13+
 - [Poetry](https://python-poetry.org/docs/#installation)
-- Docker & Docker Compose (for Neo4j)
+- Docker and Docker Compose for Neo4j
 
-### 1 – Clone and install
+### Install
 
 ```bash
 git clone https://github.com/ethantenison/riskfolio-graphrag-agent.git
@@ -201,117 +171,59 @@ cd riskfolio-graphrag-agent
 poetry install
 ```
 
-### 2 – Configure environment
+### Configure
 
-```bash
-#cp .env.example .env
-# Edit .env and fill in OPENAI_API_KEY and RISKFOLIO_SOURCE_DIR
-```
+Set the Neo4j and source-directory environment variables in `.env` or your shell.
 
-### 3 – Start Neo4j
+### Start Neo4j
 
 ```bash
 docker compose up -d
-# Neo4j Browser: http://localhost:7474
 ```
 
-### 4 – Ingest source material
+### Run the redesigned KG pipeline
 
 ```bash
-# Uses RISKFOLIO_SOURCE_DIR from .env (recommended)
-poetry run riskfolio-agent ingest
-
-# Or pass an explicit path override
-poetry run riskfolio-agent ingest --source-dir /Users/et/Desktop/Data_Projects/Riskfolio-Lib
+poetry run riskfolio-agent kg-run --source-dir /Users/et/Desktop/Data_Projects/Riskfolio-Lib --artifact-dir artifacts/kg
 ```
 
-### 5 – Build knowledge graph
+### Run the existing app surfaces
 
 ```bash
-# First build
-poetry run riskfolio-agent build-graph
-
-# After changes
-poetry run riskfolio-agent build-graph --drop-existing
-
-# Target a specific window of chunks (skip first 100, then process 2)
-poetry run riskfolio-agent build-graph --drop-existing --chunk-offset 100 --max-chunks 2
-```
-
-### 6 – Ask a question
-
-```bash
-# FastAPI API
 poetry run riskfolio-agent serve --host 127.0.0.1 --port 8000
-# curl -X POST http://127.0.0.1:8000/query -H "Content-Type: application/json" -d '{"question":"HRP in Riskfolio?","top_k":3}'
-
-# Gradio chat interface + graph visualisation
 poetry run riskfolio-agent gradio --host 127.0.0.1 --port 7860
 ```
 
-### API Docs
+## Evaluation
 
-Once the server is running, you can explore the API in:
+The repository currently has two evaluation layers:
 
-- Swagger UI: http://127.0.0.1:8000/docs
-- ReDoc: http://127.0.0.1:8000/redoc
-- OpenAPI JSON: http://127.0.0.1:8000/openapi.json
+- answer and retrieval evaluation in [src/riskfolio_graphrag_agent/eval](src/riskfolio_graphrag_agent/eval),
+- graph-quality evaluation in [src/riskfolio_graphrag_agent/evaluation/graph_quality.py](src/riskfolio_graphrag_agent/evaluation/graph_quality.py).
 
-Current endpoints:
+The graph-quality report produced by `kg-run` currently measures pipeline structure and promotion behavior. It is the first step toward fuller extraction, canonicalization, and retrieval-lift evaluation described in [docs/kg-redesign.md](docs/kg-redesign.md).
 
-- `GET /health`
-- `GET /graph/stats`
-- `POST /query`
+## Documentation
 
-### 7 – Run evaluation
-
-```bash
-poetry run riskfolio-agent eval --output eval_results.json
-
-# Legacy deterministic profile (for comparison)
-poetry run riskfolio-agent eval --metric-profile heuristic --output eval_results.json
-```
-
----
+- [docs/kg-redesign.md](docs/kg-redesign.md) — redesign goals, data model, pipeline, Cypher model, semantic export, and evaluation plan
+- [docs/kg-migration.md](docs/kg-migration.md) — what is being retired and which compatibility is intentionally dropped
+- [docs/architecture_module_map.md](docs/architecture_module_map.md) — architecture boundaries and package ownership
+- [docs/retrieval_methods.md](docs/retrieval_methods.md) — retrieval mode descriptions, formulas, performance profiles, and troubleshooting
+- [docs/quickstart.md](docs/quickstart.md) — concise local validation commands
 
 ## Development
 
 ```bash
-# Run tests
-poetry run pytest
-
-# Lint
+poetry run pytest -q
 poetry run ruff check src tests
-
-# Format
 poetry run ruff format src tests
 ```
 
----
-
-## Roadmap
-
-- [x] Project scaffold (Poetry, src layout, CLI, Docker Compose, CI)
-- [x] Ingestion: AST-based Python chunker with docstring/signature extraction
-- [x] Ingestion: RST/Markdown section splitter
-- [x] Graph: LLM-assisted entity & relationship extraction (OpenAI-compatible JSON + heuristic fallback)
-- [x] Graph: Ontology design for Riskfolio concepts (Portfolio, Asset, Metric, Method)
-- [x] Retrieval: ChromaDB vector store integration
-- [x] Retrieval: Neo4j graph traversal queries (Cypher)
-- [x] Retrieval: Hybrid re-ranking
-- [x] Agent: LangGraph workflow with tool use, model-backed generation, and self-correction
-- [x] App: FastAPI endpoints + OpenAPI docs
-- [x] App: Gradio chat interface with graph visualisation
-- [x] Eval: CI evaluation regression gate
-- [x] Observability: LangSmith / OpenTelemetry tracing
-
----
-
 ## Known Limitations
 
-For a more comprehensive benchmark set, see [benchmarks/eval_samples_v1.json](benchmarks/eval_samples_v1.json). For more details on current limitations, see [docs/limitations.md](docs/limitations.md).
-
----
+- The redesigned pipeline currently includes a structurally honest heuristic open extractor as the default vertical slice, not a production extraction model.
+- Retrieval now supports promoted-graph-aware graph mode with legacy fallback, but UI and some runtime surfaces still require deeper migration.
+- Semantic export is cleaner than the old direct registry dump, but it does not yet enforce SHACL validation or claim full ontology rigor.
 
 ## License
 

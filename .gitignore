@@ -219,9 +219,19 @@ benchmarks/.chroma_openai_clean/
 benchmarks/**/*.sqlite3
 benchmarks/**/*.sqlite3-*
 .gradio/certificate.pem
+benchmarks/.chroma_hash_clean
+benchmarks/.chroma_openai_clean
 
+# Large evaluation and ablation outputs
+benchmarks/ablation_*/
+benchmarks/eval_results*.json
 
 #MISC
 scripts/riskfolio_graphrag_system_slides/
 scripts/dell_graphrag_proposal_revealjs_files/
+artifacts/kg_promoted_rebuild/
+artifacts/kg_promoted_rebuild/extractions.json
+artifacts/kg_semantic_expansion_latest
+artifacts/kg_semantic_expansion
+artifacts/eval_runs/
 artifacts/comparisons

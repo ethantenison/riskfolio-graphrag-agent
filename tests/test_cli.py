@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
 from riskfolio_graphrag_agent import cli
-from riskfolio_graphrag_agent.cli import _resolve_eval_samples, _select_documents_for_build
+from riskfolio_graphrag_agent.cli import (
+    _default_eval_output_path,
+    _dense_index_fingerprint,
+    _normalize_metric_profile,
+    _resolve_eval_samples,
+    _select_documents_for_build,
+)
 from riskfolio_graphrag_agent.ingestion.loader import Document
 
 runner = CliRunner()
@@ -150,3 +157,376 @@ def test_eval_cli_accepts_benchmark_samples_file(monkeypatch, tmp_path):
     assert output_path.exists()
     payload = json.loads(output_path.read_text())
     assert payload["num_samples"] > 0
+
+
+def test_eval_cli_uses_eval_top_k_default(monkeypatch, tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    samples_path = repo_root / "benchmarks" / "eval_samples_v1.json"
+    captured: dict[str, object] = {}
+
+    class _StubRetriever:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def retrieve(self, query: str):
+            _ = query
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        cli,
+        "_resolve_embedding",
+        lambda settings: SimpleNamespace(
+            provider=None,
+            selected_provider="stub",
+            fallback_reason=None,
+        ),
+    )
+    monkeypatch.setattr(cli, "HybridRetriever", lambda **kwargs: _StubRetriever(**kwargs))
+    monkeypatch.setattr(cli, "run_er_pipeline", lambda *args, **kwargs: SimpleNamespace(metrics=None))
+
+    output_path = tmp_path / "eval_results.json"
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval",
+            "--samples",
+            str(samples_path),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["top_k"] == 8
+
+
+def test_default_eval_output_path_uses_dated_eval_runs_folder():
+    out = _default_eval_output_path(retrieval_mode="hybrid_rerank", eval_top_k=8)
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    assert out == f"artifacts/eval_runs/{day}/eval_hybrid_rerank_top8.json"
+
+
+def test_eval_cli_writes_to_default_output_when_omitted(monkeypatch, tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    samples_path = repo_root / "benchmarks" / "eval_samples_v1.json"
+    default_path = tmp_path / "eval_auto.json"
+
+    class _StubRetriever:
+        def retrieve(self, query: str):
+            _ = query
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        cli,
+        "_resolve_embedding",
+        lambda settings: SimpleNamespace(
+            provider=None,
+            selected_provider="stub",
+            fallback_reason=None,
+        ),
+    )
+    monkeypatch.setattr(cli, "HybridRetriever", lambda **kwargs: _StubRetriever())
+    monkeypatch.setattr(cli, "run_er_pipeline", lambda *args, **kwargs: SimpleNamespace(metrics=None))
+    monkeypatch.setattr(cli, "_default_eval_output_path", lambda **kwargs: str(default_path))
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval",
+            "--samples",
+            str(samples_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert default_path.exists()
+
+
+def test_eval_ablation_cli_writes_mode_outputs_and_summary(monkeypatch, tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    samples_path = repo_root / "benchmarks" / "eval_samples_v1.json"
+    output_dir = tmp_path / "eval_runs"
+
+    class _StubRetriever:
+        def __init__(self, **kwargs):
+            _ = kwargs
+
+        def close(self):
+            return None
+
+    class _StubEvaluator:
+        def __init__(self, **kwargs):
+            runtime_config = kwargs["runtime_config"]
+            mode = runtime_config["retrieval_mode"]
+            self._report = SimpleNamespace(
+                num_samples=1,
+                context_recall=0.4 if mode == "dense" else 0.5,
+                context_precision=0.2,
+                answer_faithfulness=0.7,
+                answer_relevance=0.8,
+                grounding=0.6,
+                multi_hop_accuracy=0.3,
+                avg_latency_ms=10.0,
+                estimated_cost_usd=0.0001,
+                retrieval_mode=mode,
+                metric_profile="heuristic-overlap",
+                embedding_provider="stub",
+                run_at="now",
+            )
+
+        def run(self):
+            return self._report
+
+        def save(self, output_path, report=None):
+            payload = {
+                "context_recall": self._report.context_recall,
+                "context_precision": self._report.context_precision,
+            }
+            Path(output_path).write_text(json.dumps(payload))
+
+    monkeypatch.setattr(
+        cli,
+        "_resolve_embedding",
+        lambda settings: SimpleNamespace(
+            provider=None,
+            selected_provider="stub",
+            fallback_reason=None,
+        ),
+    )
+    monkeypatch.setattr(cli, "HybridRetriever", lambda **kwargs: _StubRetriever(**kwargs))
+    monkeypatch.setattr(cli, "Evaluator", lambda **kwargs: _StubEvaluator(**kwargs))
+    monkeypatch.setattr(cli, "run_er_pipeline", lambda *args, **kwargs: SimpleNamespace(metrics=None))
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval-ablation",
+            "--samples",
+            str(samples_path),
+            "--metric-profile",
+            "heuristic",
+            "--eval-top-k",
+            "8",
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (output_dir / "eval_dense_top8.json").exists()
+    assert (output_dir / "eval_sparse_top8.json").exists()
+    assert (output_dir / "eval_graph_top8.json").exists()
+    assert (output_dir / "eval_hybrid_rerank_top8.json").exists()
+
+    summary_file = output_dir / "ablation_summary_top8.json"
+    assert summary_file.exists()
+    summary_payload = json.loads(summary_file.read_text())
+    assert summary_payload["winner_by_recall_plus_precision"] in {"dense", "sparse", "graph", "hybrid_rerank"}
+
+
+def test_dense_index_fingerprint_is_stable_for_same_docs():
+    docs = [
+        Document(
+            content="x",
+            source_path="/tmp/a.py",
+            chunk_index=0,
+            chunk_id="a::0",
+            content_hash="h1",
+            line_start=1,
+            line_end=2,
+        ),
+        Document(
+            content="y",
+            source_path="/tmp/b.py",
+            chunk_index=1,
+            chunk_id="b::1",
+            content_hash="h2",
+            line_start=3,
+            line_end=4,
+        ),
+    ]
+
+    first = _dense_index_fingerprint(docs)
+    second = _dense_index_fingerprint(list(reversed(docs)))
+
+    assert first == second
+
+
+def test_eval_cli_refresh_dense_index_records_runtime_metadata(monkeypatch, tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    samples_path = repo_root / "benchmarks" / "eval_samples_v1.json"
+    captured_runtime: dict[str, object] = {}
+
+    class _StubRetriever:
+        def __init__(self, **kwargs):
+            _ = kwargs
+
+        def retrieve(self, query: str):
+            _ = query
+            return []
+
+        def close(self):
+            return None
+
+    class _StubEvaluator:
+        def __init__(self, **kwargs):
+            captured_runtime.update(kwargs["runtime_config"])
+            self._report = SimpleNamespace(
+                num_samples=1,
+                context_recall=0.5,
+                context_precision=0.2,
+                answer_faithfulness=0.7,
+                answer_relevance=0.8,
+                grounding=0.6,
+                multi_hop_accuracy=0.3,
+                avg_latency_ms=10.0,
+                estimated_cost_usd=0.0001,
+                retrieval_mode="hybrid_rerank",
+                embedding_provider="stub",
+                dense_index_refreshed=True,
+                dense_index_fingerprint="abc123",
+                dense_index_upserted=42,
+                metric_profile="heuristic-overlap",
+                run_at="now",
+                per_sample=[],
+            )
+
+        def run(self):
+            return self._report
+
+        def save(self, output_path, report=None):
+            Path(output_path).write_text(json.dumps({"ok": True}))
+
+    monkeypatch.setattr(
+        cli,
+        "_resolve_embedding",
+        lambda settings: SimpleNamespace(
+            provider=None,
+            selected_provider="stub",
+            fallback_reason=None,
+        ),
+    )
+    monkeypatch.setattr(cli, "HybridRetriever", lambda **kwargs: _StubRetriever(**kwargs))
+    monkeypatch.setattr(cli, "Evaluator", lambda **kwargs: _StubEvaluator(**kwargs))
+    monkeypatch.setattr(cli, "run_er_pipeline", lambda *args, **kwargs: SimpleNamespace(metrics=None))
+    monkeypatch.setattr(cli, "_refresh_dense_index", lambda **kwargs: (42, "abc123"))
+
+    output_path = tmp_path / "eval_results.json"
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval",
+            "--samples",
+            str(samples_path),
+            "--output",
+            str(output_path),
+            "--refresh-dense-index",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured_runtime["dense_index_refreshed"] == "True"
+    assert captured_runtime["dense_index_fingerprint"] == "abc123"
+    assert captured_runtime["dense_index_upserted"] == "42"
+
+
+def test_normalize_metric_profile_accepts_graph_aliases():
+    assert _normalize_metric_profile("graph") == "graph"
+    assert _normalize_metric_profile("graph-order-sensitive") == "graph-order-sensitive"
+
+
+def test_kg_run_cli_writes_summary(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+
+    class _FakePipeline:
+        def run(self, **kwargs):
+            captured.update(kwargs)
+            output_dir = tmp_path / "kg"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            return SimpleNamespace(
+                graph_quality=SimpleNamespace(
+                    num_chunks=2,
+                    num_mentions=4,
+                    num_candidate_assertions=1,
+                    num_canonical_entities=2,
+                    num_ontology_classes=1,
+                    num_ontology_properties=1,
+                ),
+                artifact_paths={
+                    "ontology_ttl": str(output_dir / "ontology.ttl"),
+                    "instances_ttl": str(output_dir / "instances.ttl"),
+                },
+            )
+
+    monkeypatch.setattr(cli, "_make_kg_pipeline", lambda settings=None: _FakePipeline())
+    monkeypatch.setattr(cli, "_resolve_focus_directories", lambda source_dir, settings: [tmp_path])
+    monkeypatch.setattr(
+        cli,
+        "_load_from_directories",
+        lambda directories: [
+            Document(
+                content="Hierarchical Risk Parity uses CVaR.",
+                source_path=str(tmp_path / "doc.md"),
+                chunk_index=0,
+                chunk_id="doc.md::chunk:0",
+                content_hash="abc123",
+                line_start=1,
+                line_end=1,
+                metadata={"source_type": "docs", "relative_path": "doc.md"},
+            )
+        ],
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "kg-run",
+            "--artifact-dir",
+            str(tmp_path / "kg"),
+            "--source-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["artifact_dir"] == str(tmp_path / "kg")
+    assert captured["persist_neo4j"] is False
+
+
+def test_make_kg_pipeline_uses_llm_open_extractor_when_enabled(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class _FakePipeline:
+        def __init__(self, extractor=None):
+            captured["extractor"] = extractor
+
+    class _FakeLLMOpenExtractor:
+        def __init__(self, llm_extract, model_name, fallback_extractor=None):
+            captured["llm_extract"] = llm_extract
+            captured["model_name"] = model_name
+            captured["fallback_extractor"] = fallback_extractor
+
+    import riskfolio_graphrag_agent.extraction.pipeline as extraction_pipeline
+    import riskfolio_graphrag_agent.kg_pipeline as kg_pipeline_module
+
+    monkeypatch.setattr(extraction_pipeline, "LLMOpenExtractor", _FakeLLMOpenExtractor)
+    monkeypatch.setattr(kg_pipeline_module, "KnowledgeGraphPipeline", _FakePipeline)
+    monkeypatch.setattr(cli, "_make_openai_open_extractor", lambda settings: object())
+
+    settings = SimpleNamespace(
+        openai_enable_graph_extraction=True,
+        openai_api_key="test-key",
+        openai_model="gpt-5.4-nano",
+    )
+
+    cli._make_kg_pipeline(settings)
+
+    assert captured["extractor"] is not None
+    assert captured["model_name"] == "gpt-5.4-nano"

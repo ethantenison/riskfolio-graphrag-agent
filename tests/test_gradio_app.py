@@ -218,7 +218,7 @@ def test_render_retrieval_strategy_intro_html_defines_all_modes():
 def test_render_governance_html_with_data():
     insights = {
         "governance": {
-            "model": "gpt-4o-mini",
+            "model": "gpt-5.4-nano",
             "base_retrieval_mode": "hybrid_rerank",
             "adaptive_routing_enabled": True,
             "vector_backend": "chroma",
@@ -227,7 +227,7 @@ def test_render_governance_html_with_data():
         }
     }
     html_out = _render_governance_html(insights)
-    assert "gpt-4o-mini" in html_out
+    assert "gpt-5.4-nano" in html_out
     assert "Blended retrieval" in html_out
     assert "Adaptive selection on" in html_out
     assert "What is HRP?" in html_out

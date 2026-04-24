@@ -52,7 +52,7 @@ def test_extract_entities_includes_llm_nodes_and_edges():
     def _fake_llm_extract(*, content: str, source_type: str, model_name: str):
         assert content
         assert source_type == "python"
-        assert model_name == "gpt-4o-mini"
+        assert model_name == "gpt-5.4-nano"
         return {
             "nodes": [
                 {"label": "PortfolioMethod", "name": "Hierarchical Risk Parity", "properties": {}},
@@ -69,7 +69,7 @@ def test_extract_entities_includes_llm_nodes_and_edges():
             ],
         }
 
-    nodes, edges = _extract_entities(doc, llm_extract=_fake_llm_extract, llm_model_name="gpt-4o-mini")
+    nodes, edges = _extract_entities(doc, llm_extract=_fake_llm_extract, llm_model_name="gpt-5.4-nano")
     node_pairs = {(node.label, node.name) for node in nodes}
     edge_keys = {(edge.source_label, edge.source_name, edge.relation_type, edge.target_label, edge.target_name) for edge in edges}
 
@@ -128,7 +128,7 @@ def test_extract_entities_with_llm_timeout_returns_empty(caplog):
             source_label="PythonModule",
             chunk_id="AuxFunctions.py::chunk:3",
             llm_extract=_timeout_llm_extract,
-            llm_model_name="gpt-4o-mini",
+            llm_model_name="gpt-5.4-nano",
         )
 
     assert nodes == []
@@ -352,3 +352,52 @@ def test_graph_builder_get_query_subgraph_empty_for_blank_query(monkeypatch):
 
     graph = builder.get_query_subgraph("  ")
     assert graph == {"nodes": [], "edges": []}
+
+
+def test_graph_builder_get_query_subgraph_prefers_promoted(monkeypatch):
+    builder = GraphBuilder(
+        neo4j_uri="bolt://localhost:7687",
+        neo4j_user="neo4j",
+        neo4j_password="password",
+    )
+
+    monkeypatch.setattr(
+        builder,
+        "_get_query_subgraph_promoted",
+        lambda **kwargs: {
+            "nodes": [{"id": "p1", "name": "CVaR", "labels": ["CanonicalEntity"], "source_path": "docs/risk.md"}],
+            "edges": [{"source": "p1", "target": "p1", "type": "RELATED_TO"}],
+        },
+    )
+
+    def _unexpected_legacy(**kwargs):
+        _ = kwargs
+        raise AssertionError("legacy fallback should not run when promoted graph returned nodes")
+
+    monkeypatch.setattr(builder, "_get_query_subgraph_legacy", _unexpected_legacy)
+
+    graph = builder.get_query_subgraph("What is CVaR?")
+    assert len(graph["nodes"]) == 1
+    assert graph["nodes"][0]["labels"] == ["CanonicalEntity"]
+
+
+def test_graph_builder_get_query_subgraph_falls_back_to_legacy(monkeypatch):
+    builder = GraphBuilder(
+        neo4j_uri="bolt://localhost:7687",
+        neo4j_user="neo4j",
+        neo4j_password="password",
+    )
+
+    monkeypatch.setattr(builder, "_get_query_subgraph_promoted", lambda **kwargs: {"nodes": [], "edges": []})
+    monkeypatch.setattr(
+        builder,
+        "_get_query_subgraph_legacy",
+        lambda **kwargs: {
+            "nodes": [{"id": "l1", "name": "HRP", "labels": ["PortfolioMethod"], "source_path": "docs/hrp.md"}],
+            "edges": [],
+        },
+    )
+
+    graph = builder.get_query_subgraph("What is HRP?")
+    assert len(graph["nodes"]) == 1
+    assert graph["nodes"][0]["labels"] == ["PortfolioMethod"]
