@@ -29,14 +29,9 @@ def _make_result(content: str, score: float) -> RetrievalResult:
 
 
 def test_passthrough_reranker_satisfies_protocol():
+    """PassthroughReranker must satisfy the Reranker runtime-checkable protocol."""
     reranker = PassthroughReranker()
     assert isinstance(reranker, Reranker)
-
-
-def test_passthrough_reranker_is_reranker_protocol():
-    """PassthroughReranker must satisfy the Reranker runtime-checkable protocol."""
-    instance = PassthroughReranker()
-    assert isinstance(instance, Reranker)
 
 
 # ---------------------------------------------------------------------------
