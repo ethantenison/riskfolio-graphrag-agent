@@ -62,8 +62,6 @@ What this module does not do:
     - It does not generate final natural-language answers.
     - It does not choose retrieval mode by itself unless the caller passes a
       mode override or configures a router elsewhere.
-    - It does not run a cross-encoder, learned reranker, or approximate nearest
-      neighbour index tuning pipeline.
     - It does not translate arbitrary natural language into Cypher queries.
 """
 
@@ -80,6 +78,7 @@ from neo4j import Driver, GraphDatabase
 
 from riskfolio_graphrag_agent.ingestion.loader import Document as IngestDocument
 from riskfolio_graphrag_agent.retrieval.embeddings import EmbeddingProvider, HashEmbeddingProvider
+from riskfolio_graphrag_agent.retrieval.reranker import Reranker
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +343,10 @@ class HybridRetriever:
         chroma_persist_dir: Persistence directory for the Chroma backend.
         embedding_provider: Embedding provider used by dense retrieval.
         retrieval_mode: Default retrieval mode used by `retrieve`.
+        reranker: Optional learned reranker applied as the final ranking step
+            in ``hybrid_rerank`` mode after graph/context enrichment.  When
+            ``None`` (the default) the existing heuristic evidence boosts are
+            the only ranking layer.
 
     Notes:
         This class owns both the vector backend and a Neo4j driver. Call
@@ -361,12 +364,14 @@ class HybridRetriever:
         chroma_persist_dir: str = ".chroma",
         embedding_provider: EmbeddingProvider | None = None,
         retrieval_mode: RetrievalMode = "hybrid_rerank",
+        reranker: Reranker | None = None,
     ) -> None:
         self._uri = neo4j_uri
         self._user = neo4j_user
         self._password = neo4j_password
         self._top_k = top_k
         self._retrieval_mode: RetrievalMode = retrieval_mode
+        self._reranker = reranker
         self._embedding_provider = embedding_provider or HashEmbeddingProvider(dimension=256)
         self._vector_store = vector_store or _build_default_vector_store(
             backend=vector_store_backend,
@@ -413,15 +418,20 @@ class HybridRetriever:
             A ranked list of retrieval results enriched with graph context.
 
         Notes:
-            Retrieval happens in two stages:
+            Retrieval happens in three stages:
             1. Collect initial hits from the selected mode.
-            2. Expand each hit with local graph evidence and optionally apply a
-               lightweight rerank boost.
+            2. Expand each hit with local graph evidence and apply heuristic
+               evidence boosts (entity density, graph neighbours, query coverage).
+            3. In ``hybrid_rerank`` mode, if a learned reranker is configured,
+               it performs a final re-scoring pass over the heuristically ranked
+               candidates before top-k truncation.
 
             In `graph` mode, the retriever seeds from matching entities and then
             performs one-hop expansion through selected domain relationships.
             In `hybrid_rerank` mode, dense and sparse hits are merged from a
             wider candidate set before graph-context and query-coverage boosts.
+            An optional learned reranker (e.g. ``CrossEncoderReranker``) can
+            then be applied as the final ranking layer.
         """
         retrieval_mode = mode_override or self._retrieval_mode
         logger.info("Retrieving for query: %r (top_k=%d mode=%s)", query, self._top_k, retrieval_mode)
@@ -487,6 +497,11 @@ class HybridRetriever:
                     result.score = round((0.88 * float(result.score)) + evidence_boost, 6)
 
         results.sort(key=lambda item: item.score, reverse=True)
+
+        if retrieval_mode == "hybrid_rerank" and self._reranker is not None:
+            logger.debug("Applying learned reranker (%s) to %d candidates", type(self._reranker).__name__, len(results))
+            return self._reranker.rerank(query, results, self._top_k)
+
         return results[: self._top_k]
 
 

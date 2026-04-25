@@ -37,6 +37,11 @@ class Settings(BaseSettings):
         chroma_persist_dir: Local directory for ChromaDB persistence.
         log_level: Python logging level string (e.g. "INFO").
         riskfolio_source_dir: Local path to Riskfolio-Lib source / docs.
+        reranker_backend: Reranker backend to use in ``hybrid_rerank`` mode.
+            ``"none"`` disables learned reranking (heuristic boosts only).
+            ``"cross_encoder"`` enables a local cross-encoder model.
+        reranker_model: HuggingFace model name or local path used when
+            ``reranker_backend`` is ``"cross_encoder"``.
     """
 
     model_config = SettingsConfigDict(
@@ -88,6 +93,10 @@ class Settings(BaseSettings):
     # Ingestion
     riskfolio_source_dir: str = "./data/riskfolio-lib"
 
+    # Reranker
+    reranker_backend: Literal["none", "cross_encoder"] = "none"
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _normalize_log_level(cls, value: object) -> str:
@@ -119,3 +128,11 @@ class Settings(BaseSettings):
             return "hybrid_rerank"
         text = str(value).strip().lower()
         return text if text else "hybrid_rerank"
+
+    @field_validator("reranker_backend", mode="before")
+    @classmethod
+    def _normalize_reranker_backend(cls, value: object) -> str:
+        if value is None:
+            return "none"
+        text = str(value).strip().lower()
+        return text if text else "none"
