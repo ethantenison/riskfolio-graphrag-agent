@@ -115,7 +115,7 @@ Graph retrieval builds a broader candidate pool (3× the final `top_k`) by combi
 
 ## Hybrid Rerank
 
-**Strategy**: Merge dense and sparse results from a broader candidate pool, then apply graph-contextualized boosting.
+**Strategy**: Merge dense and sparse results from a broader candidate pool, then apply graph-contextualized boosting, and optionally apply a learned reranker as the final ranking step.
 
 **How it works**:
 
@@ -125,14 +125,22 @@ Graph retrieval builds a broader candidate pool (3× the final `top_k`) by combi
 - Merging: Reciprocal-rank fusion combines both result sets
 - Candidate pool: Up to `4×top_k` unique results before final truncation
 
-### Stage 2: Graph Expansion and Reranking
+### Stage 2: Graph Expansion and Heuristic Reranking
 - Each merged hit is enriched with related entities and graph neighbours
-- Three signals contribute to the final score:
+- Three signals contribute to the intermediate score:
   - **Entity signal**: Logarithmic scaling of related entity count; max boost ~0.06
   - **Neighbour signal**: Logarithmic scaling of graph neighbours; max boost ~0.04
   - **Coverage signal**: Fraction of query tokens appearing in text; max boost ~0.05
 - Evidence boost: `0.11×entity_signal + 0.07×neighbour_signal + 0.09×coverage_signal`
-- Final score: `0.85×merged_score + evidence_boost`
+- Intermediate score: `0.85×merged_score + evidence_boost`
+
+### Stage 3: Optional Learned Reranking
+- When a learned reranker is configured (e.g. `CrossEncoderReranker`), it performs
+  a final re-scoring pass over the heuristically ranked candidates before top-k truncation.
+- When no reranker is configured, the heuristic scores from Stage 2 are used directly.
+- The learned reranker is applied **only** in `hybrid_rerank` mode.
+
+See [Reranker Configuration](#reranker-configuration) for setup instructions.
 
 **Use case**: Balanced precision and recall for general-purpose queries; default mode.
 
@@ -227,6 +235,7 @@ Different retrieval pathways use slightly different tokenization to match their 
 | `chroma_persist_dir` | `str` | `".chroma"` | Persistence directory for Chroma |
 | `retrieval_mode` | `RetrievalMode` | `"hybrid_rerank"` | Default mode: `"dense"`, `"sparse"`, `"graph"`, or `"hybrid_rerank"` |
 | `embedding_provider` | `EmbeddingProvider` | `HashEmbeddingProvider` | Embedding model for dense search |
+| `reranker` | `Reranker \| None` | `None` | Optional learned reranker applied after heuristic scoring in `hybrid_rerank` mode |
 
 ### Candidate Pool Sizing
 
@@ -246,8 +255,68 @@ The retrieval layer does **not**:
 - Build the Neo4j graph schema (handled by graph materialization)
 - Generate final natural-language answers (handled by agent layer)
 - Automatically choose retrieval mode (caller specifies or uses default)
-- Run cross-encoders or learned rerankers
+- Train or fine-tune reranker models
+- Call external API-based reranker services
 - Translate natural language to Cypher queries
+
+---
+
+## Reranker Configuration
+
+The `hybrid_rerank` mode supports an optional learned reranker that performs a
+final re-scoring pass after heuristic evidence boosts.
+
+### Settings
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `reranker_backend` | `"none"` | Reranker backend: `"none"` (passthrough) or `"cross_encoder"` |
+| `reranker_model` | `"cross-encoder/ms-marco-MiniLM-L-6-v2"` | HuggingFace model name or local path |
+
+Set via environment variables or `.env`:
+
+```env
+RERANKER_BACKEND=cross_encoder
+RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+```
+
+### Using the reranker programmatically
+
+```python
+from riskfolio_graphrag_agent.retrieval.reranker import CrossEncoderReranker, PassthroughReranker
+from riskfolio_graphrag_agent.retrieval.retriever import HybridRetriever
+
+# No-op passthrough (preserves heuristic ranking)
+retriever = HybridRetriever(
+    neo4j_uri="bolt://localhost:7687",
+    neo4j_user="neo4j",
+    neo4j_password="password",
+    top_k=5,
+    reranker=PassthroughReranker(),
+)
+
+# Local cross-encoder (requires sentence-transformers)
+reranker = CrossEncoderReranker(model_name="cross-encoder/ms-marco-MiniLM-L-6-v2")
+retriever = HybridRetriever(
+    neo4j_uri="bolt://localhost:7687",
+    neo4j_user="neo4j",
+    neo4j_password="password",
+    top_k=5,
+    reranker=reranker,
+)
+```
+
+### Dependency
+
+`CrossEncoderReranker` requires `sentence-transformers`:
+
+```bash
+pip install sentence-transformers
+```
+
+If `sentence-transformers` is not installed, constructing `CrossEncoderReranker`
+raises an `ImportError` with a clear installation hint.  Existing behavior with
+`reranker=None` (the default) is completely unaffected.
 
 ---
 
